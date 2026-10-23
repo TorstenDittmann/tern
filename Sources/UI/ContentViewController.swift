@@ -219,7 +219,7 @@ final class CardView: NSView {
 final class AgentRingView: NSView {
     static let color = NSColor.systemPurple
 
-    private let tag = NSTextField(labelWithString: "Agent is driving")
+    private let badge = NSTextField(labelWithString: "Agent is driving")
 
     var isShown = false {
         didSet {
@@ -235,25 +235,25 @@ final class AgentRingView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         alphaValue = 0
-        tag.font = .systemFont(ofSize: 11, weight: .semibold)
-        tag.textColor = .white
-        tag.alignment = .center
-        tag.wantsLayer = true
-        tag.drawsBackground = false
+        badge.font = .systemFont(ofSize: 11, weight: .semibold)
+        badge.textColor = .white
+        badge.alignment = .center
+        badge.wantsLayer = true
+        badge.drawsBackground = false
         let pill = FilledView()
         pill.fill = Self.color
         pill.radius = 9
         pill.translatesAutoresizingMaskIntoConstraints = false
-        tag.translatesAutoresizingMaskIntoConstraints = false
+        badge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(pill)
-        pill.addSubview(tag)
+        pill.addSubview(badge)
         NSLayoutConstraint.activate([
             pill.topAnchor.constraint(equalTo: topAnchor, constant: 8),
             pill.centerXAnchor.constraint(equalTo: centerXAnchor),
             pill.heightAnchor.constraint(equalToConstant: 18),
-            tag.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 8),
-            tag.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -8),
-            tag.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            badge.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 8),
+            badge.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -8),
+            badge.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
