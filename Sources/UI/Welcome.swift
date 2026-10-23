@@ -21,15 +21,19 @@ final class Welcome: NSViewController {
     static func show(in browser: BrowserWindowController) {
         guard let window = browser.window, window.attachedSheet == nil else { return }
         let welcome = Welcome()
-        welcome.browser = browser
         let sheet = NSWindow(contentViewController: welcome)
         sheet.styleMask = [.titled, .fullSizeContentView]
         sheet.titlebarAppearsTransparent = true
         sheet.titleVisibility = .hidden
-        window.beginSheet(sheet) { _ in if !SmokeTest.isRunning { UserDefaults.standard.set(true, forKey: seenKey) } }
+        window.beginSheet(sheet) { [weak browser] _ in
+            if !SmokeTest.isRunning { UserDefaults.standard.set(true, forKey: seenKey) }
+            // Only once the sheet is fully gone, so a palette opened by Try It stays key.
+            if let command = welcome.pendingCommand { CommandRouter.perform(command, in: browser) }
+        }
     }
 
-    private weak var browser: BrowserWindowController?
+    /// The lesson's command to run after the sheet closes (Try It).
+    private var pendingCommand: Command?
 
     override func loadView() {
         let title = NSTextField(labelWithString: "Welcome to Tern")
@@ -124,11 +128,8 @@ final class Welcome: NSViewController {
     }
 
     @objc private func tryLesson(_ sender: NSButton) {
-        let command = Self.lessons[sender.tag].0
-        let browser = self.browser
+        pendingCommand = Self.lessons[sender.tag].0
         close()
-        // After the sheet is gone, so the command acts on the window, not the sheet.
-        DispatchQueue.main.async { CommandRouter.perform(command, in: browser) }
     }
 
     @objc func close() {
