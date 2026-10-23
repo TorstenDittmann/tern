@@ -119,6 +119,7 @@ enum SmokeTest {
         await tabList(browser: browser, base: base)
         await linkTools(browser: browser, base: base)
         dragToSplit(browser: browser, base: base)
+        await welcome(browser: browser)
         await agentAPI(browser: browser, base: base)
 
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
@@ -296,6 +297,15 @@ enum SmokeTest {
         check(!browser.content.dropTab(c, onRight: true), "dropping a tab beside itself does nothing")
         browser.unsplit()
         [a, b, c].forEach(browser.close)
+    }
+
+    private static func welcome(browser: BrowserWindowController) async {
+        CommandRouter.perform(.showWelcome, in: browser)
+        let sheet = browser.window?.attachedSheet
+        check(sheet?.contentViewController is Welcome, "Welcome to Tern opens the welcome sheet")
+        (sheet?.contentViewController as? Welcome)?.close()
+        await wait { browser.window?.attachedSheet == nil }
+        check(browser.window?.attachedSheet == nil, "Get Started closes it")
     }
 
     private static func agentAPI(browser: BrowserWindowController, base: String) async {

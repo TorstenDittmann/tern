@@ -32,6 +32,7 @@ enum MainMenu {
 
         main.addItem(menu("Tern", [
             std("About Tern", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
+            item(.showWelcome),
             .separator(),
             item(.openKeymapFile),
             item(.reloadKeymap),

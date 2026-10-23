@@ -18,6 +18,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
 - **History.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. **Clear History** in ⌘K forgets them.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
+- **Welcome sheet.** The first launch shows the four shortcuts worth learning, each with a Try It button. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
 - **Rebindable shortcuts.** Every command has a binding, set in a JSON file. The menus always show your current bindings.
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
 - **Safari Web Extensions.** Tern finds Safari extensions installed with your apps and also loads unpacked or `.zip` extensions in place.

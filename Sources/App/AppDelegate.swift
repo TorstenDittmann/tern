@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if SmokeTest.isRunning { return SmokeTest.run() }
         if let url = Metrics.benchmarkURL { openWindow(restoring: [Tab(url: url)]); return }
         if !SessionStore.restore(into: self) { openWindow() }
+        if let first = windows.first { Welcome.showIfFirstRun(in: first) }
         didLaunch = true
         if !pendingURLs.isEmpty { open(pendingURLs); pendingURLs = [] }
         TabSuspender.shared.start()

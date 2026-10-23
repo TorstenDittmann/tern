@@ -13,7 +13,7 @@ enum Command: String, CaseIterable {
     case toggleInspector, showConsole, copyURL, copyMarkdownLink
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
     case loadUnpackedExtension, revealExtensionsFolder
-    case toggleAgentAPI, clearHistory
+    case toggleAgentAPI, clearHistory, showWelcome
 
     var title: String {
         switch self {
@@ -65,6 +65,7 @@ enum Command: String, CaseIterable {
         case .revealExtensionsFolder: "Reveal Extensions Folder"
         case .toggleAgentAPI: AgentServer.isEnabled ? "Disable Agent API" : "Enable Agent API"
         case .clearHistory: "Clear History"
+        case .showWelcome: "Welcome to Tern"
         }
     }
 
@@ -117,6 +118,7 @@ enum Command: String, CaseIterable {
         case .revealExtensionsFolder: "folder"
         case .toggleAgentAPI: "point.3.connected.trianglepath.dotted"
         case .clearHistory: "clock.arrow.circlepath"
+        case .showWelcome: "hand.wave"
         }
     }
 
@@ -185,6 +187,7 @@ enum CommandRouter {
         case .find: browser.content.showFindBar()
         case .findNext: browser.content.findAgain(backwards: false)
         case .findPrevious: browser.content.findAgain(backwards: true)
+        case .showWelcome: Welcome.show(in: browser)
         case .linkHints: Task { await LinkHints.start(in: browser) }
         case .zoomIn: webView.map { $0.pageZoom = min($0.pageZoom + 0.1, 3) }
         case .zoomOut: webView.map { $0.pageZoom = max($0.pageZoom - 0.1, 0.3) }
