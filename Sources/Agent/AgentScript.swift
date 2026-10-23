@@ -86,7 +86,7 @@ enum AgentScript {
 
       function remember(el) {
         const known = refOf.get(el);
-        if (known) return known;
+        if (known && refs.has(known)) return known;
         const ref = 'e' + nextRef++;
         refs.set(ref, new WeakRef(el));
         refOf.set(el, ref);
