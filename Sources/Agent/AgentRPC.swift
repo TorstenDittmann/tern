@@ -60,8 +60,10 @@ struct AgentParams {
 
     func string(_ key: String) throws -> String? {
         guard let value = raw[key], !(value is NSNull) else { return nil }
-        guard let s = value as? String else { throw AgentError.invalidParams("\(key) must be a string") }
-        return s
+        if let s = value as? String { return s }
+        // The CLI turns numeric-looking arguments into numbers; accept them where text is expected.
+        if let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() { return n.stringValue }
+        throw AgentError.invalidParams("\(key) must be a string")
     }
 
     func requiredString(_ key: String) throws -> String {

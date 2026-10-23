@@ -7,7 +7,11 @@ import WebKit
 enum AgentMethods {
     static let apiVersion = 1
 
-    private static let table: [String: @MainActor (AgentParams) async throws -> Any] = [
+    typealias Handler = @MainActor (AgentParams) async throws -> Any
+
+    private static let table: [String: Handler] = browserMethods.merging(AgentPageMethods.table) { mine, _ in mine }
+
+    private static let browserMethods: [String: Handler] = [
         "tern.hello": hello,
         "commands.list": listCommands,
         "commands.run": runCommand,
@@ -36,7 +40,7 @@ enum AgentMethods {
     private static var agentTabs: Set<UUID> = []
     private static var ownTabsOnly: Bool { UserDefaults.standard.bool(forKey: "agentOwnTabsOnly") }
 
-    private static func checkControl(_ tab: Tab) throws {
+    static func checkControl(_ tab: Tab) throws {
         if ownTabsOnly, !agentTabs.contains(tab.id) { throw AgentError.notAllowed }
     }
 
@@ -186,7 +190,7 @@ enum AgentMethods {
     }
 
     /// The tab named by `tabId`, or the active tab of the frontmost window.
-    private static func findTab(_ p: AgentParams, required: Bool = false) throws -> Tab {
+    static func findTab(_ p: AgentParams, required: Bool = false) throws -> Tab {
         if let id = try p.string("tabId") { return try findTab(id: id) }
         if required { throw AgentError.invalidParams("Missing tabId") }
         guard let tab = currentBrowser?.activeTab else { throw AgentError(code: -32001, message: "No open tab") }
@@ -200,7 +204,7 @@ enum AgentMethods {
     }
 
     /// `wait`: "none", "load" (default) or "idle" (load, then 500 ms of quiet).
-    private static func waitForLoad(_ tab: Tab, _ p: AgentParams) async throws {
+    static func waitForLoad(_ tab: Tab, _ p: AgentParams) async throws {
         let mode = try p.string("wait") ?? "load"
         guard ["none", "load", "idle"].contains(mode) else { throw AgentError.invalidParams("wait must be none, load or idle") }
         guard mode != "none" else { return }
@@ -216,10 +220,24 @@ enum AgentMethods {
         if mode == "idle" { try await Task.sleep(for: .milliseconds(500)) }
     }
 
-    /// JSON null for a missing value.
-    private static func orNull(_ value: Any?) -> Any { value ?? NSNull() }
+    /// After a click or key press: if it started a navigation, wait for it like `wait` says.
+    static func settle(_ tab: Tab, loadsBefore: Int, _ p: AgentParams) async throws {
+        try await Task.sleep(for: .milliseconds(150))
+        guard tab.isLoading || tab.loadsEnded != loadsBefore else { return }
+        let mode = try p.string("wait") ?? "load"
+        guard mode != "none" else { return }
+        let deadline = Date().addingTimeInterval((try p.number("timeoutMs") ?? 30_000) / 1000)
+        while tab.isLoading {
+            guard Date() < deadline else { throw AgentError.timeout("\(tab.currentURL?.absoluteString ?? "the page") to load") }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        if mode == "idle" { try await Task.sleep(for: .milliseconds(500)) }
+    }
 
-    private static func describe(_ tab: Tab) -> [String: Any] {
+    /// JSON null for a missing value.
+    static func orNull(_ value: Any?) -> Any { value ?? NSNull() }
+
+    static func describe(_ tab: Tab) -> [String: Any] {
         [
             "id": tab.id.uuidString,
             "windowId": orNull(tab.owner?.id.uuidString),
