@@ -116,6 +116,8 @@ enum SmokeTest {
         check(browser.visibleTabs.count == 2, "split with previous tab")
         CommandRouter.perform(.toggleSplit, in: browser)
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
+        await tabList(browser: browser, base: base)
+        await linkTools(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
@@ -213,7 +215,74 @@ enum SmokeTest {
         }
     }
 
+    /// Pinned tabs and the keyboard tab list (⌘E).
+    private static func tabList(browser: BrowserWindowController, base: String) async {
+        let plain = browser.newTab(url: URL(string: "\(base)/one.html?pin"))
+        let pinned = browser.newTab(url: URL(string: "\(base)/two.html?filtered"))
+        await wait { !plain.isLoading && pinned.pageTitle == "Page Two" && !pinned.isLoading }
+        browser.setPinned(pinned, true)
+        check(browser.tabs.first === pinned && pinned.isPinned, "pinning moves a tab to the top")
+        if let i = browser.tabs.firstIndex(of: plain) { browser.moveTab(from: i, to: 0) }
+        check(browser.tabs.first === pinned && browser.tabs[1] === plain, "unpinned tabs stay below pinned ones")
+
+        browser.activate(plain)
+        CommandRouter.perform(.focusTabList, in: browser)
+        let sidebar = browser.sidebar
+        check(sidebar.isTabListFocused, "⌘E focuses the tab list")
+        func key(_ chars: String, code: UInt16 = 0) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: browser.window?.windowNumber ?? 0,
+                             context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+        }
+        for c in "filtered" { _ = sidebar.handleTabListKey(key(String(c))) }
+        check(sidebar.visibleRowCount == 1, "typing filters the tab list (\(sidebar.visibleRowCount) rows)")
+        _ = sidebar.handleTabListKey(key("\r", code: 36))
+        check(browser.activeTab === pinned && !sidebar.isTabListFocused, "↩ opens the filtered tab and leaves the list")
+
+        browser.setPinned(pinned, false)
+        check(!pinned.isPinned && browser.pinnedCount == 0, "unpinning")
+        browser.close(plain)
+        browser.close(pinned)
+    }
+
     /// Drives the agent API through the embedded `tern` CLI, the way an agent would.
+    /// ⌘J link hints and ⌥-click link peek.
+    private static func linkTools(browser: BrowserWindowController, base: String) async {
+        let tab = browser.newTab(url: URL(string: "\(base)/one.html?hints"))
+        await wait { tab.pageTitle == "Page One" && !tab.isLoading }
+        func key(_ chars: String, code: UInt16) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: browser.window?.windowNumber ?? 0,
+                             context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+        }
+        check(Keymap.shared.command(for: KeyChord(string: "cmd+j")!) == .linkHints, "⌘J bound to link hints")
+        let count = await LinkHints.start(in: browser)
+        check(count == 1 && LinkHints.active != nil, "link hints label the page's one link (\(count))")
+        _ = LinkHints.active?.handle(key("\u{1b}", code: 53))
+        check(LinkHints.active == nil, "esc leaves link hints")
+
+        await LinkHints.start(in: browser)
+        _ = LinkHints.active?.handle(key("s", code: 1))
+        await wait { tab.pageTitle == "Page Two" && !tab.isLoading }
+        check(tab.pageTitle == "Page Two" && LinkHints.active == nil, "typing a hint follows the link")
+
+        let before = browser.tabs.count
+        browser.content.peek(URL(string: "\(base)/form.html?peek")!, from: tab)
+        guard let peek = browser.content.linkPeek else { return check(false, "link peek opens") }
+        await wait { peek.tab.pageTitle != nil && !peek.tab.isLoading && peek.tab.loadsEnded > 0 }
+        check(peek.tab.loadsEnded > 0 && browser.tabs.count == before && peek.tab.webView?.window != nil,
+              "link peek loads the page without adding a tab")
+        _ = peek.handle(key("\u{1b}", code: 53))
+        check(browser.content.linkPeek == nil && peek.tab.isSuspended, "esc closes the peek")
+
+        browser.content.peek(URL(string: "\(base)/form.html?split")!, from: tab)
+        let peeked = browser.content.linkPeek?.tab
+        browser.content.promotePeek(split: true)
+        check(peeked != nil && browser.tabs.count == before + 1 && browser.split?.left === tab && browser.split?.right === peeked
+              && peeked?.webView?.window != nil, "a peek promotes to a split beside its page")
+        browser.unsplit()
+        if let peeked { browser.close(peeked) }
+        browser.close(tab)
+    }
+
     private static func agentAPI(browser: BrowserWindowController, base: String) async {
         guard AgentServer.shared.isRunning else { return check(false, "agent API listening (TERN_SOCKET set by make smoke)") }
         let before = browser.tabs.count
@@ -235,8 +304,16 @@ enum SmokeTest {
 
         let list = await tern(["tabs", "list", "--plain"])
         check(list.status == 0 && list.out.contains(id), "tabs list --plain")
+        let pin = await tern(["tabs", "pin", id])
+        let unpin = await tern(["tabs", "pin", id, "--pinned", "false"])
+        check(pin.json?["pinned"] as? Bool == true && pin.json?["index"] as? Int == 0 && unpin.json?["pinned"] as? Bool == false,
+              "tabs pin (\(pin.out.prefix(80)))")
 
         let nav = await tern(["tabs", "navigate", "\(base)/two.html", "--tabId", id])
+        let history = await tern(["history", "search", "Page Two", "--json"])
+        check(history.array?.first.flatMap { ($0 as? [String: Any])?["url"] as? String }?.hasSuffix("/two.html") == true,
+              "history search finds a visited page (\(history.out.prefix(120)))")
+        check(HistoryStore.shared.completion(for: "localh") == HistoryStore.bare(base) + "/", "address bar completes a visited site")
         check(nav.json?["title"] as? String == "Page Two", "tabs navigate")
         let back = await tern(["tabs", "back", id])
         check(back.json?["title"] as? String == "Page One", "tabs back")

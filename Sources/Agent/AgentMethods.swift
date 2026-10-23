@@ -29,6 +29,9 @@ enum AgentMethods {
         "tabs.forward": { try await history($0, needs: \.canGoForward, "go forward to") { $0.goForward() } },
         "tabs.reload": { try await history($0) { $0.reload() } },
         "tabs.split": split,
+        "tabs.pin": pin,
+        "history.search": searchHistory,
+        "history.clear": { _ in HistoryStore.shared.clear(); return ["ok": true] },
     ]
 
     static func call(_ method: String, _ params: AgentParams) async throws -> Any {
@@ -198,6 +201,36 @@ enum AgentMethods {
         return describe(browser)
     }
 
+    private static func pin(_ p: AgentParams) async throws -> Any {
+        let tab = try findTab(p, required: true)
+        try checkControl(tab)
+        tab.owner?.setPinned(tab, try p.bool("pinned") ?? true)
+        return describe(tab)
+    }
+
+    // MARK: history
+
+    /// Pages from history, best match first (or by frecency without a query).
+    private static func searchHistory(_ p: AgentParams) async throws -> Any {
+        let query = try p.string("query")?.trimmingCharacters(in: .whitespaces) ?? ""
+        let limit = try max(1, p.integer("limit") ?? 20)
+        let entries = HistoryStore.shared.ranked()
+        let matched = query.isEmpty ? entries : entries.compactMap { e -> (Int, HistoryStore.Entry)? in
+            guard let s = [CommandPalette.score(query, e.title ?? ""), CommandPalette.score(query, HistoryStore.bare(e.url))]
+                .compactMap({ $0 }).max() else { return nil }
+            return (s + Frecency.bonus(e.frecency), e)
+        }.sorted { $0.0 > $1.0 }.map(\.1)
+        return matched.prefix(limit).map { e -> [String: Any] in
+            [
+                "url": e.url,
+                "title": orNull(e.title),
+                "visits": e.visits,
+                "lastVisit": (e.lastVisit.timeIntervalSince1970 * 1000).rounded(),
+                "frecency": e.frecency.rounded(),
+            ]
+        }
+    }
+
     // MARK: Helpers
 
     private static var currentBrowser: BrowserWindowController? {
@@ -291,6 +324,7 @@ enum AgentMethods {
             "active": tab.isActive,
             "visible": tab.isVisible,
             "openedByAgent": agentTabs.contains(tab.id),
+            "pinned": tab.isPinned,
         ]
     }
 
@@ -310,8 +344,8 @@ private extension Command {
     var actsOnActiveTab: Bool {
         switch self {
         case .closeTab, .duplicateTab, .reload, .hardReload, .stopLoading, .goBack, .goForward,
-             .moveTabUp, .moveTabDown, .toggleSplit, .splitWithPreviousTab, .swapPanes,
-             .zoomIn, .zoomOut, .zoomReset: true
+             .moveTabUp, .moveTabDown, .togglePinTab, .toggleSplit, .splitWith, .splitWithPreviousTab, .swapPanes,
+             .zoomIn, .zoomOut, .zoomReset, .linkHints: true
         default: false
         }
     }

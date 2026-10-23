@@ -32,13 +32,14 @@ Turn the API on with "Enable Agent API" in Tern's command palette (⌘K).
 /// Positional values fill these params, in order, for methods that have obvious ones.
 let positionalParams: [String: [String]] = [
     "tabs.open": ["url"], "tabs.navigate": ["url"], "windows.open": ["url"],
-    "tabs.activate": ["tabId"], "tabs.close": ["tabId"],
+    "tabs.activate": ["tabId"], "tabs.close": ["tabId"], "tabs.pin": ["tabId"],
     "tabs.back": ["tabId"], "tabs.forward": ["tabId"], "tabs.reload": ["tabId"],
     "commands.run": ["command"],
     "page.click": ["ref"], "page.type": ["ref", "text"], "page.press": ["key"],
     "page.select": ["ref", "values"], "page.scroll": ["ref"], "page.eval": ["js"],
     "page.waitFor": ["text"], "page.text": ["format"], "page.screenshot": ["path"],
     "network.list": ["urlMatches"], "events.subscribe": ["events"], "events.unsubscribe": ["events"],
+    "history.search": ["query"],
 ]
 
 /// Results whose main content is text print it as-is (a snapshot reads better than escaped JSON).

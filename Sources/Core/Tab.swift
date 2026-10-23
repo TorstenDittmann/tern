@@ -22,6 +22,8 @@ final class Tab: NSObject {
     lazy var agentLog = AgentTabLog()
     /// An agent acted on this tab in the last few seconds; the UI rings it.
     var isAgentDriving = false
+    /// Pinned tabs stay at the top of the list, in their own block, and survive "Close Other Tabs".
+    var isPinned = false
 
     private var pendingState: Any?
     private var observations: [NSKeyValueObservation] = []
@@ -126,7 +128,11 @@ final class Tab: NSObject {
         }
         observations = [
             wv.observe(\.title) { [weak self] wv, _ in
-                MainActor.assumeIsolated { self?.pageTitle = wv.title; self?.changed([.title]) }
+                MainActor.assumeIsolated {
+                    self?.pageTitle = wv.title
+                    self?.changed([.title])
+                    HistoryStore.shared.updateTitle(wv.title, for: wv.url)
+                }
             },
             wv.observe(\.url) { [weak self] wv, _ in
                 MainActor.assumeIsolated {
@@ -189,6 +195,13 @@ extension Tab: WKNavigationDelegate {
             NSWorkspace.shared.open(url)
             return decisionHandler(.cancel)
         }
+        // ⌥-click peeks at a link without leaving the page (Safari would download it).
+        if action.navigationType == .linkActivated, owner != nil,
+           action.modifierFlags.intersection([.command, .shift, .option, .control]) == .option,
+           HistoryStore.isRecordable(url), let browser = owner {
+            browser.content.peek(url, from: self)
+            return decisionHandler(.cancel)
+        }
         // ⌘-click / middle-click opens a background tab (⇧ to bring it to front).
         if action.navigationType == .linkActivated,
            action.modifierFlags.contains(.command) || action.buttonNumber == 4 {
@@ -213,6 +226,7 @@ extension Tab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadsEnded += 1
         Metrics.markPageLoaded()
+        if let url = webView.url { HistoryStore.shared.recordVisit(url, title: webView.title) }
         FaviconLoader.load(for: webView) { [weak self] image in
             self?.favicon = image
             if let self { self.owner?.tabDidChange(self) }

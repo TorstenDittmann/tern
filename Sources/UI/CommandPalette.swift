@@ -1,15 +1,18 @@
 import AppKit
 
-/// ⌘K: fuzzy-switch tabs, run any command, or open a URL / search.
+/// ⌘K: fuzzy-switch tabs, revisit pages from history, run any command, or open a URL / search.
+/// Pages and commands you use often and recently rank higher (frecency).
 /// ⌘P: the same panel limited to open tabs (all windows, most recent first).
+/// ⌥⌘\ ("Split with…"): pick a tab, page or address to show beside the current tab.
 @MainActor
 final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSWindowDelegate {
-    enum Mode { case everything, tabs }
+    enum Mode { case everything, tabs, splitWith }
 
     private enum Item {
         case header(String)
         case open(String)
         case tab(Tab)
+        case page(HistoryStore.Entry)
         case command(Command)
 
         var isHeader: Bool { if case .header = self { true } else { false } }
@@ -86,10 +89,19 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         tint.autoresizingMask = [.width, .height]
         bg.addSubview(tint)
 
-        let glass = NSImageView(image: Theme.symbol(mode == .tabs ? "rectangle.stack" : "magnifyingglass", size: 16, weight: .medium)!)
+        let symbol = switch mode {
+        case .tabs: "rectangle.stack"
+        case .splitWith: "rectangle.split.2x1"
+        case .everything: "magnifyingglass"
+        }
+        let glass = NSImageView(image: Theme.symbol(symbol, size: 16, weight: .medium)!)
         glass.contentTintColor = .tertiaryLabelColor
 
-        field.placeholderString = mode == .tabs ? "Switch to tab…" : "Search tabs and commands, or enter an address"
+        field.placeholderString = switch mode {
+        case .tabs: "Switch to tab…"
+        case .splitWith: "Split with a tab, a page, or an address…"
+        case .everything: "Search tabs, history and commands, or enter an address"
+        }
         field.font = .systemFont(ofSize: 17)
         field.isBordered = false
         field.drawsBackground = false
@@ -139,27 +151,41 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
     // MARK: Filtering
 
     private func candidateTabs() -> [Tab] {
+        // Split partners must share the window; ⌘P searches every window.
         let windows = mode == .tabs ? AppDelegate.shared.windows : [browser].compactMap { $0 }
         return windows.flatMap(\.tabs)
             .filter { $0 !== browser?.activeTab }
             .sorted { $0.lastActivated > $1.lastActivated }
     }
 
+    /// History pages that aren't already open in a tab.
+    private func candidatePages(excluding tabs: [Tab]) -> [HistoryStore.Entry] {
+        var open = Set(tabs.compactMap { $0.currentURL?.absoluteString })
+        if let current = browser?.activeTab?.currentURL?.absoluteString { open.insert(current) }
+        return HistoryStore.shared.ranked().filter { !open.contains($0.url) }
+    }
+
     private func refilter() {
         let q = field.stringValue.trimmingCharacters(in: .whitespaces)
         let tabs = candidateTabs()
-        let commands = Command.allCases.filter { $0.selectIndex == nil && $0 != .commandPalette }
+        let commands = Command.allCases.filter { $0.selectIndex == nil && $0 != .commandPalette && $0 != .splitWith }
+        let rankedCommands = commands.enumerated()
+            .sorted { (CommandUsage.frecency($0.element), -$0.offset) > (CommandUsage.frecency($1.element), -$1.offset) }
+            .map(\.element)
 
         var result: [Item] = []
         if q.isEmpty {
-            let shownTabs = mode == .tabs ? tabs : Array(tabs.prefix(5))
-            if !shownTabs.isEmpty {
-                if mode == .everything { result.append(.header("Recent Tabs")) }
-                result += shownTabs.map(Item.tab)
-            }
-            if mode == .everything {
+            switch mode {
+            case .tabs:
+                result = tabs.map(Item.tab)
+            case .splitWith:
+                result = tabs.map(Item.tab)
+                let pages = candidatePages(excluding: tabs).prefix(5)
+                if !pages.isEmpty { result.append(.header("Frequent Pages")); result += pages.map(Item.page) }
+            case .everything:
+                if !tabs.isEmpty { result.append(.header("Recent Tabs")); result += tabs.prefix(5).map(Item.tab) }
                 result.append(.header("Commands"))
-                result += commands.map(Item.command)
+                result += rankedCommands.map(Item.command)
             }
         } else {
             let matchedTabs = tabs.compactMap { t -> (Int, Tab)? in
@@ -170,11 +196,17 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             if mode == .tabs {
                 result = matchedTabs.map(Item.tab)
             } else {
-                let matchedCommands = commands.compactMap { c in Self.score(q, c.title).map { ($0, c) } }
-                    .sorted { $0.0 > $1.0 }.map(\.1)
+                let matchedPages = candidatePages(excluding: tabs).compactMap { e -> (Int, HistoryStore.Entry)? in
+                    guard let s = [Self.score(q, e.title ?? ""), Self.score(q, HistoryStore.bare(e.url))].compactMap({ $0 }).max() else { return nil }
+                    return (s + Frecency.bonus(e.frecency), e)
+                }.sorted { $0.0 > $1.0 }.prefix(6).map(\.1)
+                let matchedCommands = mode == .splitWith ? [] : commands.compactMap { c in
+                    Self.score(q, c.title).map { ($0 + Frecency.bonus(CommandUsage.frecency(c)), c) }
+                }.sorted { $0.0 > $1.0 }.map(\.1)
                 let looksLikeURL = q.contains(".") || q.contains("://") || q.hasPrefix("localhost")
                 if looksLikeURL { result.append(.open(q)) }
                 if !matchedTabs.isEmpty { result.append(.header("Tabs")); result += matchedTabs.map(Item.tab) }
+                if !matchedPages.isEmpty { result.append(.header("History")); result += matchedPages.map(Item.page) }
                 if !matchedCommands.isEmpty { result.append(.header("Commands")); result += matchedCommands.map(Item.command) }
                 if !looksLikeURL {
                     result.append(.header("Web"))
@@ -229,14 +261,35 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         let item = items[table.selectedRow]
         let inNewTab = browser.activeTab?.currentURL != nil && NSApp.currentEvent?.modifierFlags.contains(.command) == true
         Self.close()
+        if mode == .splitWith { return split(with: item, in: browser) }
         switch item {
         case .header: break
         case .open(let input): browser.open(input: input, inNewTab: inNewTab)
+        case .page(let entry): browser.open(input: entry.url, inNewTab: inNewTab)
         case .tab(let tab):
             tab.owner?.activate(tab)
             tab.owner?.window?.makeKeyAndOrderFront(nil)
-        case .command(let cmd): CommandRouter.perform(cmd, in: browser)
+        case .command(let cmd):
+            CommandUsage.record(cmd)
+            CommandRouter.perform(cmd, in: browser)
         }
+    }
+
+    /// Shows the picked tab, or a new tab for the picked page or address, beside the current tab.
+    private func split(with item: Item, in browser: BrowserWindowController) {
+        guard let active = browser.activeTab else { return }
+        let partner: Tab
+        switch item {
+        case .tab(let tab): partner = tab
+        case .open(let input):
+            guard let url = BrowserEngine.shared.resolve(input: input) else { return }
+            partner = browser.newTab(url: url, activate: false, after: active)
+        case .page(let entry):
+            guard let url = URL(string: entry.url) else { return }
+            partner = browser.newTab(url: url, activate: false, after: active)
+        case .header, .command: return
+        }
+        browser.split(active, with: partner, focus: partner)
     }
 
     private func moveSelection(_ delta: Int) {
@@ -310,6 +363,13 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
                                title: tab.displayTitle,
                                subtitle: Theme.displayString(for: tab.currentURL),
                                accessory: otherWindow ? Self.tag(index ?? "") : nil)
+        case .page(let entry):
+            let url = URL(string: entry.url)
+            return PaletteCell(icon: FaviconLoader.cached(for: url) ?? Monogram.image(for: url, title: entry.title ?? ""),
+                               tinted: false,
+                               title: entry.title?.isEmpty == false ? entry.title! : HistoryStore.bare(entry.url),
+                               subtitle: HistoryStore.bare(entry.url),
+                               accessory: nil)
         case .command(let cmd):
             let chord = Keymap.shared.primaryChord(for: cmd)
             return PaletteCell(icon: Theme.symbol(cmd.symbol, size: 14) ?? Theme.symbol("command", size: 14),

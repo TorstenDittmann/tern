@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         AgentServer.shared.stop()
+        HistoryStore.shared.save()
         if !SmokeTest.isRunning && !Metrics.isBenchmark { SessionStore.save(windows) }
     }
 
@@ -95,10 +96,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         guard let browser = keyBrowser, NSApp.keyWindow?.attachedSheet == nil else { return false }
+        if let hints = LinkHints.active, hints.handle(event) { return true }
+        if let peek = browser.content.linkPeek, peek.handle(event) { return true }
         let chord = KeyChord(event: event)
         if let command = Keymap.shared.command(for: chord) {
-            // Plain-key bindings (vim-style) must not swallow typing in native text fields.
-            if chord.isPlain, NSApp.keyWindow?.firstResponder is NSTextView { return false }
+            // Plain-key bindings (vim-style) must not swallow typing in text fields or the ⌘E tab filter.
+            if chord.isPlain, NSApp.keyWindow?.firstResponder is NSTextView || browser.sidebar.isTabListFocused { return false }
+            CommandUsage.record(command)
             CommandRouter.perform(command, in: browser)
             return true
         }
@@ -114,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func runMenuCommand(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let command = Command(rawValue: raw) else { return }
+        CommandUsage.record(command)
         CommandRouter.perform(command, in: keyBrowser)
     }
 

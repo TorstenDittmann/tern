@@ -76,10 +76,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         else { window.setContentSize(NSSize(width: 1280, height: 820)); window.center() }
 
         initial.forEach { $0.owner = self }
-        tabs = initial
+        let shown = initial.isEmpty ? nil : initial[max(0, min(active, initial.count - 1))]
+        tabs = initial.filter(\.isPinned) + initial.filter { !$0.isPinned }
         sidebar.reloadTabs()
         content.sidebarDidToggle(collapsed: sidebarCollapsed)
-        if tabs.isEmpty { newTab(url: nil) } else { activate(tabs[max(0, min(active, tabs.count - 1))]) }
+        if let shown { activate(shown) } else { newTab(url: nil) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -109,7 +110,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     func insert(_ tab: Tab, at index: Int, activate shouldActivate: Bool) {
         tab.owner = self
-        tabs.insert(tab, at: max(0, min(index, tabs.count)))
+        // Pinned tabs live in a block at the top; others go below it.
+        let bounds = tab.isPinned ? 0...pinnedCount : pinnedCount...tabs.count
+        tabs.insert(tab, at: max(bounds.lowerBound, min(index, bounds.upperBound)))
         sidebar.reloadTabs()
         if isAnnounced { extensions.didOpenTab(tab) }
         if shouldActivate || activeTab == nil { activate(tab) }
@@ -176,12 +179,27 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func closeOthers(than keep: Tab) {
-        for tab in tabs where tab !== keep { close(tab) }
+        for tab in tabs where tab !== keep && !tab.isPinned { close(tab) }
     }
 
     func closeTabs(below tab: Tab) {
         guard let i = tabs.firstIndex(of: tab) else { return }
-        for t in tabs[(i + 1)...] { close(t) }
+        for t in tabs[(i + 1)...] where !t.isPinned { close(t) }
+    }
+
+    // MARK: Pinned tabs
+
+    var pinnedCount: Int { tabs.prefix { $0.isPinned }.count }
+
+    /// Pinning moves the tab to the end of the pinned block; unpinning to just below it.
+    func setPinned(_ tab: Tab, _ pinned: Bool) {
+        guard tab.isPinned != pinned, let from = tabs.firstIndex(of: tab) else { return }
+        tabs.remove(at: from)
+        tab.isPinned = pinned
+        let to = pinnedCount
+        tabs.insert(tab, at: to)
+        sidebar.reloadTabs()
+        if isAnnounced, from != to { extensions.didMoveTab(tab, from: from, in: self) }
     }
 
     // MARK: Split view
@@ -271,8 +289,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func moveTab(from: Int, to rawTo: Int) {
-        let to = max(0, min(rawTo, tabs.count - 1))
-        guard tabs.indices.contains(from), from != to else { return }
+        guard tabs.indices.contains(from) else { return }
+        // A tab moves within its own block: pinned tabs stay above the rest.
+        let pinned = pinnedCount
+        let bounds = tabs[from].isPinned ? 0...(pinned - 1) : pinned...(tabs.count - 1)
+        let to = max(bounds.lowerBound, min(rawTo, bounds.upperBound))
+        guard from != to else { return }
         let tab = tabs.remove(at: from)
         tabs.insert(tab, at: to)
         sidebar.reloadTabs()
@@ -287,6 +309,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         } else {
             sidebar.focusAddressField()
         }
+    }
+
+    /// ⌘E: filter and pick tabs from the keyboard in the sidebar, or the tab picker when it's hidden.
+    func focusTabList() {
+        if isSidebarCollapsed { CommandPalette.show(for: self, mode: .tabs, initialText: "") } else { sidebar.focusTabList() }
     }
 
     func toggleSidebar() {
