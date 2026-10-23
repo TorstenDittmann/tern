@@ -234,6 +234,8 @@ enum SmokeTest {
         check(nav.json?["title"] as? String == "Page Two", "tabs navigate")
         let back = await tern(["tabs", "back", id])
         check(back.json?["title"] as? String == "Page One", "tabs back")
+        let noHistory = await tern(["tabs", "back", id, "--timeoutMs", "3000"])
+        check(noHistory.status == 1 && noHistory.out.contains("-32006"), "tabs back with no history fails fast")
 
         let commands = await tern(["commands", "list"])
         let names = (commands.array ?? []).compactMap { ($0 as? [String: Any])?["name"] as? String }

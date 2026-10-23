@@ -18,8 +18,8 @@ enum AgentMethods {
         "tabs.activate": activateTab,
         "tabs.close": closeTab,
         "tabs.navigate": navigate,
-        "tabs.back": { try await history($0) { $0.goBack() } },
-        "tabs.forward": { try await history($0) { $0.goForward() } },
+        "tabs.back": { try await history($0, needs: \.canGoBack, "go back to") { $0.goBack() } },
+        "tabs.forward": { try await history($0, needs: \.canGoForward, "go forward to") { $0.goForward() } },
         "tabs.reload": { try await history($0) { $0.reload() } },
         "tabs.split": split,
     ]
@@ -67,6 +67,7 @@ enum AgentMethods {
         guard let command = Command(rawValue: name) else { throw AgentError.invalidParams("Unknown command \(name)") }
         let browser = try p.string("windowId").map(window) ?? currentBrowser
         if let tab = browser?.activeTab, command.actsOnActiveTab { try checkControl(tab) }
+        if command == .closeWindow { try browser?.tabs.forEach(checkControl) } // every tab in it goes
         CommandRouter.perform(command, in: browser)
         return ["ok": true]
     }
@@ -132,10 +133,14 @@ enum AgentMethods {
         return describe(tab)
     }
 
-    private static func history(_ p: AgentParams, _ action: (WKWebView) -> Void) async throws -> Any {
+    /// `needs`: when false, WebKit would do nothing and send no callback, so fail fast instead of timing out.
+    private static func history(_ p: AgentParams, needs: KeyPath<WKWebView, Bool>? = nil, _ what: String = "",
+                                _ action: (WKWebView) -> Void) async throws -> Any {
         let tab = try findTab(p)
         try checkControl(tab)
-        action(tab.materialize())
+        let webView = tab.materialize()
+        if let needs, !webView[keyPath: needs] { throw AgentError(code: -32006, message: "No page to \(what)") }
+        action(webView)
         try await waitForLoad(tab, p)
         return describe(tab)
     }
