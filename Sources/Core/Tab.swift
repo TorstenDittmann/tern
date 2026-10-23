@@ -195,6 +195,13 @@ extension Tab: WKNavigationDelegate {
             NSWorkspace.shared.open(url)
             return decisionHandler(.cancel)
         }
+        // ⌥-click peeks at a link without leaving the page (Safari would download it).
+        if action.navigationType == .linkActivated, owner != nil,
+           action.modifierFlags.intersection([.command, .shift, .option, .control]) == .option,
+           HistoryStore.isRecordable(url), let browser = owner {
+            browser.content.peek(url, from: self)
+            return decisionHandler(.cancel)
+        }
         // ⌘-click / middle-click opens a background tab (⇧ to bring it to front).
         if action.navigationType == .linkActivated,
            action.modifierFlags.contains(.command) || action.buttonNumber == 4 {

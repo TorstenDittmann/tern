@@ -117,6 +117,7 @@ enum SmokeTest {
         CommandRouter.perform(.toggleSplit, in: browser)
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
         await tabList(browser: browser, base: base)
+        await linkTools(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
@@ -244,6 +245,44 @@ enum SmokeTest {
     }
 
     /// Drives the agent API through the embedded `tern` CLI, the way an agent would.
+    /// ⌘J link hints and ⌥-click link peek.
+    private static func linkTools(browser: BrowserWindowController, base: String) async {
+        let tab = browser.newTab(url: URL(string: "\(base)/one.html?hints"))
+        await wait { tab.pageTitle == "Page One" && !tab.isLoading }
+        func key(_ chars: String, code: UInt16) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: browser.window?.windowNumber ?? 0,
+                             context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+        }
+        check(Keymap.shared.command(for: KeyChord(string: "cmd+j")!) == .linkHints, "⌘J bound to link hints")
+        let count = await LinkHints.start(in: browser)
+        check(count == 1 && LinkHints.active != nil, "link hints label the page's one link (\(count))")
+        _ = LinkHints.active?.handle(key("\u{1b}", code: 53))
+        check(LinkHints.active == nil, "esc leaves link hints")
+
+        await LinkHints.start(in: browser)
+        _ = LinkHints.active?.handle(key("s", code: 1))
+        await wait { tab.pageTitle == "Page Two" && !tab.isLoading }
+        check(tab.pageTitle == "Page Two" && LinkHints.active == nil, "typing a hint follows the link")
+
+        let before = browser.tabs.count
+        browser.content.peek(URL(string: "\(base)/form.html?peek")!, from: tab)
+        guard let peek = browser.content.linkPeek else { return check(false, "link peek opens") }
+        await wait { peek.tab.pageTitle != nil && !peek.tab.isLoading && peek.tab.loadsEnded > 0 }
+        check(peek.tab.loadsEnded > 0 && browser.tabs.count == before && peek.tab.webView?.window != nil,
+              "link peek loads the page without adding a tab")
+        _ = peek.handle(key("\u{1b}", code: 53))
+        check(browser.content.linkPeek == nil && peek.tab.isSuspended, "esc closes the peek")
+
+        browser.content.peek(URL(string: "\(base)/form.html?split")!, from: tab)
+        let peeked = browser.content.linkPeek?.tab
+        browser.content.promotePeek(split: true)
+        check(peeked != nil && browser.tabs.count == before + 1 && browser.split?.left === tab && browser.split?.right === peeked
+              && peeked?.webView?.window != nil, "a peek promotes to a split beside its page")
+        browser.unsplit()
+        if let peeked { browser.close(peeked) }
+        browser.close(tab)
+    }
+
     private static func agentAPI(browser: BrowserWindowController, base: String) async {
         guard AgentServer.shared.isRunning else { return check(false, "agent API listening (TERN_SOCKET set by make smoke)") }
         let before = browser.tabs.count

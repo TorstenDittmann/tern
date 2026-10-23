@@ -96,6 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         guard let browser = keyBrowser, NSApp.keyWindow?.attachedSheet == nil else { return false }
+        if let hints = LinkHints.active, hints.handle(event) { return true }
+        if let peek = browser.content.linkPeek, peek.handle(event) { return true }
         let chord = KeyChord(event: event)
         if let command = Keymap.shared.command(for: chord) {
             // Plain-key bindings (vim-style) must not swallow typing in native text fields.

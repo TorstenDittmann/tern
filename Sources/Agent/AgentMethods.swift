@@ -345,7 +345,7 @@ private extension Command {
         switch self {
         case .closeTab, .duplicateTab, .reload, .hardReload, .stopLoading, .goBack, .goForward,
              .moveTabUp, .moveTabDown, .togglePinTab, .toggleSplit, .splitWith, .splitWithPreviousTab, .swapPanes,
-             .zoomIn, .zoomOut, .zoomReset: true
+             .zoomIn, .zoomOut, .zoomReset, .linkHints: true
         default: false
         }
     }

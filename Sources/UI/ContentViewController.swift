@@ -71,6 +71,51 @@ final class ContentViewController: NSViewController {
         panes.cards[i].agentRing.isShown = tab.isAgentDriving
     }
 
+    // MARK: Link peek
+
+    private(set) var linkPeek: LinkPeek?
+
+    /// Opens `url` in a floating preview over the panes (⌥-click, or ⌥ on a link hint).
+    func peek(_ url: URL, from tab: Tab) {
+        closePeek()
+        let peek = LinkPeek(url: url, from: tab)
+        peek.onClose = { [weak self] in self?.closePeek() }
+        peek.onPromote = { [weak self] split in self?.promotePeek(split: split) }
+        peek.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(peek)
+        NSLayoutConstraint.activate([
+            peek.topAnchor.constraint(equalTo: view.topAnchor), peek.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            peek.leadingAnchor.constraint(equalTo: view.leadingAnchor), peek.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        linkPeek = peek
+        view.window?.makeFirstResponder(peek.tab.webView)
+    }
+
+    func closePeek() {
+        guard let peek = linkPeek else { return }
+        linkPeek = nil
+        peek.release().discard()
+        peek.removeFromSuperview()
+        view.window?.makeFirstResponder(focusedWebView)
+    }
+
+    /// Keeps the peeked page: as a tab after the one it came from, or in a split beside it.
+    func promotePeek(split: Bool) {
+        guard let peek = linkPeek, let browser else { return }
+        linkPeek = nil
+        let tab = peek.release()
+        peek.removeFromSuperview()
+        guard let anchor = peek.anchor ?? browser.activeTab, browser.tabs.contains(anchor) else {
+            return browser.insert(tab, after: nil, activate: true)
+        }
+        if split {
+            browser.insert(tab, after: anchor, activate: false)
+            browser.split(anchor, with: tab, focus: tab)
+        } else {
+            browser.insert(tab, after: anchor, activate: true)
+        }
+    }
+
     // MARK: Find
 
     func showFindBar() {

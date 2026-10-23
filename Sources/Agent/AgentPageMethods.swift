@@ -289,19 +289,19 @@ enum AgentPageMethods {
     // MARK: Native input
 
     /// Events only reach a web view that's in a visible window and on screen.
-    private static func canSendEvents(to tab: Tab) -> Bool {
+    static func canSendEvents(to tab: Tab) -> Bool {
         guard let webView = tab.webView, let window = webView.window else { return false }
         return window.isVisible && tab.isVisible && !webView.isHiddenOrHasHiddenAncestor
     }
 
     /// CSS pixels in the viewport → the web view's window coordinates.
-    private static func windowPoint(_ webView: WKWebView, x: Double, y: Double) -> NSPoint {
+    static func windowPoint(_ webView: WKWebView, x: Double, y: Double) -> NSPoint {
         let scale = webView.pageZoom * webView.magnification
         let local = NSPoint(x: x * scale, y: webView.isFlipped ? y * scale : webView.bounds.height - y * scale)
         return webView.convert(local, to: nil)
     }
 
-    private static func sendClick(to webView: WKWebView, at point: NSPoint, modifiers: NSEvent.ModifierFlags) {
+    static func sendClick(to webView: WKWebView, at point: NSPoint, modifiers: NSEvent.ModifierFlags) {
         guard let window = webView.window else { return }
         func event(_ type: NSEvent.EventType) -> NSEvent? {
             NSEvent.mouseEvent(with: type, location: point, modifierFlags: modifiers,

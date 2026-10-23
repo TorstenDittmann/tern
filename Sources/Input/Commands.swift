@@ -8,7 +8,7 @@ enum Command: String, CaseIterable {
     case nextTab, previousTab, moveTabUp, moveTabDown, focusTabList, togglePinTab
     case toggleSplit, splitWith, splitWithPreviousTab, swapPanes, focusLeftPane, focusRightPane
     case selectTab1, selectTab2, selectTab3, selectTab4, selectTab5, selectTab6, selectTab7, selectTab8, selectLastTab
-    case find, findNext, findPrevious
+    case find, findNext, findPrevious, linkHints
     case zoomIn, zoomOut, zoomReset
     case toggleInspector, showConsole, copyURL, copyMarkdownLink
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
@@ -50,6 +50,7 @@ enum Command: String, CaseIterable {
         case .find: "Find…"
         case .findNext: "Find Next"
         case .findPrevious: "Find Previous"
+        case .linkHints: "Show Link Hints"
         case .zoomIn: "Zoom In"
         case .zoomOut: "Zoom Out"
         case .zoomReset: "Actual Size"
@@ -101,6 +102,7 @@ enum Command: String, CaseIterable {
         case .find: "magnifyingglass"
         case .findNext: "chevron.down"
         case .findPrevious: "chevron.up"
+        case .linkHints: "cursorarrow.rays"
         case .zoomIn: "plus.magnifyingglass"
         case .zoomOut: "minus.magnifyingglass"
         case .zoomReset: "1.magnifyingglass"
@@ -183,6 +185,7 @@ enum CommandRouter {
         case .find: browser.content.showFindBar()
         case .findNext: browser.content.findAgain(backwards: false)
         case .findPrevious: browser.content.findAgain(backwards: true)
+        case .linkHints: Task { await LinkHints.start(in: browser) }
         case .zoomIn: webView.map { $0.pageZoom = min($0.pageZoom + 0.1, 3) }
         case .zoomOut: webView.map { $0.pageZoom = max($0.pageZoom - 0.1, 0.3) }
         case .zoomReset: webView?.pageZoom = 1
