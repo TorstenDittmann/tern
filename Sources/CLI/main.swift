@@ -39,6 +39,7 @@ let positionalParams: [String: [String]] = [
     "page.select": ["ref", "values"], "page.scroll": ["ref"], "page.eval": ["js"],
     "page.waitFor": ["text"], "page.text": ["format"], "page.screenshot": ["path"],
     "network.list": ["urlMatches"], "events.subscribe": ["events"], "events.unsubscribe": ["events"],
+    "history.search": ["query"],
 ]
 
 /// Results whose main content is text print it as-is (a snapshot reads better than escaped JSON).

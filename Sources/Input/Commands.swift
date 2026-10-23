@@ -6,14 +6,14 @@ enum Command: String, CaseIterable {
     case focusAddressBar, commandPalette, tabPicker, toggleSidebar
     case reload, hardReload, stopLoading, goBack, goForward
     case nextTab, previousTab, moveTabUp, moveTabDown
-    case toggleSplit, splitWithPreviousTab, swapPanes, focusLeftPane, focusRightPane
+    case toggleSplit, splitWith, splitWithPreviousTab, swapPanes, focusLeftPane, focusRightPane
     case selectTab1, selectTab2, selectTab3, selectTab4, selectTab5, selectTab6, selectTab7, selectTab8, selectLastTab
     case find, findNext, findPrevious
     case zoomIn, zoomOut, zoomReset
     case toggleInspector, showConsole, copyURL, copyMarkdownLink
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
     case loadUnpackedExtension, revealExtensionsFolder
-    case toggleAgentAPI
+    case toggleAgentAPI, clearHistory
 
     var title: String {
         switch self {
@@ -33,6 +33,7 @@ enum Command: String, CaseIterable {
         case .goBack: "Back"
         case .goForward: "Forward"
         case .toggleSplit: "Split View"
+        case .splitWith: "Split with…"
         case .splitWithPreviousTab: "Split with Previous Tab"
         case .swapPanes: "Swap Split Panes"
         case .focusLeftPane: "Focus Left Pane"
@@ -60,6 +61,7 @@ enum Command: String, CaseIterable {
         case .loadUnpackedExtension: "Load Unpacked Extension…"
         case .revealExtensionsFolder: "Reveal Extensions Folder"
         case .toggleAgentAPI: AgentServer.isEnabled ? "Disable Agent API" : "Enable Agent API"
+        case .clearHistory: "Clear History"
         }
     }
 
@@ -82,6 +84,7 @@ enum Command: String, CaseIterable {
         case .goBack: "chevron.backward"
         case .goForward: "chevron.forward"
         case .toggleSplit: "rectangle.split.2x1"
+        case .splitWith: "rectangle.split.2x1.fill"
         case .splitWithPreviousTab: "rectangle.righthalf.inset.filled"
         case .swapPanes: "arrow.left.arrow.right"
         case .focusLeftPane: "rectangle.lefthalf.filled"
@@ -107,6 +110,7 @@ enum Command: String, CaseIterable {
         case .loadUnpackedExtension: "puzzlepiece.extension"
         case .revealExtensionsFolder: "folder"
         case .toggleAgentAPI: "point.3.connected.trianglepath.dotted"
+        case .clearHistory: "clock.arrow.circlepath"
         }
     }
 
@@ -130,6 +134,7 @@ enum CommandRouter {
             NSWorkspace.shared.open(Keymap.fileURL); return
         case .suspendBackgroundTabs: TabSuspender.shared.suspendAllBackgroundTabs(); return
         case .toggleAgentAPI: AgentServer.shared.toggle(); return
+        case .clearHistory: HistoryStore.shared.clear(); return
         case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
         case .revealExtensionsFolder:
             NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return
@@ -159,6 +164,7 @@ enum CommandRouter {
         case .goBack: webView?.goBack()
         case .goForward: webView?.goForward()
         case .toggleSplit: browser.toggleSplit()
+        case .splitWith: CommandPalette.toggle(for: browser, mode: .splitWith)
         case .splitWithPreviousTab: browser.splitWithPreviousTab()
         case .swapPanes: browser.swapPanes()
         case .focusLeftPane: browser.focusPane(right: false)

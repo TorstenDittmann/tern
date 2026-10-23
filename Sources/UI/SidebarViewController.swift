@@ -14,6 +14,8 @@ final class SidebarViewController: NSViewController {
 
     private let addressPill = AddressPill()
     private var addressField: AddressField { addressPill.field }
+    /// What was typed before the last change, to complete only while typing forward.
+    private var lastTypedAddress = ""
     private lazy var backButton = HoverButton(symbol: "chevron.backward", label: "Back", target: self, action: #selector(backClicked))
     private lazy var forwardButton = HoverButton(symbol: "chevron.forward", label: "Forward", target: self, action: #selector(forwardClicked))
     private lazy var reloadButton = HoverButton(symbol: "arrow.clockwise", label: "Reload", target: self, action: #selector(reloadClicked))
@@ -326,6 +328,24 @@ extension SidebarViewController: NSTextFieldDelegate {
 
     func controlTextDidEndEditing(_ obj: Notification) {
         addressPill.show(url: browser?.activeTab?.currentURL)
+    }
+
+    func controlTextDidBeginEditing(_ obj: Notification) { lastTypedAddress = "" }
+
+    /// Inline completion from history, like Safari's: typing "gi" fills in "thub.com/", selected,
+    /// so the next keystroke replaces it and ⌫ removes it.
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === addressField, let editor = addressField.currentEditor() as? NSTextView else { return }
+        let typed = addressField.stringValue
+        let previous = lastTypedAddress
+        lastTypedAddress = typed
+        let length = (typed as NSString).length
+        guard length > (previous as NSString).length, editor.selectedRange() == NSRange(location: length, length: 0),
+              let completion = HistoryStore.shared.completion(for: typed),
+              completion.lowercased().hasPrefix(typed.lowercased()) else { return }
+        let full = typed + completion.dropFirst(typed.count)
+        addressField.stringValue = full
+        editor.setSelectedRange(NSRange(location: length, length: (full as NSString).length - length))
     }
 }
 

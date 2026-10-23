@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         AgentServer.shared.stop()
+        HistoryStore.shared.save()
         if !SmokeTest.isRunning && !Metrics.isBenchmark { SessionStore.save(windows) }
     }
 

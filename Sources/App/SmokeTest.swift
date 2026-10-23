@@ -237,6 +237,10 @@ enum SmokeTest {
         check(list.status == 0 && list.out.contains(id), "tabs list --plain")
 
         let nav = await tern(["tabs", "navigate", "\(base)/two.html", "--tabId", id])
+        let history = await tern(["history", "search", "Page Two", "--json"])
+        check(history.array?.first.flatMap { ($0 as? [String: Any])?["url"] as? String }?.hasSuffix("/two.html") == true,
+              "history search finds a visited page (\(history.out.prefix(120)))")
+        check(HistoryStore.shared.completion(for: "localh") == HistoryStore.bare(base) + "/", "address bar completes a visited site")
         check(nav.json?["title"] as? String == "Page Two", "tabs navigate")
         let back = await tern(["tabs", "back", id])
         check(back.json?["title"] as? String == "Page One", "tabs back")

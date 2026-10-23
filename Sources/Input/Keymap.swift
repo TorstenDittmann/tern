@@ -97,7 +97,7 @@ final class Keymap {
         ("cmd+[", .goBack), ("cmd+]", .goForward),
         ("ctrl+tab", .nextTab), ("cmd+shift+]", .nextTab), ("cmd+alt+down", .nextTab),
         ("ctrl+shift+tab", .previousTab), ("cmd+shift+[", .previousTab), ("cmd+alt+up", .previousTab),
-        ("cmd+\\", .toggleSplit), ("cmd+shift+\\", .swapPanes),
+        ("cmd+\\", .toggleSplit), ("cmd+shift+\\", .swapPanes), ("cmd+alt+\\", .splitWith),
         ("cmd+alt+left", .focusLeftPane), ("cmd+alt+right", .focusRightPane),
         ("cmd+alt+shift+down", .moveTabDown), ("cmd+alt+shift+up", .moveTabUp),
         ("cmd+1", .selectTab1), ("cmd+2", .selectTab2), ("cmd+3", .selectTab3), ("cmd+4", .selectTab4),

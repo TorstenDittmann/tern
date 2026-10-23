@@ -126,7 +126,11 @@ final class Tab: NSObject {
         }
         observations = [
             wv.observe(\.title) { [weak self] wv, _ in
-                MainActor.assumeIsolated { self?.pageTitle = wv.title; self?.changed([.title]) }
+                MainActor.assumeIsolated {
+                    self?.pageTitle = wv.title
+                    self?.changed([.title])
+                    HistoryStore.shared.updateTitle(wv.title, for: wv.url)
+                }
             },
             wv.observe(\.url) { [weak self] wv, _ in
                 MainActor.assumeIsolated {
@@ -213,6 +217,7 @@ extension Tab: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadsEnded += 1
         Metrics.markPageLoaded()
+        if let url = webView.url { HistoryStore.shared.recordVisit(url, title: webView.title) }
         FaviconLoader.load(for: webView) { [weak self] image in
             self?.favicon = image
             if let self { self.owner?.tabDidChange(self) }
