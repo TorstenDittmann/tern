@@ -35,7 +35,8 @@ enum Metrics {
         let web = pids.sorted().compactMap { pid in footprintMB(pid).map { ["pid": Int(pid), "footprintMB": $0] } }
         let app = footprintMB(getpid()) ?? 0
         let webTotal = web.compactMap { $0["footprintMB"] as? Double }.reduce(0, +)
-        return ["appMB": app, "webContentMB": webTotal, "totalMB": app + webTotal, "webProcesses": web]
+        let round = { (mb: Double) in (mb * 10).rounded() / 10 }
+        return ["appMB": app, "webContentMB": round(webTotal), "totalMB": round(app + webTotal), "webProcesses": web]
     }
 
     private static var processStart: Date? {
