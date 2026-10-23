@@ -146,12 +146,12 @@ enum AgentPageMethods {
         let js = try p.requiredString("js")
         let webView = try await ready(tab)
         let args: [String: Any] = ["args": p.raw["args"] ?? NSNull()]
-        do {
-            return try await callJS(webView, evalWrapper("return (\n\(js)\n);"), args, in: .page)
-        } catch let error as AgentError where error.message.contains("SyntaxError") {
-            // Statements (`const …; return x`, `throw …`) don't parse as an expression; run them as a body.
-            return try await callJS(webView, evalWrapper(js), args, in: .page)
-        }
+        // Compile the expression form without running it (the code after `return` is parsed, never
+        // executed). Statements like `const …; return x` or `throw …` fail to parse and run as a body.
+        let probe = "return true;\n(async () => { return (\n\(js)\n); });"
+        let isExpression: Bool
+        do { _ = try await callJS(webView, probe, [:], in: .page); isExpression = true } catch { isExpression = false }
+        return try await callJS(webView, evalWrapper(isExpression ? "return (\n\(js)\n);" : js), args, in: .page)
     }
 
     private static func evalWrapper(_ body: String) -> String {
