@@ -12,6 +12,7 @@ struct MCPTool {
     let description: String
     let properties: [String: [String: Any]]
     var required: [String] = []
+    /// Tools that never change anything. The log tools aren't: their `clear` drops entries.
     var readOnly = false
 
     var definition: [String: Any] {
@@ -115,13 +116,11 @@ let mcpTools: [MCPTool] = [
     MCPTool(name: "console_read", method: "console.read",
             description: "What the page logged with console.*, plus uncaught errors and unhandled rejections. Recorded while the agent API is on.",
             properties: ["tabId": tabId, "level": string("Only this level.", enum: ["log", "info", "warn", "error", "debug"]),
-                         "since": since, "limit": limit, "clear": clear],
-            readOnly: true),
+                         "since": since, "limit": limit, "clear": clear]),
     MCPTool(name: "network_list", method: "network.list",
             description: "fetch and XMLHttpRequest calls the page made, with method, URL, status and duration.",
             properties: ["tabId": tabId, "failedOnly": boolean("Only failed requests and 4xx/5xx responses."),
-                         "urlMatches": string("Regex the URL must match."), "since": since, "limit": limit, "clear": clear],
-            readOnly: true),
+                         "urlMatches": string("Regex the URL must match."), "since": since, "limit": limit, "clear": clear]),
     MCPTool(name: "commands_list", method: "commands.list", description: "Tern's commands (the ones in the ⌘K palette) with their shortcuts.",
             properties: [:], readOnly: true),
     MCPTool(name: "commands_run", method: "commands.run", description: "Run a Tern command by name, like toggleSplit or newTab.",
