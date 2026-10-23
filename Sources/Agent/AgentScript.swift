@@ -5,6 +5,7 @@ enum AgentScript {
     static let bootstrap = #"""
     (() => {
       const refs = new Map();
+      const refOf = new WeakMap();
       let nextRef = 1;
 
       const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'META', 'LINK']);
@@ -84,9 +85,11 @@ enum AgentScript {
       }
 
       function remember(el) {
-        for (const [ref, weak] of refs) if (weak.deref() === el) return ref;
+        const known = refOf.get(el);
+        if (known) return known;
         const ref = 'e' + nextRef++;
         refs.set(ref, new WeakRef(el));
+        refOf.set(el, ref);
         return ref;
       }
 
@@ -103,8 +106,11 @@ enum AgentScript {
       }
 
       function snapshot({ scope, maxLines = 1500 } = {}) {
-        refs.clear();
-        nextRef = 1;
+        // Refs stay stable for the document's life, so a scoped snapshot never rebinds older ones.
+        for (const [ref, weak] of refs) {
+          const el = weak.deref();
+          if (!el || !el.isConnected) refs.delete(ref);
+        }
         const lines = [];
         const indent = (d) => '  '.repeat(d);
         const walk = (el, depth) => {
@@ -326,8 +332,7 @@ enum AgentScript {
         const start = root(scope);
         const issues = [];
         const add = (rule, el, message) => {
-          let ref = null;
-          for (const [r, weak] of refs) if (weak.deref() === el) { ref = r; break; }
+          const ref = refOf.get(el) ?? null;
           issues.push({ rule, message, ref, selector: cssPath(el), html: clean(el.outerHTML, 120) });
         };
         const all = (sel) => [...start.querySelectorAll(sel)].filter(e => shown(e) && !e.closest('[aria-hidden=true]'));

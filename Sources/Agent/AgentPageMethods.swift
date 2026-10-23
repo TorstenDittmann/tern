@@ -144,14 +144,12 @@ enum AgentPageMethods {
         let tab = try AgentMethods.findTab(p)
         try AgentMethods.checkControl(tab)
         let js = try p.requiredString("js")
-        let usesReturn = js.range(of: #"\breturn\b"#, options: .regularExpression) != nil
         let webView = try await ready(tab)
         let args: [String: Any] = ["args": p.raw["args"] ?? NSNull()]
-        guard !usesReturn else { return try await callJS(webView, evalWrapper(js), args, in: .page) }
         do {
             return try await callJS(webView, evalWrapper("return (\n\(js)\n);"), args, in: .page)
         } catch let error as AgentError where error.message.contains("SyntaxError") {
-            // Statements (`throw …`, `if …`) don't parse as an expression; run them as a body instead.
+            // Statements (`const …; return x`, `throw …`) don't parse as an expression; run them as a body.
             return try await callJS(webView, evalWrapper(js), args, in: .page)
         }
     }

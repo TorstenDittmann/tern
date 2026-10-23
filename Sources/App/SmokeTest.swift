@@ -309,6 +309,13 @@ enum SmokeTest {
         let shot = await tern(["page", "screenshot", "--tabId", id, "--path", NSTemporaryDirectory() + "tern-agent-shot.png"])
         let png = (shot.json?["path"] as? String).flatMap { FileManager.default.contents(atPath: $0) }
         check(png?.starts(with: [0x89, 0x50, 0x4E, 0x47]) == true, "page screenshot writes a PNG")
+        let mapped = await tern(["page", "eval", "[1, 2].map(n => { return n * 2 })", "--tabId", id, "--json"])
+        check(mapped.out.filter { !$0.isWhitespace } == "[2,4]", "page eval keeps a value with a nested return (\(mapped.out.prefix(40)))")
+        let body = await tern(["page", "eval", "const n = 20; return n + 1", "--tabId", id])
+        check(body.out.trimmingCharacters(in: .whitespacesAndNewlines) == "21", "page eval runs a function body")
+        _ = await tern(["page", "snapshot", "--tabId", id, "--scope", "ul"])
+        let again = await tern(["page", "snapshot", "--tabId", id])
+        check(again.out.contains("button \"Submit\" [ref=\(go)]"), "scoped snapshot keeps earlier refs")
         let bad = await tern(["page", "eval", "throw new Error('boom')", "--tabId", id])
         check(bad.status == 1 && bad.out.contains("-32004") && bad.out.contains("boom"), "page eval reports JS errors (\(bad.out))")
 
