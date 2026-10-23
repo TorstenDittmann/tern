@@ -148,10 +148,12 @@ enum AgentPageMethods {
         let args: [String: Any] = ["args": p.raw["args"] ?? NSNull()]
         // Compile the expression form without running it (the code after `return` is parsed, never
         // executed). Statements like `const …; return x` or `throw …` fail to parse and run as a body.
-        let probe = "return true;\n(async () => { return (\n\(js)\n); });"
+        var expression = js.trimmingCharacters(in: .whitespacesAndNewlines)
+        if expression.hasSuffix(";") { expression.removeLast() } // `document.title;` is still an expression
+        let probe = "return true;\n(async () => { return (\n\(expression)\n); });"
         let isExpression: Bool
         do { _ = try await callJS(webView, probe, [:], in: .page); isExpression = true } catch { isExpression = false }
-        return try await callJS(webView, evalWrapper(isExpression ? "return (\n\(js)\n);" : js), args, in: .page)
+        return try await callJS(webView, evalWrapper(isExpression ? "return (\n\(expression)\n);" : js), args, in: .page)
     }
 
     private static func evalWrapper(_ body: String) -> String {

@@ -311,6 +311,8 @@ enum SmokeTest {
         check(png?.starts(with: [0x89, 0x50, 0x4E, 0x47]) == true, "page screenshot writes a PNG")
         let mapped = await tern(["page", "eval", "[1, 2].map(n => { return n * 2 })", "--tabId", id, "--json"])
         check(mapped.out.filter { !$0.isWhitespace } == "[2,4]", "page eval keeps a value with a nested return (\(mapped.out.prefix(40)))")
+        let semi = await tern(["page", "eval", "document.title;", "--tabId", id])
+        check(semi.out.trimmingCharacters(in: .whitespacesAndNewlines) == "Form", "page eval allows a trailing semicolon (\(semi.out.prefix(40)))")
         let body = await tern(["page", "eval", "const n = 20; return n + 1", "--tabId", id])
         check(body.out.trimmingCharacters(in: .whitespacesAndNewlines) == "21", "page eval runs a function body")
         _ = await tern(["page", "snapshot", "--tabId", id, "--scope", "ul"])
