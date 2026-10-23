@@ -1,0 +1,180 @@
+import AppKit
+import WebKit
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    static var shared: AppDelegate { NSApp.delegate as! AppDelegate }
+
+    private(set) var windows: [BrowserWindowController] = []
+    private var keyMonitor: Any?
+    private var pendingURLs: [URL] = []
+    private var didLaunch = false
+
+    var allTabs: [Tab] { windows.flatMap(\.tabs) }
+
+    /// The browser window that owns the key window (the palette is a child window).
+    var keyBrowser: BrowserWindowController? {
+        guard let key = NSApp.keyWindow else { return windows.first { $0.window?.isMainWindow == true } }
+        return windows.first { $0.window === key || $0.window === key.parent }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        LegacyMigration.run() // before anything reads settings or starts WebKit
+        Keymap.shared.load()
+        NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: self)
+        installKeyMonitor()
+        ExtensionManager.shared.start()
+
+        if SmokeTest.isRunning { return SmokeTest.run() }
+        if !SessionStore.restore(into: self) { openWindow() }
+        didLaunch = true
+        if !pendingURLs.isEmpty { open(pendingURLs); pendingURLs = [] }
+        TabSuspender.shared.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if !SmokeTest.isRunning { SessionStore.save(windows) }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if windows.isEmpty { openWindow() }
+        return true
+    }
+
+    /// Links opened from other apps (when Tern is the default browser).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if didLaunch { open(urls) } else { pendingURLs += urls }
+    }
+
+    private func open(_ urls: [URL]) {
+        let browser = keyBrowser ?? windows.last ?? openWindow()
+        var urls = urls[...]
+        // Reuse an untouched blank tab instead of leaving it behind.
+        if let blank = browser.activeTab, blank.currentURL == nil, blank.webView?.canGoBack != true, let first = urls.popFirst() {
+            blank.load(first)
+            browser.window?.makeFirstResponder(blank.webView)
+        }
+        for url in urls { browser.newTab(url: url) }
+        browser.window?.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: Windows
+
+    @discardableResult
+    func openWindow(restoring tabs: [Tab] = [], active: Int = 0, frame: NSRect? = nil, sidebarCollapsed: Bool = false) -> BrowserWindowController {
+        let controller = BrowserWindowController(tabs: tabs, active: active, frame: frame, sidebarCollapsed: sidebarCollapsed)
+        if frame == nil, let last = windows.last?.window {
+            controller.window?.setFrameTopLeftPoint(NSPoint(x: last.frame.minX + 24, y: last.frame.maxY - 24))
+        }
+        windows.append(controller)
+        controller.showWindow(nil)
+        controller.announceToExtensions()
+        return controller
+    }
+
+    func windowDidClose(_ controller: BrowserWindowController) {
+        windows.removeAll { $0 === controller }
+    }
+
+    // MARK: Keys
+
+    /// Tern's own bindings run before the web page sees the key, so ⌘L/⌘K/⌃Tab always work,
+    /// even while a page has focus. Unmatched keys go through untouched.
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            MainActor.assumeIsolated { AppDelegate.shared.handleKeyDown(event) } ? nil : event
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard let browser = keyBrowser, NSApp.keyWindow?.attachedSheet == nil else { return false }
+        let chord = KeyChord(event: event)
+        if let command = Keymap.shared.command(for: chord) {
+            // Plain-key bindings (vim-style) must not swallow typing in native text fields.
+            if chord.isPlain, NSApp.keyWindow?.firstResponder is NSTextView { return false }
+            CommandRouter.perform(command, in: browser)
+            return true
+        }
+        return ExtensionManager.shared.performCommand(for: event)
+    }
+
+    func reloadKeymap() {
+        Keymap.shared.load()
+        NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: self)
+    }
+
+    // MARK: Menus
+
+    @objc func runMenuCommand(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let command = Command(rawValue: raw) else { return }
+        CommandRouter.perform(command, in: keyBrowser)
+    }
+
+    func extensionsDidChange() {
+        windows.forEach { $0.sidebar.updateExtensionActions() }
+    }
+
+    /// The Extensions menu is rebuilt each time it opens, from what's installed right now.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        menu.addItem(MainMenu.item(.loadUnpackedExtension))
+        menu.addItem(MainMenu.item(.revealExtensionsFolder))
+        menu.addItem(withTitle: "Rescan Installed Extensions", action: #selector(rescanExtensions), keyEquivalent: "")
+
+        let manager = ExtensionManager.shared
+        let safari = manager.available.filter { if case .safari = $0.source { true } else { false } }
+        let unpacked = manager.available.filter { if case .unpacked = $0.source { true } else { false } }
+
+        for (header, items) in [("Safari Extensions", safari), ("Unpacked", unpacked)] where !items.isEmpty {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: header))
+            for item in items {
+                let mi = NSMenuItem(title: item.name, action: #selector(toggleExtension(_:)), keyEquivalent: "")
+                mi.representedObject = item.id
+                mi.state = manager.isEnabled(item) ? .on : .off
+                if case .safari(_, let app) = item.source, app != item.name { mi.toolTip = "From \(app)" }
+
+                let sub = NSMenu()
+                sub.addItem(withTitle: manager.isEnabled(item) ? "Turn Off" : "Turn On", action: #selector(toggleExtension(_:)), keyEquivalent: "").representedObject = item.id
+                if manager.context(for: item)?.optionsPageURL != nil {
+                    sub.addItem(withTitle: "Options…", action: #selector(openExtensionOptions(_:)), keyEquivalent: "").representedObject = item.id
+                }
+                if case .unpacked = item.source {
+                    sub.addItem(withTitle: "Remove", action: #selector(removeExtension(_:)), keyEquivalent: "").representedObject = item.id
+                }
+                mi.submenu = sub
+                menu.addItem(mi)
+            }
+        }
+        if manager.available.isEmpty {
+            menu.addItem(.separator())
+            let none = NSMenuItem(title: "No extensions found", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
+        }
+    }
+
+    private func extensionItem(_ sender: NSMenuItem) -> ExtensionManager.Available? {
+        guard let id = sender.representedObject as? String else { return nil }
+        return ExtensionManager.shared.available.first { $0.id == id }
+    }
+
+    @objc private func toggleExtension(_ sender: NSMenuItem) {
+        extensionItem(sender).map { ExtensionManager.shared.toggle($0) }
+    }
+
+    @objc private func removeExtension(_ sender: NSMenuItem) {
+        extensionItem(sender).map { ExtensionManager.shared.removeUnpacked($0) }
+    }
+
+    @objc private func openExtensionOptions(_ sender: NSMenuItem) {
+        guard let item = extensionItem(sender), let url = ExtensionManager.shared.context(for: item)?.optionsPageURL else { return }
+        (keyBrowser ?? openWindow()).newTab(url: url)
+    }
+
+    @objc private func rescanExtensions() {
+        Task { await ExtensionManager.shared.refresh() }
+    }
+}

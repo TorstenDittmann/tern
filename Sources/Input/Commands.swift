@@ -1,0 +1,209 @@
+import AppKit
+import WebKit
+
+enum Command: String, CaseIterable {
+    case newTab, newWindow, closeTab, closeWindow, reopenClosedTab, duplicateTab
+    case focusAddressBar, commandPalette, tabPicker, toggleSidebar
+    case reload, hardReload, stopLoading, goBack, goForward
+    case nextTab, previousTab, moveTabUp, moveTabDown
+    case toggleSplit, splitWithPreviousTab, swapPanes, focusLeftPane, focusRightPane
+    case selectTab1, selectTab2, selectTab3, selectTab4, selectTab5, selectTab6, selectTab7, selectTab8, selectLastTab
+    case find, findNext, findPrevious
+    case zoomIn, zoomOut, zoomReset
+    case toggleInspector, showConsole, copyURL, copyMarkdownLink
+    case suspendBackgroundTabs, openKeymapFile, reloadKeymap
+    case loadUnpackedExtension, revealExtensionsFolder
+
+    var title: String {
+        switch self {
+        case .newTab: "New Tab"
+        case .newWindow: "New Window"
+        case .closeTab: "Close Tab"
+        case .closeWindow: "Close Window"
+        case .reopenClosedTab: "Reopen Closed Tab"
+        case .duplicateTab: "Duplicate Tab"
+        case .focusAddressBar: "Open Location…"
+        case .commandPalette: "Command Palette…"
+        case .tabPicker: "Switch to Tab…"
+        case .toggleSidebar: "Toggle Sidebar"
+        case .reload: "Reload Page"
+        case .hardReload: "Reload Ignoring Cache"
+        case .stopLoading: "Stop Loading"
+        case .goBack: "Back"
+        case .goForward: "Forward"
+        case .toggleSplit: "Split View"
+        case .splitWithPreviousTab: "Split with Previous Tab"
+        case .swapPanes: "Swap Split Panes"
+        case .focusLeftPane: "Focus Left Pane"
+        case .focusRightPane: "Focus Right Pane"
+        case .nextTab: "Next Tab"
+        case .previousTab: "Previous Tab"
+        case .moveTabUp: "Move Tab Up"
+        case .moveTabDown: "Move Tab Down"
+        case .selectTab1, .selectTab2, .selectTab3, .selectTab4,
+             .selectTab5, .selectTab6, .selectTab7, .selectTab8: "Select Tab \(selectIndex! + 1)"
+        case .selectLastTab: "Select Last Tab"
+        case .find: "Find…"
+        case .findNext: "Find Next"
+        case .findPrevious: "Find Previous"
+        case .zoomIn: "Zoom In"
+        case .zoomOut: "Zoom Out"
+        case .zoomReset: "Actual Size"
+        case .toggleInspector: "Web Inspector"
+        case .showConsole: "JavaScript Console"
+        case .copyURL: "Copy URL"
+        case .copyMarkdownLink: "Copy Markdown Link"
+        case .suspendBackgroundTabs: "Suspend Background Tabs"
+        case .openKeymapFile: "Edit Key Bindings…"
+        case .reloadKeymap: "Reload Key Bindings"
+        case .loadUnpackedExtension: "Load Unpacked Extension…"
+        case .revealExtensionsFolder: "Reveal Extensions Folder"
+        }
+    }
+
+    /// SF Symbol shown next to the command in the palette.
+    var symbol: String {
+        switch self {
+        case .newTab: "plus.square"
+        case .newWindow: "macwindow.badge.plus"
+        case .closeTab: "xmark.square"
+        case .closeWindow: "xmark.rectangle"
+        case .reopenClosedTab: "arrow.uturn.backward.square"
+        case .duplicateTab: "plus.square.on.square"
+        case .focusAddressBar: "link"
+        case .commandPalette: "command"
+        case .tabPicker: "rectangle.stack"
+        case .toggleSidebar: "sidebar.left"
+        case .reload: "arrow.clockwise"
+        case .hardReload: "arrow.clockwise.circle"
+        case .stopLoading: "xmark.circle"
+        case .goBack: "chevron.backward"
+        case .goForward: "chevron.forward"
+        case .toggleSplit: "rectangle.split.2x1"
+        case .splitWithPreviousTab: "rectangle.righthalf.inset.filled"
+        case .swapPanes: "arrow.left.arrow.right"
+        case .focusLeftPane: "rectangle.lefthalf.filled"
+        case .focusRightPane: "rectangle.righthalf.filled"
+        case .nextTab: "arrow.down.square"
+        case .previousTab: "arrow.up.square"
+        case .moveTabUp: "arrow.up.to.line"
+        case .moveTabDown: "arrow.down.to.line"
+        case .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectLastTab: "number.square"
+        case .find: "magnifyingglass"
+        case .findNext: "chevron.down"
+        case .findPrevious: "chevron.up"
+        case .zoomIn: "plus.magnifyingglass"
+        case .zoomOut: "minus.magnifyingglass"
+        case .zoomReset: "1.magnifyingglass"
+        case .toggleInspector: "hammer"
+        case .showConsole: "terminal"
+        case .copyURL: "doc.on.doc"
+        case .copyMarkdownLink: "text.badge.plus"
+        case .suspendBackgroundTabs: "moon.zzz"
+        case .openKeymapFile: "keyboard"
+        case .reloadKeymap: "arrow.triangle.2.circlepath"
+        case .loadUnpackedExtension: "puzzlepiece.extension"
+        case .revealExtensionsFolder: "folder"
+        }
+    }
+
+    var selectIndex: Int? {
+        let all: [Command] = [.selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8]
+        return all.firstIndex(of: self)
+    }
+}
+
+@MainActor
+enum CommandRouter {
+    static func perform(_ command: Command, in browser: BrowserWindowController?) {
+        let app = AppDelegate.shared
+
+        // Commands that don't need a window.
+        switch command {
+        case .newWindow: app.openWindow(); return
+        case .reloadKeymap: app.reloadKeymap(); return
+        case .openKeymapFile:
+            Keymap.shared.ensureFileExists()
+            NSWorkspace.shared.open(Keymap.fileURL); return
+        case .suspendBackgroundTabs: TabSuspender.shared.suspendAllBackgroundTabs(); return
+        case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
+        case .revealExtensionsFolder:
+            NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return
+        default: break
+        }
+
+        guard let browser else {
+            if command == .newTab { app.openWindow() }
+            return
+        }
+        let tab = browser.activeTab
+        let webView = tab?.webView
+
+        switch command {
+        case .newTab: browser.newTab(url: nil)
+        case .closeTab: if let tab { browser.close(tab) }
+        case .closeWindow: browser.window?.performClose(nil)
+        case .reopenClosedTab: browser.reopenClosedTab()
+        case .duplicateTab: if let tab { browser.duplicate(tab) }
+        case .focusAddressBar: browser.focusAddressBar()
+        case .commandPalette: CommandPalette.toggle(for: browser, mode: .everything)
+        case .tabPicker: CommandPalette.toggle(for: browser, mode: .tabs)
+        case .toggleSidebar: browser.toggleSidebar()
+        case .reload: webView?.reload()
+        case .hardReload: webView?.reloadFromOrigin()
+        case .stopLoading: webView?.stopLoading()
+        case .goBack: webView?.goBack()
+        case .goForward: webView?.goForward()
+        case .toggleSplit: browser.toggleSplit()
+        case .splitWithPreviousTab: browser.splitWithPreviousTab()
+        case .swapPanes: browser.swapPanes()
+        case .focusLeftPane: browser.focusPane(right: false)
+        case .focusRightPane: browser.focusPane(right: true)
+        case .nextTab: browser.selectRelative(1)
+        case .previousTab: browser.selectRelative(-1)
+        case .moveTabUp: browser.moveActiveTab(by: -1)
+        case .moveTabDown: browser.moveActiveTab(by: 1)
+        case .selectLastTab: browser.select(index: browser.tabs.count - 1)
+        case .find: browser.content.showFindBar()
+        case .findNext: browser.content.findAgain(backwards: false)
+        case .findPrevious: browser.content.findAgain(backwards: true)
+        case .zoomIn: webView.map { $0.pageZoom = min($0.pageZoom + 0.1, 3) }
+        case .zoomOut: webView.map { $0.pageZoom = max($0.pageZoom - 0.1, 0.3) }
+        case .zoomReset: webView?.pageZoom = 1
+        case .toggleInspector: webView.map { Inspector.toggle($0) }
+        case .showConsole: webView.map { Inspector.showConsole($0) }
+        case .copyURL:
+            if let url = tab?.currentURL { copy(url.absoluteString) }
+        case .copyMarkdownLink:
+            if let tab, let url = tab.currentURL { copy("[\(tab.displayTitle)](\(url.absoluteString))") }
+        default:
+            if let i = command.selectIndex { browser.select(index: i) }
+        }
+    }
+
+    private static func copy(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+    }
+}
+
+/// WKWebView has no public API to open the inspector programmatically; `isInspectable` only
+/// enables the context-menu entry. `_inspector` is SPI — fine for a dev browser, not for the App Store.
+@MainActor
+enum Inspector {
+    private static func inspector(_ webView: WKWebView) -> NSObject? {
+        let sel = NSSelectorFromString("_inspector")
+        guard webView.responds(to: sel) else { return nil }
+        return webView.perform(sel)?.takeUnretainedValue() as? NSObject
+    }
+
+    static func toggle(_ webView: WKWebView) {
+        guard let i = inspector(webView) else { return }
+        let visible = (i.value(forKey: "visible") as? Bool) ?? false
+        i.perform(NSSelectorFromString(visible ? "close" : "show"))
+    }
+
+    static func showConsole(_ webView: WKWebView) {
+        inspector(webView)?.perform(NSSelectorFromString("showConsole"))
+    }
+}

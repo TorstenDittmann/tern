@@ -1,0 +1,150 @@
+# Tern
+
+A fast, keyboard-first browser for macOS, built on WebKit with Swift and AppKit.
+Vertical tabs, split view, a command palette, rebindable shortcuts, and support for Safari Web Extensions.
+
+![Tern with the command palette open](docs/palette.png)
+
+> **Status:** early and moving fast. Tern works as a daily browser, but there are no prebuilt releases yet. Build it from source (it takes about a minute).
+
+## Highlights
+
+- **Native and lightweight.** Plain AppKit around `WKWebView`: no Electron and no bundled Chromium. The release build is under 1 MB.
+- **Vertical tabs.** Drag to reorder, middle-click to close, and right-click for duplicate, suspend, or close others.
+- **Split view.** Two tabs side by side, with a draggable divider. Focus follows the pane you click.
+- **Command palette (⌘K).** Fuzzy-search open tabs and every command, or type a URL or a search.
+- **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
+- **Rebindable shortcuts.** Every command has a binding, set in a JSON file. The menus always show your current bindings.
+- **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
+- **Safari Web Extensions.** Tern finds Safari extensions installed with your apps and also loads unpacked or `.zip` extensions in place.
+- **Memory-friendly tabs.** Background tabs give their memory back after 15 minutes idle, or when macOS runs low on memory, and keep their history.
+
+## Build and run
+
+Requirements: macOS 15.4 or later, Xcode 16.3 or later, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+
+```sh
+git clone https://github.com/TorstenDittmann/tern.git
+cd tern
+make run       # generate the Xcode project, build Debug, launch
+make release   # optimized build: build/Build/Products/Release/Tern.app
+make smoke     # end-to-end test (see below)
+```
+
+To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file is generated from `project.yml`, so edit that file rather than the Xcode project.
+
+## Keyboard
+
+| Action | Shortcut |
+|---|---|
+| Command palette | ⌘K or ⇧⌘P |
+| Tab picker | ⌘P or ⇧⌘A |
+| Address bar | ⌘L |
+| New tab / window | ⌘T / ⌘N |
+| Close tab / window | ⌘W / ⇧⌘W |
+| Reopen closed tab | ⇧⌘T |
+| Duplicate tab | ⇧⌘D |
+| Next / previous tab | ⌃⇥ / ⌃⇧⇥, ⇧⌘] / ⇧⌘[, ⌥⌘↓ / ⌥⌘↑ |
+| Move tab down / up | ⌥⇧⌘↓ / ⌥⇧⌘↑ |
+| Go to tab 1–8 / last tab | ⌘1 – ⌘8 / ⌘9 |
+| Split view on / off | ⌘\\ |
+| Swap panes | ⇧⌘\\ |
+| Focus left / right pane | ⌥⌘← / ⌥⌘→ |
+| Toggle sidebar | ⌘S |
+| Back / forward | ⌘[ / ⌘] |
+| Reload / ignoring cache / stop | ⌘R / ⇧⌘R / ⌘. |
+| Find / next / previous | ⌘F / ⌘G / ⇧⌘G |
+| Zoom in / out / actual size | ⌘= / ⌘- / ⌘0 |
+| Web Inspector / console | ⌥⌘I / ⌥⌘C |
+| Copy URL / as Markdown link | ⇧⌘C / ⌥⇧⌘C |
+| Edit key bindings | ⌥⌘, |
+
+⌘-click or middle-click a link to open it in a background tab. Add ⇧ to switch to it.
+
+### Custom bindings
+
+Bindings live in `~/.config/tern/keymap.json`. Open it with **Tern ▸ Edit Key Bindings…**, and apply changes with **Tern ▸ Reload Key Bindings**. Map a chord to a command name, or to `null` to remove a default binding:
+
+```json
+{
+  "ctrl+j": "nextTab",
+  "ctrl+k": "previousTab",
+  "cmd+s": null
+}
+```
+
+Chords combine `cmd`, `shift`, `alt` and `ctrl` with a key. Key names include `tab`, `return`, `escape`, `space`, `left`/`right`/`up`/`down`, `f1`–`f12`, and `plus`. When the file is first created, it lists every command name.
+
+## Split view
+
+![Split view](docs/split.png)
+
+- **⌘\\** opens a new tab next to the current one. Press it again to end the split.
+- **Right-click a tab ▸ Open in Split View** pairs that tab with the current one. **Split with Previous Tab** is available in the palette.
+- Clicking into a pane makes it the active tab: the address bar, history, find, ⌘W, and extensions all follow it.
+- Drag the gap between the panes to resize them, and double-click it to return to 50/50.
+- Switching to another tab shows it on its own. Going back to either half restores the split. The split is saved with your session.
+
+## Extensions
+
+Tern uses WebKit's public web extension API (`WKWebExtension`, macOS 15.4 and later). The **Extensions** menu lists two kinds:
+
+- **Safari Web Extensions** found inside apps in `/Applications` and `~/Applications`.
+- **Unpacked** Chrome, Firefox, or Safari-style MV2 and MV3 extensions. Add them with **Load Unpacked Extension…**, or drop them into `~/Library/Application Support/Tern/Extensions`. They're loaded in place, so changes to the files apply on the next load.
+
+Extensions are off until you turn them on, because each one's background page costs memory. Turning one on shows the permissions it asks for. Supported features include content scripts, background pages and service workers, `tabs`, `windows`, `storage`, toolbar actions with badges and popups, `commands`, `declarativeNetRequest` (for content blockers such as uBlock Origin Lite), and options pages.
+
+**Not supported: native messaging.** A Safari extension's native half talks only to Safari, so extensions that depend on a companion app (password managers, for example) load, but their app-linked features don't work.
+
+## Performance
+
+- **Lazy tabs.** A restored tab is just a URL, a title, and WebKit's saved history state. A web view is created only when you open the tab, so restoring 200 tabs costs about as much as restoring one.
+- **Tab suspension.** Background tabs idle for 15 minutes drop their web view and keep their history and scroll position. On a memory-pressure warning, every background tab is suspended. Tabs playing audio or using the camera or microphone are left alone, as are both halves of a visible split.
+- **Shared WebKit state.** One data store and one configuration for every tab, so WebKit can reuse its processes and caches.
+- **AppKit on the hot paths.** The tab list is a cell-reusing `NSTableView`, web views resize through autoresizing masks rather than constraints, and progress bars are drawn with layers only.
+- **Shortcuts handled before the page.** Shortcuts are matched in a local event monitor, so pages can't capture ⌘L or ⌃⇥.
+
+## Settings
+
+```sh
+defaults write dev.tern.browser searchTemplate "https://www.google.com/search?q=%s"   # default: DuckDuckGo
+defaults write dev.tern.browser suspendAfter 600                                     # seconds; default 900
+```
+
+## Project layout
+
+| Path | Contents |
+|---|---|
+| `Sources/Core` | WebKit setup (`BrowserEngine`), the `Tab` model (lazy web view, suspend and restore, downloads), session saving, and tab suspension |
+| `Sources/UI` | Window controller (tabs and split view), sidebar, content panes, command palette, theme, and the new-tab page |
+| `Sources/Input` | Commands, chord parsing, and the keymap |
+| `Sources/Extensions` | Extension discovery and loading, and the bridges WebKit uses to see tabs and windows |
+| `Sources/App` | App delegate, menus, and the smoke test |
+| `Tests/Smoke` | Local test pages and a small MV3 extension used by `make smoke` |
+
+## Testing
+
+`make smoke` builds Tern, serves `Tests/Smoke/site` on `localhost:8765`, and drives the real app with real windows and web views. It covers:
+
+- key binding parsing and address-bar input
+- opening, closing, and reordering tabs, and reopening closed ones
+- suspending a tab and restoring it with its history
+- split view
+- an unpacked MV3 extension: content script injection, background messaging, `tabs.query`, and the badge
+
+The test never touches your saved session or your extensions, and it exits non-zero on failure.
+
+## Known limitations
+
+- No prebuilt, signed releases yet. Builds are ad-hoc signed and unsandboxed (scanning `/Applications` for extensions requires that).
+- The ⌥⌘I and ⌥⌘C shortcuts open the Web Inspector through a private WebKit API, which the Mac App Store doesn't allow. The right-click **Inspect Element** item uses public API.
+- Extension permissions are granted all at once when you turn an extension on. Per-site grants are planned.
+- No history, bookmarks, or address-bar suggestions yet.
+
+## Contributing
+
+Issues and pull requests are welcome. Please run `make smoke` before opening a PR, and extend it when you add behavior it can check.
+
+## License
+
+[MIT](LICENSE) © Torsten Dittmann

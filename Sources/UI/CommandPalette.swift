@@ -1,0 +1,385 @@
+import AppKit
+
+/// ⌘K: fuzzy-switch tabs, run any command, or open a URL / search.
+/// ⌘P: the same panel limited to open tabs (all windows, most recent first).
+@MainActor
+final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSWindowDelegate {
+    enum Mode { case everything, tabs }
+
+    private enum Item {
+        case header(String)
+        case open(String)
+        case tab(Tab)
+        case command(Command)
+
+        var isHeader: Bool { if case .header = self { true } else { false } }
+    }
+
+    private static var current: CommandPalette?
+
+    static func toggle(for browser: BrowserWindowController, mode: Mode) {
+        if let current, current.mode == mode { close() } else { show(for: browser, mode: mode, initialText: "") }
+    }
+
+    static func show(for browser: BrowserWindowController, mode: Mode, initialText: String) {
+        close()
+        guard let parent = browser.window else { return }
+        let palette = CommandPalette(browser: browser, mode: mode)
+        current = palette
+        palette.field.stringValue = initialText
+        palette.anchorTop = parent.frame.maxY - max(80, parent.frame.height * 0.16)
+        palette.refilter()
+        palette.setFrameOrigin(NSPoint(x: parent.frame.midX - palette.frame.width / 2, y: palette.frame.minY))
+        parent.addChildWindow(palette, ordered: .above)
+        palette.makeKeyAndOrderFront(nil)
+        palette.makeFirstResponder(palette.field)
+        palette.field.currentEditor()?.selectAll(nil)
+    }
+
+    static func close() {
+        guard let p = current else { return }
+        current = nil
+        p.parent?.removeChildWindow(p)
+        p.orderOut(nil)
+    }
+
+    private let mode: Mode
+    private weak var browser: BrowserWindowController?
+    private let field = NSTextField()
+    private let table = NSTableView()
+    private let scroll = NSScrollView()
+    private var items: [Item] = []
+    private var anchorTop: CGFloat = 0
+
+    private static let width: CGFloat = 640
+    private static let headerHeight: CGFloat = 28
+    private static let rowHeight: CGFloat = 40
+    private static let fieldHeight: CGFloat = 56
+    private static let maxListHeight: CGFloat = 420
+
+    override var canBecomeKey: Bool { true }
+
+    private init(browser: BrowserWindowController, mode: Mode) {
+        self.browser = browser
+        self.mode = mode
+        super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 300),
+                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        isFloatingPanel = true
+        hasShadow = true
+        backgroundColor = .clear
+        isOpaque = false
+        delegate = self
+
+        let bg = NSVisualEffectView()
+        bg.material = .menu
+        bg.state = .active
+        bg.wantsLayer = true
+        bg.layer?.cornerRadius = 14
+        bg.layer?.cornerCurve = .continuous
+        bg.layer?.masksToBounds = true
+        bg.layer?.borderWidth = 1
+        bg.layer?.borderColor = Theme.hairline.cgColor
+
+        let tint = FilledView()
+        tint.fill = Theme.paletteTint
+        tint.frame = bg.bounds
+        tint.autoresizingMask = [.width, .height]
+        bg.addSubview(tint)
+
+        let glass = NSImageView(image: Theme.symbol(mode == .tabs ? "rectangle.stack" : "magnifyingglass", size: 16, weight: .medium)!)
+        glass.contentTintColor = .tertiaryLabelColor
+
+        field.placeholderString = mode == .tabs ? "Switch to tab…" : "Search tabs and commands, or enter an address"
+        field.font = .systemFont(ofSize: 17)
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.delegate = self
+        field.cell?.usesSingleLineMode = true
+
+        table.addTableColumn(NSTableColumn(identifier: .init("item")))
+        table.headerView = nil
+        table.style = .plain
+        table.backgroundColor = .clear
+        table.intercellSpacing = NSSize(width: 0, height: 0)
+        table.floatsGroupRows = false
+        table.dataSource = self
+        table.delegate = self
+        table.target = self
+        table.action = #selector(rowClicked)
+        scroll.documentView = table
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.automaticallyAdjustsContentInsets = false
+
+        let divider = FilledView()
+        divider.fill = Theme.hairline
+
+        for v in [glass, field, divider, scroll] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; bg.addSubview(v) }
+        NSLayoutConstraint.activate([
+            glass.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 18),
+            glass.centerYAnchor.constraint(equalTo: bg.topAnchor, constant: Self.fieldHeight / 2),
+            field.leadingAnchor.constraint(equalTo: glass.trailingAnchor, constant: 12),
+            field.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -18),
+            field.centerYAnchor.constraint(equalTo: glass.centerYAnchor),
+            divider.topAnchor.constraint(equalTo: bg.topAnchor, constant: Self.fieldHeight),
+            divider.leadingAnchor.constraint(equalTo: bg.leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: bg.trailingAnchor),
+            divider.heightAnchor.constraint(equalToConstant: 1),
+            scroll.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 6),
+            scroll.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 8),
+            scroll.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -8),
+            scroll.bottomAnchor.constraint(equalTo: bg.bottomAnchor, constant: -6),
+        ])
+        contentView = bg
+    }
+
+    // MARK: Filtering
+
+    private func candidateTabs() -> [Tab] {
+        let windows = mode == .tabs ? AppDelegate.shared.windows : [browser].compactMap { $0 }
+        return windows.flatMap(\.tabs)
+            .filter { $0 !== browser?.activeTab }
+            .sorted { $0.lastActivated > $1.lastActivated }
+    }
+
+    private func refilter() {
+        let q = field.stringValue.trimmingCharacters(in: .whitespaces)
+        let tabs = candidateTabs()
+        let commands = Command.allCases.filter { $0.selectIndex == nil && $0 != .commandPalette }
+
+        var result: [Item] = []
+        if q.isEmpty {
+            let shownTabs = mode == .tabs ? tabs : Array(tabs.prefix(5))
+            if !shownTabs.isEmpty {
+                if mode == .everything { result.append(.header("Recent Tabs")) }
+                result += shownTabs.map(Item.tab)
+            }
+            if mode == .everything {
+                result.append(.header("Commands"))
+                result += commands.map(Item.command)
+            }
+        } else {
+            let matchedTabs = tabs.compactMap { t -> (Int, Tab)? in
+                let s = max(Self.score(q, t.displayTitle) ?? .min, Self.score(q, t.currentURL?.absoluteString ?? "") ?? .min)
+                return s > .min ? (s, t) : nil
+            }.sorted { $0.0 > $1.0 }.map(\.1)
+
+            if mode == .tabs {
+                result = matchedTabs.map(Item.tab)
+            } else {
+                let matchedCommands = commands.compactMap { c in Self.score(q, c.title).map { ($0, c) } }
+                    .sorted { $0.0 > $1.0 }.map(\.1)
+                let looksLikeURL = q.contains(".") || q.contains("://") || q.hasPrefix("localhost")
+                if looksLikeURL { result.append(.open(q)) }
+                if !matchedTabs.isEmpty { result.append(.header("Tabs")); result += matchedTabs.map(Item.tab) }
+                if !matchedCommands.isEmpty { result.append(.header("Commands")); result += matchedCommands.map(Item.command) }
+                if !looksLikeURL {
+                    result.append(.header("Web"))
+                    result.append(.open(q))
+                }
+            }
+        }
+        items = result
+        table.reloadData()
+        resizeToFit()
+        if let first = items.firstIndex(where: { !$0.isHeader }) {
+            table.selectRowIndexes([first], byExtendingSelection: false)
+            table.scrollRowToVisible(0)
+        }
+    }
+
+    /// Grows/shrinks with the result count, keeping the top edge still.
+    private func resizeToFit() {
+        let list = items.reduce(CGFloat(0)) { $0 + ($1.isHeader ? Self.headerHeight : Self.rowHeight) }
+        let empty: CGFloat = items.isEmpty ? 0 : 12
+        let height = Self.fieldHeight + 1 + min(list, Self.maxListHeight) + empty
+        var frame = self.frame
+        frame.size = NSSize(width: Self.width, height: height)
+        frame.origin.y = anchorTop - height
+        setFrame(frame, display: true)
+    }
+
+    /// Subsequence match; rewards consecutive runs and word starts.
+    static func score(_ query: String, _ text: String) -> Int? {
+        let q = Array(query.lowercased()), s = Array(text.lowercased())
+        guard !q.isEmpty, !s.isEmpty else { return nil }
+        var qi = 0, score = 0, last = -2
+        for (i, c) in s.enumerated() where qi < q.count && c == q[qi] {
+            score += (i == last + 1) ? 6 : 1
+            if i == 0 || " /.-_:".contains(s[i - 1]) { score += 4 }
+            last = i
+            qi += 1
+        }
+        return qi == q.count ? score * 10 - s.count / 8 : nil
+    }
+
+    // MARK: Running
+
+    @objc private func rowClicked() {
+        guard table.clickedRow >= 0 else { return }
+        table.selectRowIndexes([table.clickedRow], byExtendingSelection: false)
+        runSelected()
+    }
+
+    private func runSelected() {
+        guard items.indices.contains(table.selectedRow), let browser else { return }
+        let item = items[table.selectedRow]
+        let inNewTab = browser.activeTab?.currentURL != nil && NSApp.currentEvent?.modifierFlags.contains(.command) == true
+        Self.close()
+        switch item {
+        case .header: break
+        case .open(let input): browser.open(input: input, inNewTab: inNewTab)
+        case .tab(let tab):
+            tab.owner?.activate(tab)
+            tab.owner?.window?.makeKeyAndOrderFront(nil)
+        case .command(let cmd): CommandRouter.perform(cmd, in: browser)
+        }
+    }
+
+    private func moveSelection(_ delta: Int) {
+        guard !items.isEmpty else { return }
+        var row = table.selectedRow
+        repeat { row += delta } while items.indices.contains(row) && items[row].isHeader
+        guard items.indices.contains(row) else { return }
+        table.selectRowIndexes([row], byExtendingSelection: false)
+        // Keep the section header visible when moving to the first row of a section.
+        table.scrollRowToVisible(row > 0 && items[row - 1].isHeader ? row - 1 : row)
+    }
+
+    func controlTextDidChange(_ obj: Notification) { refilter() }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.moveDown(_:)): moveSelection(1)   // also ⌃N
+        case #selector(NSResponder.moveUp(_:)): moveSelection(-1)    // also ⌃P
+        case #selector(NSResponder.insertNewline(_:)): runSelected()
+        case #selector(NSResponder.cancelOperation(_:)): Self.close()
+        default: return false
+        }
+        return true
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        if Self.current === self { Self.close() }
+    }
+
+    // MARK: Table
+
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        items[row].isHeader ? Self.headerHeight : Self.rowHeight
+    }
+
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool { items[row].isHeader }
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { !items[row].isHeader }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { PaletteRowView() }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        switch items[row] {
+        case .header(let title):
+            let label = NSTextField(labelWithString: title)
+            label.font = .systemFont(ofSize: 11, weight: .semibold)
+            label.textColor = .tertiaryLabelColor
+            let v = NSView()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            v.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 12),
+                label.bottomAnchor.constraint(equalTo: v.bottomAnchor, constant: -5),
+            ])
+            return v
+        case .open(let input):
+            let url = BrowserEngine.shared.resolve(input: input)
+            let searchPrefix = BrowserEngine.shared.searchTemplate.components(separatedBy: "%s")[0]
+            let isSearch = url?.absoluteString.hasPrefix(searchPrefix) ?? false
+            return PaletteCell(icon: Theme.symbol(isSearch ? "magnifyingglass" : "arrow.up.forward.app", size: 14),
+                               tinted: true,
+                               title: isSearch ? "Search the web for “\(input)”" : "Open \(Theme.displayString(for: url))",
+                               subtitle: isSearch ? URL(string: searchPrefix)?.host?.replacingOccurrences(of: "www.", with: "") ?? "" : (url?.absoluteString ?? ""),
+                               accessory: KeycapView(glyphs: ["↩"]))
+        case .tab(let tab):
+            let otherWindow = tab.owner !== browser
+            let index = AppDelegate.shared.windows.firstIndex { $0 === tab.owner }.map { "Window \($0 + 1)" }
+            return PaletteCell(icon: tab.favicon ?? Monogram.image(for: tab.currentURL, title: tab.displayTitle),
+                               tinted: false,
+                               title: tab.displayTitle,
+                               subtitle: Theme.displayString(for: tab.currentURL),
+                               accessory: otherWindow ? Self.tag(index ?? "") : nil)
+        case .command(let cmd):
+            let chord = Keymap.shared.primaryChord(for: cmd)
+            return PaletteCell(icon: Theme.symbol(cmd.symbol, size: 14) ?? Theme.symbol("command", size: 14),
+                               tinted: true,
+                               title: cmd.title.replacingOccurrences(of: "…", with: ""),
+                               subtitle: "",
+                               accessory: chord.map { KeycapView(glyphs: $0.glyphs) })
+        }
+    }
+
+    private static func tag(_ text: String) -> NSView {
+        let l = NSTextField(labelWithString: text)
+        l.font = .systemFont(ofSize: 11, weight: .medium)
+        l.textColor = .tertiaryLabelColor
+        return l
+    }
+}
+
+private final class PaletteRowView: NSTableRowView {
+    override var isEmphasized: Bool { get { false } set {} }
+    override func drawSelection(in dirtyRect: NSRect) {
+        Theme.paletteSelection.setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 8, yRadius: 8).fill()
+    }
+    override func drawBackground(in dirtyRect: NSRect) {}
+}
+
+private final class PaletteCell: NSTableCellView {
+    init(icon: NSImage?, tinted: Bool, title: String, subtitle: String, accessory: NSView?) {
+        super.init(frame: .zero)
+        let iconView = NSImageView(image: icon ?? NSImage())
+        iconView.contentTintColor = tinted ? .secondaryLabelColor : nil
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.wantsLayer = true
+        iconView.layer?.cornerRadius = 3
+        iconView.layer?.masksToBounds = true
+
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 13.5)
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let sub = NSTextField(labelWithString: subtitle)
+        sub.font = .systemFont(ofSize: 12)
+        sub.textColor = .tertiaryLabelColor
+        sub.lineBreakMode = .byTruncatingTail
+        sub.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+
+        let text = NSStackView(views: [titleLabel, sub])
+        text.spacing = 8
+        for v in [iconView, text] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        var constraints = [
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 18),
+            iconView.heightAnchor.constraint(equalToConstant: 18),
+            text.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
+            text.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ]
+        if let accessory {
+            accessory.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(accessory)
+            constraints += [
+                accessory.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+                accessory.centerYAnchor.constraint(equalTo: centerYAnchor),
+                text.trailingAnchor.constraint(lessThanOrEqualTo: accessory.leadingAnchor, constant: -12),
+            ]
+        } else {
+            constraints.append(text.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12))
+        }
+        NSLayoutConstraint.activate(constraints)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}

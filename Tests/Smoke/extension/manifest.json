@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Tern Smoke",
+  "version": "1.0",
+  "description": "Smoke-test fixture for Tern.",
+  "permissions": ["tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Tern Smoke" },
+  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_start" }]
+}

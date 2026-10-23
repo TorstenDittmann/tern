@@ -1,0 +1,47 @@
+name: Tern
+options:
+  bundleIdPrefix: dev.tern
+  deploymentTarget:
+    macOS: "15.4"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MACOSX_DEPLOYMENT_TARGET: "15.4"
+    SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+  configs:
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      SWIFT_COMPILATION_MODE: wholemodule
+      DEAD_CODE_STRIPPING: YES
+targets:
+  Tern:
+    type: application
+    platform: macOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.tern.browser
+        PRODUCT_NAME: Tern
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Tern
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_NSCameraUsageDescription: Websites can ask to use your camera.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Websites can ask to use your microphone.
+        INFOPLIST_KEY_NSLocationUsageDescription: Websites can ask to use your location.
+    info:
+      path: Sources/App/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: Web URL
+            CFBundleURLSchemes: [http, https]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: HTML document
+            CFBundleTypeRole: Viewer
+            LSItemContentTypes: [public.html]
