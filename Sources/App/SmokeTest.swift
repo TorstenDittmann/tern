@@ -317,6 +317,9 @@ enum SmokeTest {
         Preferences.searchTemplate = Preferences.searchEngines[0].template
         Preferences.suspendAfter = nil
         check(TabSuspender.shared.idleInterval == nil, "suspend idle tabs: never")
+        Preferences.suspendAfter = 600
+        SettingsWindow.shared.show()
+        check(SettingsWindow.shared.general.suspendPopup.titleOfSelectedItem == "After 10 minutes", "a custom suspend time shows as itself")
         Preferences.suspendAfter = 15 * 60
 
         let keymap = Keymap.shared
@@ -328,6 +331,10 @@ enum SmokeTest {
         check(keymap.command(for: y) == .toggleSidebar && keymap.primaryChord(for: .linkHints) == nil, "a taken shortcut moves to the new command")
         keymap.setShortcut(nil, for: .commandPalette)
         check(keymap.chords(for: .commandPalette).isEmpty, "clearing removes every shortcut of a command")
+        try? #"{ "shift+cmd+y": "copyURL" }"#.write(to: Keymap.fileURL, atomically: true, encoding: .utf8)
+        keymap.load()
+        keymap.setShortcut(nil, for: .copyURL)
+        check(keymap.command(for: y) == nil, "clearing finds a chord the file spells differently")
         keymap.resetToDefaults()
         check(keymap.command(for: j) == .linkHints && keymap.primaryChord(for: .commandPalette) == KeyChord(string: "cmd+k")
               && !keymap.hasCustomShortcuts, "restore defaults")

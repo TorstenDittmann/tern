@@ -105,7 +105,15 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         customSearch.stringValue = index == nil ? template : ""
         customSearch.isHidden = index != nil
         let suspend = Preferences.suspendAfter ?? -1
-        suspendPopup.selectItem(at: Preferences.suspendChoices.firstIndex { $0.seconds == suspend } ?? 1)
+        // A value set with `defaults write` that isn't one of the choices gets its own item.
+        while suspendPopup.numberOfItems > Preferences.suspendChoices.count { suspendPopup.removeItem(at: suspendPopup.numberOfItems - 1) }
+        if let i = Preferences.suspendChoices.firstIndex(where: { $0.seconds == suspend }) {
+            suspendPopup.selectItem(at: i)
+        } else {
+            let minutes = suspend / 60
+            suspendPopup.addItem(withTitle: minutes == minutes.rounded() ? "After \(Int(minutes)) minutes" : "After \(Int(suspend)) seconds")
+            suspendPopup.selectItem(at: suspendPopup.numberOfItems - 1)
+        }
         agentCheckbox.state = AgentServer.isEnabled ? .on : .off
     }
 
@@ -129,6 +137,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     }
 
     @objc func suspendChanged() {
+        guard Preferences.suspendChoices.indices.contains(suspendPopup.indexOfSelectedItem) else { return } // the custom value
         let seconds = Preferences.suspendChoices[suspendPopup.indexOfSelectedItem].seconds
         Preferences.suspendAfter = seconds < 0 ? nil : seconds
     }

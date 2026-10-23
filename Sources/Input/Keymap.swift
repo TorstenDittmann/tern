@@ -177,11 +177,16 @@ final class Keymap {
         var json = userFile()
         // Drop the old shortcut(s): a default is unbound with null, a custom one is removed.
         let old = chord == nil ? chords(for: command) : primaryChord(for: command).map { [$0] } ?? []
+        // Entries are matched by parsing, since the file may spell a chord differently ("shift+cmd+c", "⌘c").
         for c in old {
-            if Self.defaults.contains(where: { KeyChord(string: $0.0) == c }) { json[c.spec] = NSNull() }
-            else { json.removeValue(forKey: c.spec) }
+            let isDefault = Self.defaults.contains { KeyChord(string: $0.0) == c }
+            for key in json.keys.filter({ KeyChord(string: $0) == c }) { json.removeValue(forKey: key) }
+            if isDefault { json[c.spec] = NSNull() }
         }
-        if let chord { json[chord.spec] = command.rawValue }
+        if let chord {
+            for key in json.keys.filter({ KeyChord(string: $0) == chord }) { json.removeValue(forKey: key) }
+            json[chord.spec] = command.rawValue
+        }
         writeUserFile(json)
     }
 
