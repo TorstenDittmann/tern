@@ -9,7 +9,9 @@ enum AgentMethods {
 
     typealias Handler = @MainActor (AgentParams) async throws -> Any
 
-    private static let table: [String: Handler] = browserMethods.merging(AgentPageMethods.table) { mine, _ in mine }
+    private static let table: [String: Handler] = browserMethods
+        .merging(AgentPageMethods.table) { mine, _ in mine }
+        .merging(AgentLogMethods.table) { mine, _ in mine }
 
     private static let browserMethods: [String: Handler] = [
         "tern.hello": hello,
@@ -42,6 +44,7 @@ enum AgentMethods {
 
     static func checkControl(_ tab: Tab) throws {
         if ownTabsOnly, !agentTabs.contains(tab.id) { throw AgentError.notAllowed }
+        AgentActivity.shared.touch(tab)
     }
 
     // MARK: tern / commands

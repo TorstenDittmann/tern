@@ -18,6 +18,10 @@ final class Tab: NSObject {
     /// Bumped whenever a navigation finishes or fails, so callers can wait for "this load".
     private(set) var loadsEnded = 0
     var lastActivated = Date()
+    /// Console and network history for the agent API (filled only while it runs).
+    lazy var agentLog = AgentTabLog()
+    /// An agent acted on this tab in the last few seconds; the UI rings it.
+    var isAgentDriving = false
 
     private var pendingState: Any?
     private var observations: [NSKeyValueObservation] = []
@@ -149,6 +153,7 @@ final class Tab: NSObject {
 
     private func changed(_ props: WKWebExtension.TabChangedProperties) {
         owner?.tabDidChange(self)
+        AgentServer.shared.tabDidChange(self)
         if owner != nil {
             BrowserEngine.shared.extensionController.didChangeTabProperties(props, for: self)
         }

@@ -70,6 +70,7 @@ final class AgentServer {
         }
         source.resume()
         acceptSource = source
+        AgentMonitor.shared.install()
     }
 
     func stop() {
@@ -77,7 +78,29 @@ final class AgentServer {
         connections.removeAll()
         acceptSource?.cancel()
         acceptSource = nil
+        AgentMonitor.shared.uninstall()
+        AgentActivity.shared.endAll()
     }
+
+    // MARK: Events
+
+    /// Sends a JSON-RPC notification to every connection subscribed to `event`.
+    func broadcast(_ event: String, _ params: [String: Any]) {
+        let listeners = connections.values.filter { $0.wants(event) }
+        guard !listeners.isEmpty else { return }
+        let message: [String: Any] = ["jsonrpc": "2.0", "method": event, "params": params]
+        guard JSONSerialization.isValidJSONObject(message),
+              let data = try? JSONSerialization.data(withJSONObject: message, options: [.withoutEscapingSlashes]) else { return }
+        listeners.forEach { $0.send(data) }
+    }
+
+    func tabDidChange(_ tab: Tab) {
+        guard isRunning, connections.values.contains(where: { $0.wants("tab.updated") }) else { return }
+        broadcast("tab.updated", AgentMethods.describe(tab))
+    }
+
+    /// Long-lived clients that asked for events, which the sidebar shows as "Agent connected".
+    var hasSubscribers: Bool { connections.values.contains { !$0.subscriptions.isEmpty } }
 
     /// Starts the server when the setting (or the smoke test) asks for it. Failure is logged, not fatal.
     func startIfEnabled() {
@@ -109,6 +132,7 @@ final class AgentServer {
 
     fileprivate func connectionDidClose(_ connection: AgentConnection) {
         connections[ObjectIdentifier(connection)] = nil
+        if !connection.subscriptions.isEmpty { AgentActivity.shared.subscribersChanged() }
     }
 
     private static func posixError() -> Error {
@@ -124,6 +148,8 @@ final class AgentConnection {
     private weak var server: AgentServer?
     private var source: DispatchSourceRead?
     private var buffer = Data()
+    /// Event names this client subscribed to; "*" means all of them.
+    var subscriptions: Set<String> = []
     private let writer = DispatchQueue(label: "dev.tern.agent.write")
     private static let maxLine = 16 << 20
 
@@ -166,10 +192,15 @@ final class AgentConnection {
             buffer.removeSubrange(buffer.startIndex...newline)
             guard !line.allSatisfy({ $0 == 0x20 || $0 == 0x0D }) else { continue }
             Task { @MainActor [weak self] in
-                if let reply = await AgentRPC.handle(line) { self?.send(reply) }
+                let reply = await AgentContext.$connection.withValue(self) { await AgentRPC.handle(line) }
+                if let reply { self?.send(reply) }
             }
         }
         if buffer.count > Self.maxLine { disconnect() }
+    }
+
+    func wants(_ event: String) -> Bool {
+        subscriptions.contains(event) || subscriptions.contains("*")
     }
 
     func send(_ message: Data) {
@@ -190,4 +221,10 @@ final class AgentConnection {
             }
         }
     }
+}
+
+/// Request-scoped context for method handlers.
+enum AgentContext {
+    /// The connection the current request came in on (for event subscriptions).
+    @TaskLocal static var connection: AgentConnection?
 }
