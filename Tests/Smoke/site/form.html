@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Form</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <h1>Sign up</h1>
+  <p>Fill in the form. <strong>All fields</strong> are optional.</p>
+  <label for="name">Name</label>
+  <input id="name" placeholder="Your name">
+  <select id="color" aria-label="Color"><option value="r">Red</option><option value="g">Green</option></select>
+  <label><input type="checkbox" id="agree"> I agree</label>
+  <button id="go">Submit</button>
+  <p id="out"></p>
+  <ul><li>First</li><li>Second <a href="one.html">one</a></li></ul>
+  <img src="missing.png" width="10" height="10">
+  <a href="two.html">Go to page two</a>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    $('go').addEventListener('click', (e) => {
+      $('out').textContent = `Hello ${$('name').value} ${$('color').value} ${$('agree').checked} ${e.isTrusted}`;
+    });
+    $('name').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('out').textContent = `enter ${e.isTrusted}`;
+    });
+  </script>
+</body>
+</html>

@@ -8,7 +8,9 @@ api.tabs.onCreated.addListener(update);
 api.tabs.onRemoved.addListener(update);
 api.tabs.onActivated.addListener(update);
 api.tabs.onUpdated.addListener(update);
-api.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (msg === "count") { update().then(n => reply(n), e => reply("error: " + e)); return true; }
+// Reply with a promise: newer WebKit resolves sendMessage with undefined when
+// a listener uses the `reply` callback and returns true.
+api.runtime.onMessage.addListener(msg => {
+  if (msg === "count") return update().catch(e => "error: " + e);
 });
 update();

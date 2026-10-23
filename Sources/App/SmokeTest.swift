@@ -261,6 +261,71 @@ enum SmokeTest {
         let closed = await tern(["tabs", "close", id])
         check(closed.status == 0 && browser.tabs.count == before, "tabs close (own tab)")
         defaults.set(previous, forKey: "agentOwnTabsOnly")
+
+        await agentPage(browser: browser, base: base)
+    }
+
+    /// page.*: snapshot, refs, native input, eval, text, audit, screenshot, waitFor, stale refs.
+    private static func agentPage(browser: BrowserWindowController, base: String) async {
+        let opened = await tern(["tabs", "open", "\(base)/form.html", "--windowId", browser.id.uuidString])
+        let id = opened.json?["id"] as? String ?? ""
+        let snap = await tern(["page", "snapshot", "--tabId", id])
+        func ref(_ needle: String) -> String {
+            let line = snap.out.split(separator: "\n").first { $0.contains(needle) } ?? ""
+            guard let r = line.range(of: #"ref=e\d+"#, options: .regularExpression) else { return "e0" }
+            return String(line[r].dropFirst(4))
+        }
+        check(snap.out.contains("heading \"Sign up\" [level=1]") && snap.out.contains("-> two.html"), "page snapshot")
+        let name = ref("textbox \"Name\""), color = ref("combobox \"Color\""), agree = ref("checkbox"), go = ref("button \"Submit\"")
+        let link = ref("link \"Go to page two\"")
+
+        let typed = await tern(["page", "type", name, "Ada", "--tabId", id])
+        print("INFO  page type native=\(typed.json?["native"] ?? "?")")
+        let value = await tern(["page", "eval", "document.getElementById('name').value", "--tabId", id])
+        check(value.out.trimmingCharacters(in: .whitespacesAndNewlines) == "Ada", "page type (\(value.out.prefix(60)))")
+        let selected = await tern(["page", "select", color, "g", "--tabId", id])
+        check(selected.out.contains("\"g\""), "page select")
+        let clickedBox = await tern(["page", "click", agree, "--tabId", id])
+        let clickedGo = await tern(["page", "click", go, "--tabId", id])
+        print("INFO  page click native=\(clickedBox.json?["native"] ?? "?"), \(clickedGo.json?["native"] ?? "?")")
+        let out = await tern(["page", "eval", "return document.getElementById('out').textContent", "--tabId", id])
+        check(out.out.hasPrefix("Hello Ada g true"), "page click (\(out.out.prefix(60)))")
+        if clickedGo.json?["native"] as? Bool == true { check(out.out.contains("true true"), "native click is trusted") }
+
+        _ = await tern(["page", "click", name, "--tabId", id])
+        _ = await tern(["page", "press", "enter", "--tabId", id])
+        let entered = await tern(["page", "eval", "document.getElementById('out').textContent", "--tabId", id])
+        check(entered.out.hasPrefix("enter"), "page press enter (\(entered.out.prefix(40)))")
+
+        let waited = await tern(["page", "waitFor", "enter", "--tabId", id, "--timeoutMs", "2000"])
+        check(waited.status == 0, "page waitFor text")
+        let timedOut = await tern(["page", "waitFor", "--selector", "#nope", "--tabId", id, "--timeoutMs", "300"])
+        check(timedOut.status == 1 && timedOut.out.contains("-32003"), "page waitFor times out")
+
+        let md = await tern(["page", "text", "markdown", "--tabId", id])
+        check(md.out.contains("# Sign up") && md.out.contains("**All fields**"), "page text markdown")
+        let audit = await tern(["page", "audit", "--tabId", id, "--json"])
+        check(audit.out.contains("image-alt"), "page audit finds the image without alt")
+        let shot = await tern(["page", "screenshot", "--tabId", id, "--path", NSTemporaryDirectory() + "tern-agent-shot.png"])
+        let png = (shot.json?["path"] as? String).flatMap { FileManager.default.contents(atPath: $0) }
+        check(png?.starts(with: [0x89, 0x50, 0x4E, 0x47]) == true, "page screenshot writes a PNG")
+        let mapped = await tern(["page", "eval", "[1, 2].map(n => { return n * 2 })", "--tabId", id, "--json"])
+        check(mapped.out.filter { !$0.isWhitespace } == "[2,4]", "page eval keeps a value with a nested return (\(mapped.out.prefix(40)))")
+        let semi = await tern(["page", "eval", "document.title;", "--tabId", id])
+        check(semi.out.trimmingCharacters(in: .whitespacesAndNewlines) == "Form", "page eval allows a trailing semicolon (\(semi.out.prefix(40)))")
+        let body = await tern(["page", "eval", "const n = 20; return n + 1", "--tabId", id])
+        check(body.out.trimmingCharacters(in: .whitespacesAndNewlines) == "21", "page eval runs a function body")
+        _ = await tern(["page", "snapshot", "--tabId", id, "--scope", "ul"])
+        let again = await tern(["page", "snapshot", "--tabId", id])
+        check(again.out.contains("button \"Submit\" [ref=\(go)]"), "scoped snapshot keeps earlier refs")
+        let bad = await tern(["page", "eval", "throw new Error('boom')", "--tabId", id])
+        check(bad.status == 1 && bad.out.contains("-32004") && bad.out.contains("boom"), "page eval reports JS errors (\(bad.out))")
+
+        let followed = await tern(["page", "click", link, "--tabId", id])
+        check(followed.json?["title"] as? String == "Page Two", "clicking a link waits for the new page")
+        let stale = await tern(["page", "click", go, "--tabId", id])
+        check(stale.status == 1 && stale.out.contains("-32002"), "refs go stale after navigation")
+        _ = await tern(["tabs", "close", id])
     }
 
     private struct CLIResult {

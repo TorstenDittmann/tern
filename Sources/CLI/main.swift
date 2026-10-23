@@ -9,6 +9,7 @@ usage: tern <namespace> <verb> [value] [--param value ...] [--plain]
        tern run <command>              shorthand for commands run
        tern call <method> [json]       send any method with raw JSON params
        tern hello                      check the connection
+       --json prints the raw JSON result, --plain prints lists as lines
 
 examples:
   tern tabs open localhost:3000 --wait idle
@@ -16,17 +17,27 @@ examples:
   tern tabs navigate https://example.com --tabId <id>
   tern run toggleSplit
   tern commands list --plain
+  tern page snapshot                     the page as text, with refs like e12
+  tern page click e12
+  tern page type e3 "ada@example.com" --submit true
+  tern page screenshot shot.png
 
 Turn the API on with "Enable Agent API" in Tern's command palette (⌘K).
 """
 
-/// The positional value fills this param for methods that have an obvious one.
-let primaryParam: [String: String] = [
-    "tabs.open": "url", "tabs.navigate": "url", "windows.open": "url",
-    "tabs.activate": "tabId", "tabs.close": "tabId",
-    "tabs.back": "tabId", "tabs.forward": "tabId", "tabs.reload": "tabId",
-    "commands.run": "command",
+/// Positional values fill these params, in order, for methods that have obvious ones.
+let positionalParams: [String: [String]] = [
+    "tabs.open": ["url"], "tabs.navigate": ["url"], "windows.open": ["url"],
+    "tabs.activate": ["tabId"], "tabs.close": ["tabId"],
+    "tabs.back": ["tabId"], "tabs.forward": ["tabId"], "tabs.reload": ["tabId"],
+    "commands.run": ["command"],
+    "page.click": ["ref"], "page.type": ["ref", "text"], "page.press": ["key"],
+    "page.select": ["ref", "values"], "page.scroll": ["ref"], "page.eval": ["js"],
+    "page.waitFor": ["text"], "page.text": ["format"], "page.screenshot": ["path"],
 ]
+
+/// Results whose main content is text print it as-is (a snapshot reads better than escaped JSON).
+let textResultKeys = ["snapshot", "text"]
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
@@ -39,6 +50,8 @@ func value(_ raw: String) -> Any {
     case "true": return true
     case "false": return false
     case "null": return NSNull()
+    case _ where raw.hasPrefix("[") || raw.hasPrefix("{"):
+        return (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) ?? raw
     default:
         if let n = Double(raw), raw.first.map({ $0.isNumber || $0 == "-" }) == true { return n }
         return raw
@@ -48,10 +61,13 @@ func value(_ raw: String) -> Any {
 // MARK: Arguments
 
 var args = Array(CommandLine.arguments.dropFirst())
-var plain = false
+var plain = false, json = false
 args.removeAll { arg in
-    if arg == "--plain" { plain = true; return true }
-    return false
+    switch arg {
+    case "--plain": plain = true; return true
+    case "--json": json = true; return true
+    default: return false
+    }
 }
 guard let first = args.first, !["-h", "--help", "help"].contains(first) else { print(usage); exit(0) }
 
@@ -88,12 +104,17 @@ while i < rest.count {
         guard i + 1 < rest.count else { fail("missing value for \(arg)", code: 64) }
         params[key] = value(rest[i + 1])
         i += 2
-    } else if let key = primaryParam[method], params[key] == nil {
-        params[key] = arg
+    } else if let key = positionalParams[method]?.first(where: { params[$0] == nil }) {
+        params[key] = key == "values" ? value(arg) : arg
         i += 1
     } else {
         fail("unexpected argument \(arg)\n\n\(usage)", code: 64)
     }
+}
+
+// The app resolves paths from its own working directory, so send absolute ones.
+if let path = params["path"] as? String, !path.hasPrefix("/"), !path.hasPrefix("~") {
+    params["path"] = URL(fileURLWithPath: path, relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).path
 }
 
 // MARK: Socket
@@ -169,7 +190,10 @@ func text(_ v: Any) -> String {
     }
 }
 
-if plain {
+if !json, let object = result as? [String: Any],
+   let key = textResultKeys.first(where: { object[$0] is String }) {
+    print(object[key] as! String)
+} else if plain {
     // One line per item: the fields people scan for, tab-separated.
     let columns = ["id", "name", "title", "binding", "url"]
     switch result {

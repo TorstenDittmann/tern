@@ -101,7 +101,10 @@ Extensions are off until you turn them on, because each one's background page co
 Coding agents and scripts can drive Tern through a local JSON-RPC API. It's off by default: turn it on with **Enable Agent API** in the command palette (⌘K), or `defaults write dev.tern.browser agentAPI -bool true`.
 
 - It listens only on a Unix socket, `~/Library/Application Support/Tern/agent.sock`, created `0600`. Connections from other users are refused, and no network port is opened. `TERN_SOCKET` overrides the path.
-- Messages are JSON-RPC 2.0, one object per line. Methods so far: `tern.hello`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload` and `split`. Calls that load a page take `wait` (`none`, `load` or `idle`) and `timeoutMs`.
+- Messages are JSON-RPC 2.0, one object per line. Calls that load a page take `wait` (`none`, `load` or `idle`) and `timeoutMs`.
+  - **Browser:** `tern.hello`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload` and `split`.
+  - **Page:** `page.snapshot` returns the page as a compact outline, with a ref such as `e12` on every element you can act on. `page.click`, `type`, `press`, `select` and `scroll` act on those refs. `page.text` returns text, Markdown or HTML, `page.eval` runs JavaScript, `page.waitFor` waits for text, a selector or a URL, `page.screenshot` saves a PNG, and `page.audit` runs basic accessibility checks.
+- Clicks and key presses are real macOS events when the tab is on screen, so pages see trusted input. Background tabs fall back to DOM events. The page-side code runs in a private script world that pages can't see.
 - Agents can act on any tab by default. `defaults write dev.tern.browser agentOwnTabsOnly -bool true` limits them to the tabs they opened, and leaves other tabs read-only.
 
 The `tern` command-line tool ships inside the app. Link it onto your path once:
@@ -115,11 +118,16 @@ tern hello
 tern tabs open localhost:3000 --wait idle
 tern tabs list --plain
 tern tabs navigate https://example.com --tabId <id>
+tern page snapshot                           # the page as an outline with refs
+tern page type e3 "ada@example.com" --submit true
+tern page click e7
+tern page eval "document.title"
+tern page screenshot shot.png
 tern run toggleSplit                         # any command name from `tern commands list`
 tern call tabs.reload '{"wait":"none"}'      # any method, raw JSON params
 ```
 
-Page actions (snapshots, clicks, typing, screenshots, console) and an MCP server are next.
+Console and network logs, events, and an MCP server are next.
 
 ## Performance
 
@@ -158,7 +166,7 @@ defaults write dev.tern.browser suspendAfter 600                                
 - suspending a tab and restoring it with its history
 - split view
 - an unpacked MV3 extension: content script injection, background messaging, `tabs.query`, and the badge
-- the agent API, driven through the real `tern` CLI: opening, navigating, splitting and closing tabs, errors, and `agentOwnTabsOnly`
+- the agent API, driven through the real `tern` CLI: opening, navigating, splitting and closing tabs, errors, `agentOwnTabsOnly`, and on a test form, snapshots, typing, selecting, clicking, key presses, eval, Markdown, the audit, screenshots and stale refs
 
 The test never touches your saved session or your extensions, and it exits non-zero on failure.
 
