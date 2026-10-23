@@ -113,7 +113,8 @@ enum SmokeTest {
         check(browser.visibleTabs.count == 2, "returning to a paired tab restores the split")
         check([left, right].allSatisfy { $0.webView?.superview != nil && $0.webView?.frame.width == $0.webView?.superview?.bounds.width }
               && (left.webView?.frame.width ?? 0) < (outside.webView?.frame.width ?? 0) * 0.75,
-              "split panes get their half width at once, without a full-width frame first")
+              "split panes get their half width at once, without a full-width frame first (web views \([left, right].map { $0.webView?.frame.width ?? -1 }), "
+              + "cards \([left, right].map { $0.webView?.superview?.bounds.width ?? -1 }), lone tab \(outside.webView?.frame.width ?? -1))")
         right.suspend()
         check(!right.isSuspended, "visible split pane is never suspended")
         CommandRouter.perform(.closeTab, in: browser)
