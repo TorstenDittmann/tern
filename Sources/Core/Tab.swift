@@ -15,6 +15,8 @@ final class Tab: NSObject {
     private(set) var favicon: NSImage?
     private(set) var isLoading = false
     private(set) var progress: Double = 0
+    /// Bumped whenever a navigation finishes or fails, so callers can wait for "this load".
+    private(set) var loadsEnded = 0
     var lastActivated = Date()
 
     private var pendingState: Any?
@@ -204,10 +206,19 @@ extension Tab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loadsEnded += 1
         FaviconLoader.load(for: webView) { [weak self] image in
             self?.favicon = image
             if let self { self.owner?.tabDidChange(self) }
         }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        loadsEnded += 1
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        loadsEnded += 1
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {

@@ -23,5 +23,5 @@ smoke: build
 	@mkdir -p build/smoke
 	@python3 -m http.server 8765 --bind 127.0.0.1 --directory Tests/Smoke/site >/dev/null 2>&1 & echo $$! > build/smoke/server.pid
 	@sleep 0.5
-	@TERN_SMOKE="$(CURDIR)/build/smoke" TERN_SMOKE_BASE=http://localhost:8765 TERN_SMOKE_EXT="$(CURDIR)/Tests/Smoke/extension" \
+	@TERN_SMOKE="$(CURDIR)/build/smoke" TERN_SOCKET=/tmp/tern-smoke-$$$$.sock TERN_SMOKE_BASE=http://localhost:8765 TERN_SMOKE_EXT="$(CURDIR)/Tests/Smoke/extension" \
 		"$(APP)/Contents/MacOS/Tern"; status=$$?; kill `cat build/smoke/server.pid`; exit $$status

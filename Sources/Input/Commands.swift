@@ -13,6 +13,7 @@ enum Command: String, CaseIterable {
     case toggleInspector, showConsole, copyURL, copyMarkdownLink
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
     case loadUnpackedExtension, revealExtensionsFolder
+    case toggleAgentAPI
 
     var title: String {
         switch self {
@@ -58,6 +59,7 @@ enum Command: String, CaseIterable {
         case .reloadKeymap: "Reload Key Bindings"
         case .loadUnpackedExtension: "Load Unpacked Extension…"
         case .revealExtensionsFolder: "Reveal Extensions Folder"
+        case .toggleAgentAPI: AgentServer.isEnabled ? "Disable Agent API" : "Enable Agent API"
         }
     }
 
@@ -104,6 +106,7 @@ enum Command: String, CaseIterable {
         case .reloadKeymap: "arrow.triangle.2.circlepath"
         case .loadUnpackedExtension: "puzzlepiece.extension"
         case .revealExtensionsFolder: "folder"
+        case .toggleAgentAPI: "point.3.connected.trianglepath.dotted"
         }
     }
 
@@ -126,6 +129,7 @@ enum CommandRouter {
             Keymap.shared.ensureFileExists()
             NSWorkspace.shared.open(Keymap.fileURL); return
         case .suspendBackgroundTabs: TabSuspender.shared.suspendAllBackgroundTabs(); return
+        case .toggleAgentAPI: AgentServer.shared.toggle(); return
         case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
         case .revealExtensionsFolder:
             NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return

@@ -116,6 +116,8 @@ enum SmokeTest {
         check(browser.visibleTabs.count == 2, "split with previous tab")
         CommandRouter.perform(.toggleSplit, in: browser)
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
+        await agentAPI(browser: browser, base: base)
+
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
             CommandRouter.perform(.splitWithPreviousTab, in: browser)
         }
@@ -208,6 +210,77 @@ enum SmokeTest {
             // Screenshot scripts wait for this file instead of guessing how long the run takes.
             FileManager.default.createFile(atPath: out.appendingPathComponent("ready").path, contents: nil)
             try? await Task.sleep(for: .seconds(4))
+        }
+    }
+
+    /// Drives the agent API through the embedded `tern` CLI, the way an agent would.
+    private static func agentAPI(browser: BrowserWindowController, base: String) async {
+        guard AgentServer.shared.isRunning else { return check(false, "agent API listening (TERN_SOCKET set by make smoke)") }
+        let before = browser.tabs.count
+
+        let hello = await tern(["hello"])
+        check(hello.status == 0 && (hello.json?["apiVersion"] as? Int) == 1, "tern hello (\(hello.out.prefix(80)))")
+
+        let opened = await tern(["tabs", "open", "\(base)/one.html", "--windowId", browser.id.uuidString])
+        let id = opened.json?["id"] as? String ?? ""
+        check(opened.json?["title"] as? String == "Page One" && opened.json?["openedByAgent"] as? Bool == true,
+              "tabs open waits for the load")
+        check(browser.tabs.count == before + 1 && browser.activeTab?.id.uuidString == id, "tabs open adds an active tab")
+
+        let list = await tern(["tabs", "list", "--plain"])
+        check(list.status == 0 && list.out.contains(id), "tabs list --plain")
+
+        let nav = await tern(["tabs", "navigate", "\(base)/two.html", "--tabId", id])
+        check(nav.json?["title"] as? String == "Page Two", "tabs navigate")
+        let back = await tern(["tabs", "back", id])
+        check(back.json?["title"] as? String == "Page One", "tabs back")
+
+        let commands = await tern(["commands", "list"])
+        let names = (commands.array ?? []).compactMap { ($0 as? [String: Any])?["name"] as? String }
+        check(names.contains("toggleSplit") && names.count == Command.allCases.count, "commands list")
+        _ = await tern(["run", "splitWithPreviousTab"])
+        check(browser.split != nil && browser.visibleTabs.count == 2, "run splitWithPreviousTab")
+        _ = await tern(["run", "toggleSplit"])
+        check(browser.split == nil, "run toggleSplit ends the split")
+
+        let unknown = await tern(["tabs", "frobnicate"])
+        check(unknown.status == 1 && unknown.out.contains("-32601"), "unknown method is an error")
+
+        // agentOwnTabsOnly: tabs the agent didn't open are read-only.
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: "agentOwnTabsOnly")
+        defaults.set(true, forKey: "agentOwnTabsOnly")
+        let theirs = browser.tabs.first { $0.id.uuidString != id && !$0.isActive }!
+        let denied = await tern(["tabs", "close", theirs.id.uuidString])
+        check(denied.status == 1 && denied.out.contains("-32005") && browser.tabs.contains(theirs), "agentOwnTabsOnly blocks other tabs")
+        let closed = await tern(["tabs", "close", id])
+        check(closed.status == 0 && browser.tabs.count == before, "tabs close (own tab)")
+        defaults.set(previous, forKey: "agentOwnTabsOnly")
+    }
+
+    private struct CLIResult {
+        let status: Int32
+        let out: String
+        var json: [String: Any]? { (try? JSONSerialization.jsonObject(with: Data(out.utf8))) as? [String: Any] }
+        var array: [Any]? { (try? JSONSerialization.jsonObject(with: Data(out.utf8))) as? [Any] }
+    }
+
+    /// Runs the CLI without blocking the main thread, which the server needs to answer it.
+    private static func tern(_ args: [String]) async -> CLIResult {
+        let process = Process()
+        process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/tern")
+        process.arguments = args
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        return await withCheckedContinuation { done in
+            process.terminationHandler = { p in
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                done.resume(returning: CLIResult(status: p.terminationStatus, out: String(decoding: data, as: UTF8.self)))
+            }
+            do { try process.run() } catch {
+                done.resume(returning: CLIResult(status: -1, out: "\(error)"))
+            }
         }
     }
 
