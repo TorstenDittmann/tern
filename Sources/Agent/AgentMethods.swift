@@ -214,11 +214,16 @@ enum AgentMethods {
         // The previous page's didFinish can land just after its isLoading went false, so only a
         // load that ends after this one was seen starting counts.
         var startedAt: Int?
+        var stoppedAt: Date?
         while true {
             if tab.isLoading {
                 if startedAt == nil { startedAt = tab.loadsEnded }
+                stoppedAt = nil
             } else if let startedAt {
                 if tab.loadsEnded > startedAt { break }
+                // Stopped without a finish callback (Stop, suspended, crashed): don't wait for one forever.
+                if let stoppedAt, Date() > stoppedAt.addingTimeInterval(1) { break }
+                if stoppedAt == nil { stoppedAt = Date() }
             } else if tab.loadsEnded > before, Date() > started.addingTimeInterval(0.3) {
                 break // started and ended between two polls
             }
