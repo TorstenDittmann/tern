@@ -55,6 +55,9 @@ final class ContentViewController: NSViewController {
         shown = tabs
         panes.count = tabs.count
         panes.fraction = fraction
+        // Lay the cards out first, so a web view moving in gets its final size right away. Otherwise it
+        // renders once at the card's old size (full width, or the other half of a split), then resizes.
+        panes.layoutSubtreeIfNeeded()
         for (i, card) in panes.cards.enumerated() {
             let webView = i < tabs.count ? tabs[i].webView : nil
             // Detach whatever this card showed before, unless it's the view we want.

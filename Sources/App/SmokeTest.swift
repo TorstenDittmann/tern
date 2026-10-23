@@ -106,8 +106,14 @@ enum SmokeTest {
         let outside = browser.tabs.first { !browser.isPaired($0) }!
         browser.activate(outside)
         check(browser.visibleTabs == [outside] && browser.split != nil, "other tab shows alone, pair kept")
+        check(outside.webView?.frame.width == outside.webView?.superview?.bounds.width
+              && (outside.webView?.frame.width ?? 0) > (left.webView?.frame.width ?? 0) * 1.5,
+              "a tab leaving a split gets the full width at once")
         browser.activate(left)
         check(browser.visibleTabs.count == 2, "returning to a paired tab restores the split")
+        check([left, right].allSatisfy { $0.webView?.superview != nil && $0.webView?.frame.width == $0.webView?.superview?.bounds.width }
+              && (left.webView?.frame.width ?? 0) < (outside.webView?.frame.width ?? 0) * 0.75,
+              "split panes get their half width at once, without a full-width frame first")
         right.suspend()
         check(!right.isSuspended, "visible split pane is never suspended")
         CommandRouter.perform(.closeTab, in: browser)
