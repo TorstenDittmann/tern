@@ -1,9 +1,50 @@
-/// The page a new tab shows: quiet, matches the card color, and teaches the three keys that matter.
+import Foundation
+
+/// The page a new tab shows: quiet, matches the card color, teaches the three keys that matter, and
+/// offers your bookmarks and most visited sites as tiles.
 @MainActor
 enum StartPage {
     /// Shortcut hints come from the live keymap, so rebinding updates the page.
     private static func keys(_ c: Command) -> String {
         (Keymap.shared.primaryChord(for: c)?.glyphs ?? []).map { "<kbd>\($0)</kbd>" }.joined()
+    }
+
+    private static func escape(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    private static func tile(url: String, title: String) -> String {
+        guard let parsed = URL(string: url), HistoryStore.isRecordable(parsed), let host = parsed.host else { return "" }
+        let letter = escape(String((title.first { $0.isLetter || $0.isNumber } ?? host.first ?? "?")).uppercased())
+        let icon = escape("\(parsed.scheme ?? "https")://\(host)\(parsed.port.map { ":\($0)" } ?? "")/favicon.ico")
+        return """
+        <a class="tile" href="\(escape(url))" title="\(escape(url))">
+          <span class="icon"><b>\(letter)</b><img src="\(icon)" alt="" onerror="this.remove()" onload="this.previousElementSibling.remove()"></span>
+          <span class="name">\(escape(title))</span>
+        </a>
+        """
+    }
+
+    /// Bookmarks first, then the most visited pages that aren't bookmarked.
+    private static var tiles: String {
+        let bookmarks = BookmarkStore.shared.all.prefix(8)
+        let frequent = HistoryStore.shared.ranked(limit: 40)
+            .filter { !BookmarkStore.shared.contains(URL(string: $0.url)) }
+            .prefix(bookmarks.isEmpty ? 8 : 4)
+        var html = ""
+        if !bookmarks.isEmpty {
+            let items = bookmarks.map { tile(url: $0.url, title: $0.title) }
+            html += "<h2>Bookmarks</h2><nav>" + items.joined() + "</nav>"
+        }
+        if !frequent.isEmpty {
+            let items = frequent.map { page -> String in
+                let title = page.title ?? ""
+                return tile(url: page.url, title: title.isEmpty ? HistoryStore.bare(page.url) : title)
+            }
+            html += "<h2>Frequently Visited</h2><nav>" + items.joined() + "</nav>"
+        }
+        return html
     }
 
     static var html: String { """
@@ -28,6 +69,17 @@ enum StartPage {
       kbd { font: 500 12px -apple-system, system-ui; min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box;
             display: inline-grid; place-items: center; border-radius: 6px; background: var(--cap);
             box-shadow: inset 0 0 0 0.5px var(--capBorder); color: var(--fg); }
+      h2 { font: 600 11px/1 -apple-system, system-ui; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;
+           margin: 34px 0 12px; }
+      nav { display: grid; grid-template-columns: repeat(4, 96px); gap: 10px; justify-content: center; }
+      .tile { display: grid; justify-items: center; gap: 7px; padding: 12px 6px 10px; border-radius: 10px;
+              color: var(--fg); text-decoration: none; cursor: pointer; }
+      .tile:hover { background: var(--cap); }
+      .icon { width: 36px; height: 36px; border-radius: 9px; background: var(--cap); display: grid; place-items: center;
+              box-shadow: inset 0 0 0 0.5px var(--capBorder); overflow: hidden; }
+      .icon b { font: 600 15px/1 ui-rounded, -apple-system, system-ui; color: var(--muted); }
+      .icon img { width: 20px; height: 20px; }
+      .name { font-size: 11.5px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     </style></head>
     <body><main>
       <div class="mark">tern<span>.</span></div>
@@ -36,6 +88,7 @@ enum StartPage {
         <li><span class="keys">\(keys(.commandPalette))</span><span class="label">Command palette</span></li>
         <li><span class="keys">\(keys(.tabPicker))</span><span class="label">Switch tabs</span></li>
       </ul>
+      \(tiles)
     </main></body></html>
     """
 }

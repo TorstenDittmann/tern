@@ -118,6 +118,10 @@ enum SmokeTest {
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
         await tabList(browser: browser, base: base)
         await linkTools(browser: browser, base: base)
+        dragToSplit(browser: browser, base: base)
+        await welcome(browser: browser)
+        settings()
+        await bookmarksAndLibrary(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
@@ -283,6 +287,102 @@ enum SmokeTest {
         browser.close(tab)
     }
 
+    /// Dropping a sidebar tab on the left or right half of the page.
+    private static func dragToSplit(browser: BrowserWindowController, base: String) {
+        let a = browser.newTab(url: URL(string: "\(base)/one.html?dropA"))
+        let b = browser.newTab(url: URL(string: "\(base)/one.html?dropB"), activate: false)
+        let c = browser.newTab(url: URL(string: "\(base)/one.html?dropC"), activate: false)
+        browser.content.dropTab(b, onRight: true)
+        check(browser.visibleTabs == [a, b] && browser.activeTab === b, "dropping a tab on the right half splits with it")
+        browser.content.dropTab(c, onRight: false)
+        check(browser.visibleTabs == [c, b] && browser.activeTab === c, "dropping on the left half of a split replaces the left pane")
+        check(!browser.content.dropTab(c, onRight: true), "dropping a tab beside itself does nothing")
+        browser.unsplit()
+        [a, b, c].forEach(browser.close)
+    }
+
+    private static func welcome(browser: BrowserWindowController) async {
+        CommandRouter.perform(.showWelcome, in: browser)
+        let sheet = browser.window?.attachedSheet
+        check(sheet?.contentViewController is Welcome, "Welcome to Tern opens the welcome sheet")
+        (sheet?.contentViewController as? Welcome)?.close()
+        await wait { browser.window?.attachedSheet == nil }
+        check(browser.window?.attachedSheet == nil, "Get Started closes it")
+    }
+
+    /// Settings ▸ General values and the shortcut editor (on a throwaway keymap file).
+    private static func settings() {
+        Preferences.searchTemplate = Preferences.searchEngines[1].template
+        check(BrowserEngine.shared.resolve(input: "swift actors")?.host == "www.google.com", "search engine setting")
+        Preferences.searchTemplate = Preferences.searchEngines[0].template
+        Preferences.suspendAfter = nil
+        check(TabSuspender.shared.idleInterval == nil, "suspend idle tabs: never")
+        Preferences.suspendAfter = 600
+        SettingsWindow.shared.show()
+        check(SettingsWindow.shared.general.suspendPopup.titleOfSelectedItem == "After 10 minutes", "a custom suspend time shows as itself")
+        Preferences.suspendAfter = 15 * 60
+
+        let keymap = Keymap.shared
+        let j = KeyChord(string: "cmd+j")!, y = KeyChord(string: "cmd+shift+y")!
+        keymap.setShortcut(y, for: .linkHints)
+        check(keymap.command(for: y) == .linkHints && keymap.primaryChord(for: .linkHints) == y && keymap.command(for: j) == nil,
+              "recording a shortcut replaces the old one")
+        keymap.setShortcut(y, for: .toggleSidebar)
+        check(keymap.command(for: y) == .toggleSidebar && keymap.primaryChord(for: .linkHints) == nil, "a taken shortcut moves to the new command")
+        keymap.setShortcut(nil, for: .commandPalette)
+        check(keymap.chords(for: .commandPalette).isEmpty, "clearing removes every shortcut of a command")
+        try? #"{ "shift+cmd+y": "copyURL" }"#.write(to: Keymap.fileURL, atomically: true, encoding: .utf8)
+        keymap.load()
+        keymap.setShortcut(nil, for: .copyURL)
+        check(keymap.command(for: y) == nil, "clearing finds a chord the file spells differently")
+        keymap.resetToDefaults()
+        check(keymap.command(for: j) == .linkHints && keymap.primaryChord(for: .commandPalette) == KeyChord(string: "cmd+k")
+              && !keymap.hasCustomShortcuts, "restore defaults")
+
+        let window = SettingsWindow.shared
+        window.show(tab: 1)
+        window.shortcuts.startRecording(.copyURL)
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .option], timestamp: 0,
+                                     windowNumber: window.window?.windowNumber ?? 0, context: nil, characters: "u",
+                                     charactersIgnoringModifiers: "u", isARepeat: false, keyCode: 32)!
+        window.shortcuts.record(event)
+        check(keymap.command(for: KeyChord(string: "cmd+alt+u")!) == .copyURL && window.shortcuts.recording == nil,
+              "Settings ▸ Shortcuts records a key (\(keymap.primaryChord(for: .copyURL)?.spec ?? "none"))")
+        keymap.resetToDefaults()
+        window.close()
+        try? FileManager.default.removeItem(at: Keymap.fileURL)
+    }
+
+    /// ⌘D bookmarks, the star, the start page tiles, and the History/Bookmarks window.
+    private static func bookmarksAndLibrary(browser: BrowserWindowController, base: String) async {
+        let tab = browser.newTab(url: URL(string: "\(base)/two.html?bookmark"))
+        await wait { tab.pageTitle == "Page Two" && !tab.isLoading }
+        CommandRouter.perform(.toggleBookmark, in: browser)
+        check(BookmarkStore.shared.contains(tab.currentURL) && BookmarkStore.shared.all.first?.title == "Page Two", "⌘D bookmarks the page")
+        check(StartPage.html.contains("Bookmarks") && StartPage.html.contains("two.html?bookmark"), "start page shows bookmarks as tiles")
+
+        let library = LibraryWindow.shared
+        library.show(.bookmarks)
+        check(library.rows.count == 1 && library.rows.first?.url == tab.currentURL?.absoluteString, "Show Bookmarks lists the bookmark")
+        library.show(.history)
+        check(library.rows.contains { $0.url == tab.currentURL?.absoluteString }, "Show History lists visited pages")
+        let other = browser.newTab(url: nil)
+        library.open([LibraryWindow.Row(url: "\(base)/one.html?fromLibrary", title: "x", date: Date())], inNewTabs: false)
+        await wait { other.pageTitle == "Page One" && !other.isLoading }
+        check(other.currentURL?.query == "fromLibrary", "opening from the library loads the front tab")
+        library.close()
+
+        CommandRouter.perform(.toggleBookmark, in: browser) // `other` is active now; bookmark it, then remove both
+        BookmarkStore.shared.remove(other.currentURL?.absoluteString ?? "")
+        browser.activate(tab)
+        CommandRouter.perform(.toggleBookmark, in: browser)
+        check(BookmarkStore.shared.all.isEmpty, "⌘D again removes the bookmark")
+        HistoryStore.shared.remove(other.currentURL?.absoluteString ?? "")
+        check(!HistoryStore.shared.entries.keys.contains(other.currentURL?.absoluteString ?? ""), "removing a page from history")
+        browser.close(other)
+        browser.close(tab)
+    }
+
     private static func agentAPI(browser: BrowserWindowController, base: String) async {
         guard AgentServer.shared.isRunning else { return check(false, "agent API listening (TERN_SOCKET set by make smoke)") }
         let before = browser.tabs.count
@@ -311,8 +411,9 @@ enum SmokeTest {
 
         let nav = await tern(["tabs", "navigate", "\(base)/two.html", "--tabId", id])
         let history = await tern(["history", "search", "Page Two", "--json"])
-        check(history.array?.first.flatMap { ($0 as? [String: Any])?["url"] as? String }?.hasSuffix("/two.html") == true,
-              "history search finds a visited page (\(history.out.prefix(120)))")
+        // Any visit of two.html (an earlier check opened it with a query string) is a right answer.
+        let topURL = history.array?.first.flatMap { ($0 as? [String: Any])?["url"] as? String }
+        check(topURL.flatMap(URL.init(string:))?.path == "/two.html", "history search finds a visited page (\(topURL ?? history.out))")
         check(HistoryStore.shared.completion(for: "localh") == HistoryStore.bare(base) + "/", "address bar completes a visited site")
         check(nav.json?["title"] as? String == "Page Two", "tabs navigate")
         let back = await tern(["tabs", "back", id])

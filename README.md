@@ -14,11 +14,12 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Keyboard tab list (⌘E).** Type to filter the sidebar, ↑↓ to move, ↩ to open, ⌘⌫ to close, esc to go back to the page.
 - **Link hints (⌘J).** Every link, button and field on screen gets a short letter code. Type it to click; hold ⇧ on the last letter to open a link in a background tab, or ⌥ to peek at it.
 - **Link peek.** ⌥-click a link to open it in a floating preview. ⌘↩ keeps it as a tab, ⇧⌘↩ opens it in a split, esc closes it.
-- **Split view.** Two tabs side by side, with a draggable divider. Focus follows the pane you click.
+- **Split view.** Two tabs side by side, with a draggable divider. Drag a tab onto the page to split with it. Focus follows the pane you click.
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
-- **History.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. **Clear History** in ⌘K forgets them.
+- **History and bookmarks.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. ⌘D (or the star in the address bar) bookmarks a page. ⌘Y and ⌥⌘B open a window to search, open, rename or delete them. New tabs show your bookmarks and most visited sites.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
-- **Rebindable shortcuts.** Every command has a binding, set in a JSON file. The menus always show your current bindings.
+- **Welcome sheet.** The first launch shows the four shortcuts worth learning, each with a Try It button. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
+- **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
 - **Safari Web Extensions.** Tern finds Safari extensions installed with your apps and also loads unpacked or `.zip` extensions in place.
 - **Memory-friendly tabs.** Background tabs give their memory back after 15 minutes idle, or when macOS runs low on memory, and keep their history.
@@ -60,6 +61,8 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Back / forward | ⌘[ / ⌘] |
 | Reload / ignoring cache / stop | ⌘R / ⇧⌘R / ⌘. |
 | Find / next / previous | ⌘F / ⌘G / ⇧⌘G |
+| Bookmark page / show bookmarks / show history | ⌘D / ⌥⌘B / ⌘Y |
+| Settings | ⌘, |
 | Link hints (click links from the keyboard) | ⌘J |
 | Peek at a link / keep it as a tab / in a split | ⌥-click / ⌘↩ / ⇧⌘↩ |
 | Zoom in / out / actual size | ⌘= / ⌘- / ⌘0 |
@@ -88,6 +91,7 @@ Chords combine `cmd`, `shift`, `alt` and `ctrl` with a key. Key names include `t
 ![Split view](docs/split.png)
 
 - **⌘\\** opens a new tab next to the current one. Press it again to end the split.
+- **Drag a tab from the sidebar onto the page.** Drop it on the left or right half to open it on that side; in a split, it replaces that pane.
 - **Right-click a tab ▸ Open in Split View** pairs that tab with the current one. **Split with Previous Tab** is available in the palette.
 - Clicking into a pane makes it the active tab: the address bar, history, find, ⌘W, and extensions all follow it.
 - Drag the gap between the panes to resize them, and double-click it to return to 50/50.
@@ -172,9 +176,16 @@ Each launch is isolated, as in the smoke test: one window, and no saved session 
 
 ## Settings
 
+**Settings…** (⌘,) has two panes:
+
+- **General:** the search engine (DuckDuckGo, Google, Bing, Brave Search, Kagi, Ecosia, Startpage, or a custom URL with `%s`), how long idle background tabs wait before they're suspended (or never), the agent API switch, and Clear History.
+- **Shortcuts:** every command and its shortcut. Click a shortcut and press the new keys; esc cancels and ⌫ removes it. A shortcut that's already taken moves to the new command. Changes are saved to `~/.config/tern/keymap.json`, which you can still edit by hand. **Restore Defaults** undoes them all.
+
+The same values can be set from the terminal:
+
 ```sh
 defaults write dev.tern.browser searchTemplate "https://www.google.com/search?q=%s"   # default: DuckDuckGo
-defaults write dev.tern.browser suspendAfter 600                                     # seconds; default 900
+defaults write dev.tern.browser suspendAfter 600                                     # seconds; -1 for never; default 900
 ```
 
 ## Project layout
@@ -209,7 +220,6 @@ The test never touches your saved session or your extensions, and it exits non-z
 - No prebuilt, signed releases yet. Builds are ad-hoc signed and unsandboxed (scanning `/Applications` for extensions requires that).
 - The ⌥⌘I and ⌥⌘C shortcuts open the Web Inspector through a private WebKit API, which the Mac App Store doesn't allow. The right-click **Inspect Element** item uses public API.
 - Extension permissions are granted all at once when you turn an extension on. Per-site grants are planned.
-- No history, bookmarks, or address-bar suggestions yet.
 
 ## Contributing
 

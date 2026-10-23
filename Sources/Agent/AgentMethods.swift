@@ -219,7 +219,7 @@ enum AgentMethods {
             guard let s = [CommandPalette.score(query, e.title ?? ""), CommandPalette.score(query, HistoryStore.bare(e.url))]
                 .compactMap({ $0 }).max() else { return nil }
             return (s + Frecency.bonus(e.frecency), e)
-        }.sorted { $0.0 > $1.0 }.map(\.1)
+        }.sorted { $0.0 != $1.0 ? $0.0 > $1.0 : $0.1.url < $1.1.url }.map(\.1) // ties: stable, shortest URL first
         return matched.prefix(limit).map { e -> [String: Any] in
             [
                 "url": e.url,

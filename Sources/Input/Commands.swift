@@ -13,7 +13,8 @@ enum Command: String, CaseIterable {
     case toggleInspector, showConsole, copyURL, copyMarkdownLink
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
     case loadUnpackedExtension, revealExtensionsFolder
-    case toggleAgentAPI, clearHistory
+    case toggleAgentAPI, clearHistory, showWelcome, openSettings
+    case toggleBookmark, showHistory, showBookmarks
 
     var title: String {
         switch self {
@@ -65,6 +66,11 @@ enum Command: String, CaseIterable {
         case .revealExtensionsFolder: "Reveal Extensions Folder"
         case .toggleAgentAPI: AgentServer.isEnabled ? "Disable Agent API" : "Enable Agent API"
         case .clearHistory: "Clear History"
+        case .showWelcome: "Welcome to Tern"
+        case .openSettings: "Settings…"
+        case .toggleBookmark: "Add or Remove Bookmark"
+        case .showHistory: "Show History"
+        case .showBookmarks: "Show Bookmarks"
         }
     }
 
@@ -117,6 +123,11 @@ enum Command: String, CaseIterable {
         case .revealExtensionsFolder: "folder"
         case .toggleAgentAPI: "point.3.connected.trianglepath.dotted"
         case .clearHistory: "clock.arrow.circlepath"
+        case .showWelcome: "hand.wave"
+        case .openSettings: "gearshape"
+        case .toggleBookmark: "star"
+        case .showHistory: "clock"
+        case .showBookmarks: "book"
         }
     }
 
@@ -141,6 +152,9 @@ enum CommandRouter {
         case .suspendBackgroundTabs: TabSuspender.shared.suspendAllBackgroundTabs(); return
         case .toggleAgentAPI: AgentServer.shared.toggle(); return
         case .clearHistory: HistoryStore.shared.clear(); return
+        case .openSettings: SettingsWindow.shared.show(); return
+        case .showHistory: LibraryWindow.shared.show(.history); return
+        case .showBookmarks: LibraryWindow.shared.show(.bookmarks); return
         case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
         case .revealExtensionsFolder:
             NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return
@@ -149,6 +163,8 @@ enum CommandRouter {
 
         guard let browser else {
             if command == .newTab { app.openWindow() }
+            // ⌘W in Settings or another non-browser window closes it.
+            if command == .closeTab || command == .closeWindow { NSApp.keyWindow?.performClose(nil) }
             return
         }
         let tab = browser.activeTab
@@ -185,6 +201,8 @@ enum CommandRouter {
         case .find: browser.content.showFindBar()
         case .findNext: browser.content.findAgain(backwards: false)
         case .findPrevious: browser.content.findAgain(backwards: true)
+        case .showWelcome: Welcome.show(in: browser)
+        case .toggleBookmark: if let tab { BookmarkStore.shared.toggle(tab.currentURL, title: tab.pageTitle) }
         case .linkHints: Task { await LinkHints.start(in: browser) }
         case .zoomIn: webView.map { $0.pageZoom = min($0.pageZoom + 0.1, 3) }
         case .zoomOut: webView.map { $0.pageZoom = max($0.pageZoom - 0.1, 0.3) }

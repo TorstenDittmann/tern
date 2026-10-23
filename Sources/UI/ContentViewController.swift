@@ -9,6 +9,7 @@ final class ContentViewController: NSViewController {
 
     private let panes = PanesView()
     private let findBar = FindBar()
+    private let dropZone = SplitDropView()
     private var shown: [Tab] = []
     private weak var focusedWebView: WKWebView?
     private var panesLeading: NSLayoutConstraint!
@@ -21,7 +22,13 @@ final class ContentViewController: NSViewController {
         findBar.onClose = { [weak self] in self?.hideFindBar() }
         panes.onFractionChange = { [weak self] f in self?.browser?.splitFractionDidChange(f) }
 
-        for v in [panes, findBar] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        dropZone.isHidden = true
+        dropZone.onDrop = { [weak self] id, right in
+            guard let self, let tab = self.browser?.tabs.first(where: { $0.id == id }) else { return false }
+            return self.dropTab(tab, onRight: right)
+        }
+
+        for v in [panes, dropZone, findBar] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         let g = Theme.gutter
         panesLeading = panes.leadingAnchor.constraint(equalTo: root.leadingAnchor)
         NSLayoutConstraint.activate([
@@ -29,6 +36,8 @@ final class ContentViewController: NSViewController {
             panesLeading,
             panes.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -g),
             panes.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -g),
+            dropZone.topAnchor.constraint(equalTo: panes.topAnchor), dropZone.bottomAnchor.constraint(equalTo: panes.bottomAnchor),
+            dropZone.leadingAnchor.constraint(equalTo: panes.leadingAnchor), dropZone.trailingAnchor.constraint(equalTo: panes.trailingAnchor),
             findBar.topAnchor.constraint(equalTo: panes.topAnchor, constant: 10),
             findBar.trailingAnchor.constraint(equalTo: panes.trailingAnchor, constant: -12),
         ])
@@ -69,6 +78,27 @@ final class ContentViewController: NSViewController {
         guard let i = shown.firstIndex(of: tab) else { return }
         panes.cards[i].progress.set(progress: tab.progress, visible: tab.isLoading)
         panes.cards[i].agentRing.isShown = tab.isAgentDriving
+    }
+
+    // MARK: Drag a tab onto the page
+
+    /// The sidebar started dragging a tab: the panes become a drop target.
+    func beginTabDrag() { dropZone.isHidden = false }
+
+    func endTabDrag() {
+        dropZone.isHidden = true
+        dropZone.reset()
+    }
+
+    /// Splits the page with `tab` on the given side. In a split, it replaces the pane on that side.
+    @discardableResult
+    func dropTab(_ tab: Tab, onRight right: Bool) -> Bool {
+        guard let browser, let active = browser.activeTab else { return false }
+        let visible = browser.visibleTabs
+        let other = visible.count == 2 ? (right ? visible[0] : visible[1]) : active
+        guard other !== tab else { return false }
+        browser.split(right ? other : tab, with: right ? tab : other, focus: tab)
+        return true
     }
 
     // MARK: Link peek

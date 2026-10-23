@@ -49,6 +49,13 @@ final class SidebarViewController: NSViewController {
         nav.translatesAutoresizingMaskIntoConstraints = false
 
         addressField.delegate = self
+        addressPill.onStar = { [weak self] in
+            guard let tab = self?.browser?.activeTab else { return }
+            BookmarkStore.shared.toggle(tab.currentURL, title: tab.pageTitle)
+        }
+        NotificationCenter.default.addObserver(forName: BookmarkStore.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateChrome() }
+        }
 
         // Tab list
         tableView.addTableColumn(NSTableColumn(identifier: .init("tab")))
@@ -287,7 +294,7 @@ final class SidebarViewController: NSViewController {
 
     private func updateChrome() {
         let tab = browser?.activeTab
-        addressPill.show(url: tab?.currentURL)
+        addressPill.show(url: tab?.currentURL, bookmarked: BookmarkStore.shared.contains(tab?.currentURL))
         backButton.isEnabled = tab?.webView?.canGoBack ?? false
         forwardButton.isEnabled = tab?.webView?.canGoForward ?? false
         let loading = tab?.isLoading == true
@@ -405,7 +412,17 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         let item = NSPasteboardItem()
         item.setString(String(row), forType: .tabRow)
+        if rows.indices.contains(row) { item.setString(rows[row].id.uuidString, forType: .tabID) }
         return item
+    }
+
+    // While a tab is dragged, the page accepts it as the other half of a split.
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        browser?.content.beginTabDrag()
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        browser?.content.endTabDrag()
     }
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
@@ -441,7 +458,8 @@ extension SidebarViewController: NSTextFieldDelegate {
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
-        addressPill.show(url: browser?.activeTab?.currentURL)
+        let url = browser?.activeTab?.currentURL
+        addressPill.show(url: url, bookmarked: BookmarkStore.shared.contains(url))
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) { lastTypedAddress = "" }
@@ -466,8 +484,12 @@ extension SidebarViewController: NSTextFieldDelegate {
 /// Rounded field that shows just the host ("github.com") and the full URL while editing.
 final class AddressPill: FilledView {
     let field = AddressField()
+    /// The star at the end of the pill: adds or removes the page as a bookmark (⌘D).
+    var onStar: (() -> Void)?
     private let icon = NSImageView()
+    private lazy var star = HoverButton(symbol: "star", size: 11, label: "Bookmark This Page (⌘D)", target: self, action: #selector(starClicked))
     private var url: URL?
+    private var bookmarked = false
 
     init() {
         super.init(frame: .zero)
@@ -485,21 +507,28 @@ final class AddressPill: FilledView {
         field.cell?.usesSingleLineMode = true
         field.onFocusChange = { [weak self] focused in self?.setFocused(focused) }
 
-        for v in [icon, field] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        for v in [icon, field, star] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 14),
             field.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
-            field.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            field.trailingAnchor.constraint(equalTo: star.leadingAnchor, constant: -2),
             field.centerYAnchor.constraint(equalTo: centerYAnchor),
+            star.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -3),
+            star.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
-        show(url: nil)
+        show(url: nil, bookmarked: false)
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(url: URL?) {
+    func show(url: URL?, bookmarked: Bool) {
         self.url = url
+        self.bookmarked = bookmarked
+        star.image = Theme.symbol(bookmarked ? "star.fill" : "star", size: 11)
+        star.contentTintColor = bookmarked ? .systemYellow : .tertiaryLabelColor
+        star.toolTip = bookmarked ? "Remove Bookmark (⌘D)" : "Bookmark This Page (⌘D)"
+        star.isHidden = field.isEditing || !(url.map(HistoryStore.isRecordable) ?? false)
         guard !field.isEditing else { return }
         field.stringValue = Theme.displayString(for: url)
         field.toolTip = url?.absoluteString
@@ -514,7 +543,10 @@ final class AddressPill: FilledView {
             field.stringValue = url?.absoluteString ?? ""
             icon.image = Theme.symbol("magnifyingglass", size: 11, weight: .semibold)
         }
+        star.isHidden = focused || !(url.map(HistoryStore.isRecordable) ?? false)
     }
+
+    @objc private func starClicked() { onStar?() }
 
     // Clicking anywhere on the pill focuses the field.
     override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }

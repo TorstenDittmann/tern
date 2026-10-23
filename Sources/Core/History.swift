@@ -76,6 +76,11 @@ final class HistoryStore {
         scheduleSave()
     }
 
+    func remove(_ url: String) {
+        guard entries.removeValue(forKey: url) != nil else { return }
+        scheduleSave()
+    }
+
     func clear() {
         entries = [:]
         scheduleSave()
