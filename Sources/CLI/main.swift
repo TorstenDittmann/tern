@@ -9,6 +9,7 @@ usage: tern <namespace> <verb> [value] [--param value ...] [--plain]
        tern run <command>              shorthand for commands run
        tern call <method> [json]       send any method with raw JSON params
        tern hello                      check the connection
+       tern mcp                        run as an MCP server on stdin/stdout
        --json prints the raw JSON result, --plain prints lists as lines
 
 examples:
@@ -63,6 +64,8 @@ func value(_ raw: String) -> Any {
 }
 
 // MARK: Arguments
+
+if CommandLine.arguments.dropFirst().first == "mcp" { MCPServer().run() }
 
 var args = Array(CommandLine.arguments.dropFirst())
 var plain = false, json = false
@@ -126,31 +129,7 @@ if let path = params["path"] as? String, !path.hasPrefix("/"), !path.hasPrefix("
     params["path"] = URL(fileURLWithPath: path, relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).path
 }
 
-// MARK: Socket
-
-func socketPath() -> String {
-    if let path = ProcessInfo.processInfo.environment["TERN_SOCKET"] { return path }
-    let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    return support.appendingPathComponent("Tern/agent.sock").path
-}
-
-func connectSocket(_ path: String) -> Int32? {
-    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-    guard fd >= 0 else { return nil }
-    var addr = sockaddr_un()
-    addr.sun_family = sa_family_t(AF_UNIX)
-    let bytes = Array(path.utf8)
-    guard bytes.count < MemoryLayout.size(ofValue: addr.sun_path) else { close(fd); return nil }
-    withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-        raw.copyBytes(from: bytes)
-        raw[bytes.count] = 0
-    }
-    let rc = withUnsafePointer(to: &addr) {
-        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-    }
-    guard rc == 0 else { close(fd); return nil }
-    return fd
-}
+// MARK: Request
 
 let path = socketPath()
 guard let fd = connectSocket(path) else {
@@ -166,36 +145,14 @@ if method == "events.subscribe", let ms = params["timeoutMs"] as? Double {
 let request: [String: Any] = ["jsonrpc": "2.0", "id": 1, "method": method, "params": params]
 var line = (try? JSONSerialization.data(withJSONObject: request)) ?? Data()
 line.append(0x0A)
-line.withUnsafeBytes { raw in
-    var offset = 0
-    while offset < raw.count {
-        let n = write(fd, raw.baseAddress! + offset, raw.count - offset)
-        if n <= 0 { fail("Lost the connection to Tern while sending") }
-        offset += n
-    }
-}
-
-/// Reads one newline-terminated message, keeping anything after it for the next call.
-var pending = Data()
-func readMessage(from fd: Int32) -> Data? {
-    var chunk = [UInt8](repeating: 0, count: 64 * 1024)
-    while true {
-        if let newline = pending.firstIndex(of: 0x0A) {
-            let line = Data(pending[pending.startIndex..<newline])
-            pending.removeSubrange(pending.startIndex...newline)
-            return line
-        }
-        let n = read(fd, &chunk, chunk.count)
-        if n <= 0 { return nil }
-        pending.append(contentsOf: chunk[0..<n])
-    }
-}
+guard writeAll(fd, line) else { fail("Lost the connection to Tern while sending") }
+let reader = LineReader(fd: fd)
 
 // Events can arrive just before the reply to `events.subscribe`; keep them for the stream below.
 var early: [Data] = []
 var reply: [String: Any] = [:]
 while true {
-    guard let message = readMessage(from: fd) else { fail("Tern closed the connection without replying") }
+    guard let message = reader.next() else { fail("Tern closed the connection without replying") }
     guard let object = try? JSONSerialization.jsonObject(with: message) as? [String: Any] else {
         fail("Tern sent a reply that isn't JSON")
     }
@@ -215,7 +172,7 @@ let result = reply["result"] ?? NSNull()
 if method == "events.subscribe" {
     FileHandle.standardError.write(Data("Listening for \((result as? [String: Any])?["subscribed"] ?? "events")…\n".utf8))
     var received = 0
-    while eventCount.map({ received < $0 }) ?? true, let line = early.isEmpty ? readMessage(from: fd) : early.removeFirst() {
+    while eventCount.map({ received < $0 }) ?? true, let line = early.isEmpty ? reader.next() : early.removeFirst() {
         print(String(decoding: line, as: UTF8.self))
         fflush(stdout)
         received += 1
