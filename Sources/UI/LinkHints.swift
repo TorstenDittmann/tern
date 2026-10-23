@@ -55,7 +55,7 @@ final class LinkHints {
     }
 
     func cancel() {
-        if let webView = tab?.webView { webView.callAsyncJavaScript(Self.body, arguments: ["method": "hide", "args": [:]], in: nil, in: Self.world) }
+        if let webView = tab?.webView { webView.callAsyncJavaScript(Self.body, arguments: ["method": "hide", "args": [String: Any]()], in: nil, in: Self.world) { _ in } }
         finish()
     }
 
@@ -66,7 +66,7 @@ final class LinkHints {
     }
 
     private func filter(_ webView: WKWebView) {
-        webView.callAsyncJavaScript(Self.body, arguments: ["method": "filter", "args": ["typed": typed]], in: nil, in: Self.world)
+        webView.callAsyncJavaScript(Self.body, arguments: ["method": "filter", "args": ["typed": typed]], in: nil, in: Self.world) { _ in }
     }
 
     /// Narrows the hints to what's been typed; on an exact match, acts on that element.

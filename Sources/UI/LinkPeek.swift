@@ -77,7 +77,7 @@ final class LinkPeek: NSView {
     }
 
     /// Hands the web view back, still loaded, so the tab can be shown in a pane.
-    func release() -> Tab {
+    func takeTab() -> Tab {
         titleObservation = nil
         tab.webView?.removeFromSuperview()
         return tab

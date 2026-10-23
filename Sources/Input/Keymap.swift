@@ -103,7 +103,7 @@ final class Keymap {
         ("cmd+1", .selectTab1), ("cmd+2", .selectTab2), ("cmd+3", .selectTab3), ("cmd+4", .selectTab4),
         ("cmd+5", .selectTab5), ("cmd+6", .selectTab6), ("cmd+7", .selectTab7), ("cmd+8", .selectTab8),
         ("cmd+9", .selectLastTab),
-        ("cmd+f", .find), ("cmd+g", .findNext), ("cmd+shift+g", .findPrevious) ("cmd+j", .linkHints),
+        ("cmd+f", .find), ("cmd+g", .findNext), ("cmd+shift+g", .findPrevious), ("cmd+j", .linkHints),
         ("cmd+=", .zoomIn), ("cmd+-", .zoomOut), ("cmd+0", .zoomReset),
         ("cmd+alt+i", .toggleInspector), ("cmd+alt+c", .showConsole),
         ("cmd+shift+c", .copyURL), ("cmd+alt+shift+c", .copyMarkdownLink),

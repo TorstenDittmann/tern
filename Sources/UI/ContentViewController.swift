@@ -94,7 +94,7 @@ final class ContentViewController: NSViewController {
     func closePeek() {
         guard let peek = linkPeek else { return }
         linkPeek = nil
-        peek.release().discard()
+        peek.takeTab().discard()
         peek.removeFromSuperview()
         view.window?.makeFirstResponder(focusedWebView)
     }
@@ -103,7 +103,7 @@ final class ContentViewController: NSViewController {
     func promotePeek(split: Bool) {
         guard let peek = linkPeek, let browser else { return }
         linkPeek = nil
-        let tab = peek.release()
+        let tab = peek.takeTab()
         peek.removeFromSuperview()
         guard let anchor = peek.anchor ?? browser.activeTab, browser.tabs.contains(anchor) else {
             return browser.insert(tab, after: nil, activate: true)

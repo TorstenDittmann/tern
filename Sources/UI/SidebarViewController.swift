@@ -182,11 +182,11 @@ final class SidebarViewController: NSViewController {
     }
 
     func reload(_ tab: Tab) {
-        guard let row = rows.firstIndex(of: tab) else { return }
-        if let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TabCellView {
-            cell.configure(with: tab)
-        }
+        // The address bar follows the active tab even while a filter hides its row.
         if tab.isActive { updateChrome() }
+        guard let row = rows.firstIndex(of: tab),
+              let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TabCellView else { return }
+        cell.configure(with: tab)
     }
 
     func activeTabDidChange() {
@@ -266,8 +266,8 @@ final class SidebarViewController: NSViewController {
             return true
         case 125: highlight(row: min(row + 1, rows.count - 1)); return true // ↓
         case 126: highlight(row: max(row - 1, 0)); return true // ↑
-        case 51, 117: // ⌫, ⌦
-            if flags.contains(.command) || event.keyCode == 117 {
+        case 51, 117: // ⌘⌫ / ⌘⌦ close the highlighted tab; plain ⌫ edits the filter
+            if flags.contains(.command) {
                 if rows.indices.contains(row) { browser?.close(rows[row]) }
             } else if !filter.isEmpty {
                 setFilter(String(filter.dropLast()))
