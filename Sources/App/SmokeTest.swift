@@ -255,6 +255,9 @@ enum SmokeTest {
         let theirs = browser.tabs.first { $0.id.uuidString != id && !$0.isActive }!
         let denied = await tern(["tabs", "close", theirs.id.uuidString])
         check(denied.status == 1 && denied.out.contains("-32005") && browser.tabs.contains(theirs), "agentOwnTabsOnly blocks other tabs")
+        let closeWindow = await tern(["run", "closeWindow", "--windowId", browser.id.uuidString])
+        check(closeWindow.status == 1 && closeWindow.out.contains("-32005") && browser.window?.isVisible == true,
+              "agentOwnTabsOnly blocks closeWindow on a window with other tabs")
         let closed = await tern(["tabs", "close", id])
         check(closed.status == 0 && browser.tabs.count == before, "tabs close (own tab)")
         defaults.set(previous, forKey: "agentOwnTabsOnly")

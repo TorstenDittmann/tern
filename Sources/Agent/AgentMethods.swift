@@ -138,8 +138,16 @@ enum AgentMethods {
                                 _ action: (WKWebView) -> Void) async throws -> Any {
         let tab = try findTab(p)
         try checkControl(tab)
+        let wasSuspended = tab.isSuspended
         let webView = tab.materialize()
-        if let needs, !webView[keyPath: needs] { throw AgentError(code: -32006, message: "No page to \(what)") }
+        if let needs {
+            // A suspended tab restores its back/forward list asynchronously; give it a moment.
+            if wasSuspended {
+                let deadline = Date().addingTimeInterval(2)
+                while !webView[keyPath: needs], Date() < deadline { try await Task.sleep(for: .milliseconds(25)) }
+            }
+            if !webView[keyPath: needs] { throw AgentError(code: -32006, message: "No page to \(what)") }
+        }
         action(webView)
         try await waitForLoad(tab, p)
         return describe(tab)
