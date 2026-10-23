@@ -10,6 +10,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// picking another tab shows that tab alone and keeps the pair for later.
     struct SplitPair { var left: Tab; var right: Tab; var fraction: CGFloat = 0.5 }
 
+    /// Stable for the window's lifetime; how the agent API names windows.
+    let id = UUID()
     private(set) var tabs: [Tab] = []
     private(set) var activeTab: Tab?
     private(set) var split: SplitPair?

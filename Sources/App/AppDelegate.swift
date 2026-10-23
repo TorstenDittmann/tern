@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: self)
         installKeyMonitor()
         ExtensionManager.shared.start()
+        AgentServer.shared.startIfEnabled()
 
         if SmokeTest.isRunning { return SmokeTest.run() }
         if !SessionStore.restore(into: self) { openWindow() }
@@ -33,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        AgentServer.shared.stop()
         if !SmokeTest.isRunning { SessionStore.save(windows) }
     }
 

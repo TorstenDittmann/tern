@@ -19,9 +19,21 @@ targets:
   Tern:
     type: application
     platform: macOS
-    sources: [Sources]
+    sources:
+      - path: Sources
+        excludes: ["CLI/**"]
+    dependencies:
+      - target: TernCLI
+        embed: false
+    postBuildScripts:
+      - name: Embed tern CLI
+        basedOnDependencyAnalysis: false
+        script: |
+          mkdir -p "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
+          cp -f "$BUILT_PRODUCTS_DIR/tern" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/tern"
     settings:
       base:
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         PRODUCT_BUNDLE_IDENTIFIER: dev.tern.browser
         PRODUCT_NAME: Tern
         CODE_SIGN_IDENTITY: "-"
@@ -45,3 +57,14 @@ targets:
           - CFBundleTypeName: HTML document
             CFBundleTypeRole: Viewer
             LSItemContentTypes: [public.html]
+  TernCLI:
+    type: tool
+    platform: macOS
+    sources: [Sources/CLI]
+    settings:
+      base:
+        PRODUCT_NAME: tern
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+        SKIP_INSTALL: YES

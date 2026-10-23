@@ -96,6 +96,31 @@ Extensions are off until you turn them on, because each one's background page co
 
 **Not supported: native messaging.** A Safari extension's native half talks only to Safari, so extensions that depend on a companion app (password managers, for example) load, but their app-linked features don't work.
 
+## Agent API
+
+Coding agents and scripts can drive Tern through a local JSON-RPC API. It's off by default: turn it on with **Enable Agent API** in the command palette (⌘K), or `defaults write dev.tern.browser agentAPI -bool true`.
+
+- It listens only on a Unix socket, `~/Library/Application Support/Tern/agent.sock`, created `0600`. Connections from other users are refused, and no network port is opened. `TERN_SOCKET` overrides the path.
+- Messages are JSON-RPC 2.0, one object per line. Methods so far: `tern.hello`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload` and `split`. Calls that load a page take `wait` (`none`, `load` or `idle`) and `timeoutMs`.
+- Agents can act on any tab by default. `defaults write dev.tern.browser agentOwnTabsOnly -bool true` limits them to the tabs they opened, and leaves other tabs read-only.
+
+The `tern` command-line tool ships inside the app. Link it onto your path once:
+
+```sh
+ln -s /Applications/Tern.app/Contents/Helpers/tern /usr/local/bin/tern
+```
+
+```sh
+tern hello
+tern tabs open localhost:3000 --wait idle
+tern tabs list --plain
+tern tabs navigate https://example.com --tabId <id>
+tern run toggleSplit                         # any command name from `tern commands list`
+tern call tabs.reload '{"wait":"none"}'      # any method, raw JSON params
+```
+
+Page actions (snapshots, clicks, typing, screenshots, console) and an MCP server are next.
+
 ## Performance
 
 - **Lazy tabs.** A restored tab is just a URL, a title, and WebKit's saved history state. A web view is created only when you open the tab, so restoring 200 tabs costs about as much as restoring one.
@@ -118,6 +143,8 @@ defaults write dev.tern.browser suspendAfter 600                                
 | `Sources/Core` | WebKit setup (`BrowserEngine`), the `Tab` model (lazy web view, suspend and restore, downloads), session saving, and tab suspension |
 | `Sources/UI` | Window controller (tabs and split view), sidebar, content panes, command palette, theme, and the new-tab page |
 | `Sources/Input` | Commands, chord parsing, and the keymap |
+| `Sources/Agent` | The agent API: socket server, JSON-RPC dispatch, and the methods |
+| `Sources/CLI` | The `tern` command-line client, embedded at `Tern.app/Contents/Helpers/tern` |
 | `Sources/Extensions` | Extension discovery and loading, and the bridges WebKit uses to see tabs and windows |
 | `Sources/App` | App delegate, menus, and the smoke test |
 | `Tests/Smoke` | Local test pages and a small MV3 extension used by `make smoke` |
@@ -131,6 +158,7 @@ defaults write dev.tern.browser suspendAfter 600                                
 - suspending a tab and restoring it with its history
 - split view
 - an unpacked MV3 extension: content script injection, background messaging, `tabs.query`, and the badge
+- the agent API, driven through the real `tern` CLI: opening, navigating, splitting and closing tabs, errors, and `agentOwnTabsOnly`
 
 The test never touches your saved session or your extensions, and it exits non-zero on failure.
 
