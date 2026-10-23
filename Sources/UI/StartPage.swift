@@ -1,3 +1,5 @@
+import Foundation
+
 /// The page a new tab shows: quiet, matches the card color, teaches the three keys that matter, and
 /// offers your bookmarks and most visited sites as tiles.
 @MainActor
@@ -32,12 +34,15 @@ enum StartPage {
             .prefix(bookmarks.isEmpty ? 8 : 4)
         var html = ""
         if !bookmarks.isEmpty {
-            html += "<h2>Bookmarks</h2><nav>" + bookmarks.map { tile(url: $0.url, title: $0.title) }.joined() + "</nav>"
+            let items = bookmarks.map { tile(url: $0.url, title: $0.title) }
+            html += "<h2>Bookmarks</h2><nav>" + items.joined() + "</nav>"
         }
         if !frequent.isEmpty {
-            html += "<h2>Frequently Visited</h2><nav>" + frequent.map {
-                tile(url: $0.url, title: $0.title?.isEmpty == false ? $0.title! : HistoryStore.bare($0.url))
-            }.joined() + "</nav>"
+            let items = frequent.map { page -> String in
+                let title = page.title ?? ""
+                return tile(url: page.url, title: title.isEmpty ? HistoryStore.bare(page.url) : title)
+            }
+            html += "<h2>Frequently Visited</h2><nav>" + items.joined() + "</nav>"
         }
         return html
     }
