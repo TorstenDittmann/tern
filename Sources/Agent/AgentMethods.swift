@@ -210,10 +210,18 @@ enum AgentMethods {
         guard mode != "none" else { return }
         let timeout = (try p.number("timeoutMs") ?? 30_000) / 1000
         let deadline = Date().addingTimeInterval(timeout)
-        let before = tab.loadsEnded
-        var sawLoading = false
+        let before = tab.loadsEnded, started = Date()
+        // The previous page's didFinish can land just after its isLoading went false, so only a
+        // load that ends after this one was seen starting counts.
+        var startedAt: Int?
         while true {
-            if tab.isLoading { sawLoading = true } else if sawLoading || tab.loadsEnded > before { break }
+            if tab.isLoading {
+                if startedAt == nil { startedAt = tab.loadsEnded }
+            } else if let startedAt {
+                if tab.loadsEnded > startedAt { break }
+            } else if tab.loadsEnded > before, Date() > started.addingTimeInterval(0.3) {
+                break // started and ended between two polls
+            }
             guard Date() < deadline else { throw AgentError.timeout("\(tab.currentURL?.absoluteString ?? "the page") to load") }
             try await Task.sleep(for: .milliseconds(25))
         }
