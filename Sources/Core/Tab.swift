@@ -212,6 +212,7 @@ extension Tab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadsEnded += 1
+        Metrics.markPageLoaded()
         FaviconLoader.load(for: webView) { [weak self] image in
             self?.favicon = image
             if let self { self.owner?.tabDidChange(self) }

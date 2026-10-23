@@ -102,7 +102,7 @@ Coding agents and scripts can drive Tern through a local JSON-RPC API. It's off 
 
 - It listens only on a Unix socket, `~/Library/Application Support/Tern/agent.sock`, created `0600`. Connections from other users are refused, and no network port is opened. `TERN_SOCKET` overrides the path.
 - Messages are JSON-RPC 2.0, one object per line. Calls that load a page take `wait` (`none`, `load` or `idle`) and `timeoutMs`.
-  - **Browser:** `tern.hello`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload` and `split`.
+  - **Browser:** `tern.hello`, `tern.metrics`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload` and `split`.
   - **Page:** `page.snapshot` returns the page as a compact outline, with a ref such as `e12` on every element you can act on. `page.click`, `type`, `press`, `select` and `scroll` act on those refs. `page.text` returns text, Markdown or HTML, `page.eval` runs JavaScript, `page.waitFor` waits for text, a selector or a URL, `page.screenshot` saves a PNG, and `page.audit` runs basic accessibility checks.
   - **Logs:** `console.read` returns what a page logged, including uncaught errors and unhandled rejections. `network.list` returns its fetch and XHR requests with status and timing. Each tab keeps the last 500 of each, and `since` (the `last` of an earlier read) pages through newer entries, oldest first, `limit` at a time. `clear` drops everything up to the last entry a read returned.
   - **Events:** `events.subscribe` streams `tab.updated`, `console.message` and `network.request` to that connection as JSON-RPC notifications.
@@ -152,6 +152,16 @@ The tools mirror the methods: `tabs_list`, `tabs_open`, `tabs_navigate`, `page_s
 - **AppKit on the hot paths.** The tab list is a cell-reusing `NSTableView`, web views resize through autoresizing masks rather than constraints, and progress bars are drawn with layers only.
 - **Shortcuts handled before the page.** Shortcuts are matched in a local event monitor, so pages can't capture ⌘L or ⌃⇥.
 
+### Benchmarks
+
+`make bench` builds a Release Tern and measures it through the agent API, using the same local test site as `make smoke`:
+
+- **Launch:** five launches, timed from process start to the first window and to the first page finishing its load (median).
+- **Memory:** Tern's footprint plus its WebContent processes with one tab, then again after opening ten more, as MB per extra tab.
+- **Tab switch** and **palette open:** 30 samples each, as median and p95. Each one is timed in the app until Tern has redrawn its windows. Page content composites in WebKit's own process and isn't included.
+
+Each launch is isolated, as in the smoke test: one window, and no saved session or extensions. Results go to `build/bench/results.json`. `make bench SAVE=1` also saves them as a baseline, and later runs show the change against it. `tern call tern.metrics` returns the same launch and memory numbers from a running Tern.
+
 ## Settings
 
 ```sh
@@ -169,7 +179,8 @@ defaults write dev.tern.browser suspendAfter 600                                
 | `Sources/Agent` | The agent API: socket server, JSON-RPC dispatch, and the methods |
 | `Sources/CLI` | The `tern` command-line client and MCP server, embedded at `Tern.app/Contents/Helpers/tern` |
 | `Sources/Extensions` | Extension discovery and loading, and the bridges WebKit uses to see tabs and windows |
-| `Sources/App` | App delegate, menus, and the smoke test |
+| `Sources/App` | App delegate, menus, the smoke test, and launch and memory metrics |
+| `Scripts` | `bench.py`, which `make bench` runs |
 | `Tests/Smoke` | Local test pages and a small MV3 extension used by `make smoke` |
 
 ## Testing

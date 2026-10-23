@@ -58,8 +58,8 @@ final class ExtensionManager: NSObject {
         let folder = unpackedFolder, paths = unpackedPaths
         let found = await Task.detached(priority: .utility) { Self.scan(folder: folder, extraPaths: paths) }.value
         available = found
-        // Smoke tests stay isolated from the user's own extensions.
-        for item in found where enabledIDs.contains(item.id) && contexts[item.id] == nil && !SmokeTest.isRunning {
+        // Smoke tests and benchmarks stay isolated from the user's own extensions.
+        for item in found where enabledIDs.contains(item.id) && contexts[item.id] == nil && !SmokeTest.isRunning && !Metrics.isBenchmark {
             await load(item)
         }
         AppDelegate.shared.extensionsDidChange()

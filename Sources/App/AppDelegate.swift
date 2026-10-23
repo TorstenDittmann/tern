@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Metrics.markLaunched()
         LegacyMigration.run() // before anything reads settings or starts WebKit
         Keymap.shared.load()
         NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: self)
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         AgentServer.shared.startIfEnabled()
 
         if SmokeTest.isRunning { return SmokeTest.run() }
+        if let url = Metrics.benchmarkURL { openWindow(restoring: [Tab(url: url)]); return }
         if !SessionStore.restore(into: self) { openWindow() }
         didLaunch = true
         if !pendingURLs.isEmpty { open(pendingURLs); pendingURLs = [] }
@@ -35,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         AgentServer.shared.stop()
-        if !SmokeTest.isRunning { SessionStore.save(windows) }
+        if !SmokeTest.isRunning && !Metrics.isBenchmark { SessionStore.save(windows) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -72,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         windows.append(controller)
         controller.showWindow(nil)
+        Metrics.markWindowShown()
         controller.announceToExtensions()
         return controller
     }
