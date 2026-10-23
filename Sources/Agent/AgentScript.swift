@@ -228,9 +228,18 @@ enum AgentScript {
         const el = document.activeElement || document.body;
         const names = { enter: 'Enter', return: 'Enter', tab: 'Tab', escape: 'Escape', space: ' ', backspace: 'Backspace',
           delete: 'Delete', left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown' };
-        const k = names[key] || key;
+        // "shift+tab", "cmd+a": modifiers first, the key last.
+        const parts = key.split('+');
+        const name = parts.pop();
+        const mods = new Set(parts);
+        const k = names[name] || (name.length === 1 && mods.has('shift') ? name.toUpperCase() : name);
+        const init = {
+          key: k, bubbles: true, cancelable: true,
+          shiftKey: mods.has('shift'), ctrlKey: mods.has('ctrl') || mods.has('control'),
+          altKey: mods.has('alt') || mods.has('option') || mods.has('opt'), metaKey: mods.has('cmd') || mods.has('command') || mods.has('meta'),
+        };
         for (const type of ['keydown', 'keypress', 'keyup']) {
-          el.dispatchEvent(new KeyboardEvent(type, { key: k, bubbles: true, cancelable: true }));
+          el.dispatchEvent(new KeyboardEvent(type, init));
         }
         if (k === 'Enter' && el.form) el.form.requestSubmit();
         return true;

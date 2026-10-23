@@ -131,8 +131,10 @@ enum AgentPageMethods {
         let ref = try p.requiredString("ref")
         let values: [String]
         switch p.raw["values"] {
-        case let list as [Any]: values = list.map { "\($0)" }
+        // The CLI turns `2` into a number; NSNumber's stringValue gives "2", not "2.0".
+        case let list as [Any]: values = list.map { ($0 as? NSNumber)?.stringValue ?? "\($0)" }
         case let one as String: values = [one]
+        case let one as NSNumber: values = [one.stringValue]
         default: throw AgentError.invalidParams("values must be a string or a list of strings")
         }
         return ["selected": try await run(tab, "select", ["ref": ref, "values": values])]
