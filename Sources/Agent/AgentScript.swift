@@ -229,8 +229,10 @@ enum AgentScript {
         const names = { enter: 'Enter', return: 'Enter', tab: 'Tab', escape: 'Escape', space: ' ', backspace: 'Backspace',
           delete: 'Delete', left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown' };
         // "shift+tab", "cmd+a": modifiers first, the key last.
-        const parts = key.split('+');
-        const name = parts.pop();
+        // A trailing "+" is the plus key itself: "+", "shift++".
+        const plus = key === '+' || key.endsWith('++');
+        const parts = plus ? key.slice(0, -1).split('+').filter(Boolean) : key.split('+');
+        const name = plus ? '+' : parts.pop();
         const mods = new Set(parts);
         const k = names[name] || (name.length === 1 && mods.has('shift') ? name.toUpperCase() : name);
         const init = {
