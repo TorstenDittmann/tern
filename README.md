@@ -220,7 +220,6 @@ The test never touches your saved session or your extensions, and it exits non-z
 - No prebuilt, signed releases yet. Builds are ad-hoc signed and unsandboxed (scanning `/Applications` for extensions requires that).
 - The ⌥⌘I and ⌥⌘C shortcuts open the Web Inspector through a private WebKit API, which the Mac App Store doesn't allow. The right-click **Inspect Element** item uses public API.
 - Extension permissions are granted all at once when you turn an extension on. Per-site grants are planned.
-- No history, bookmarks, or address-bar suggestions yet.
 
 ## Contributing
 

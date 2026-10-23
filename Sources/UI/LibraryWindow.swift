@@ -20,7 +20,7 @@ final class LibraryWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let empty = NSTextField(labelWithString: "")
     private(set) var section = Section.history
     private(set) var rows: [Row] = []
-    private var observer: Any?
+    private var observers: [Any] = []
 
     private init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
@@ -33,9 +33,14 @@ final class LibraryWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         window.setFrameAutosaveName("TernLibrary")
         super.init(window: window)
         build()
-        observer = NotificationCenter.default.addObserver(forName: BookmarkStore.didChange, object: nil, queue: .main) { [weak self] _ in
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: BookmarkStore.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { if self?.section == .bookmarks { self?.reload() } }
-        }
+        })
+        // History changes constantly while you browse, so catch up whenever the window comes back.
+        observers.append(center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { if self?.section == .history { self?.reload() } }
+        })
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -109,7 +114,10 @@ final class LibraryWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         switch section {
         case .history:
             all = HistoryStore.shared.entries.values.sorted { $0.lastVisit > $1.lastVisit }
-                .map { Row(url: $0.url, title: $0.title?.isEmpty == false ? $0.title! : HistoryStore.bare($0.url), date: $0.lastVisit) }
+                .map { entry -> Row in
+                    let title = entry.title ?? ""
+                    return Row(url: entry.url, title: title.isEmpty ? HistoryStore.bare(entry.url) : title, date: entry.lastVisit)
+                }
         case .bookmarks:
             all = BookmarkStore.shared.all.map { Row(url: $0.url, title: $0.title, date: $0.added) }
         }
