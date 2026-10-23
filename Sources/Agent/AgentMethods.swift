@@ -15,6 +15,7 @@ enum AgentMethods {
 
     private static let browserMethods: [String: Handler] = [
         "tern.hello": hello,
+        "tern.metrics": metrics,
         "commands.list": listCommands,
         "commands.run": runCommand,
         "windows.list": listWindows,
@@ -59,6 +60,27 @@ enum AgentMethods {
         return info
     }
 
+    /// Launch timings and memory, for benchmarks.
+    private static func metrics(_ p: AgentParams) async throws -> Any {
+        let tabs = AppDelegate.shared.allTabs
+        let result: [String: Any] = [
+            "launch": Metrics.launch(),
+            "memory": Metrics.memory(),
+            "tabs": tabs.count,
+            "loadedTabs": tabs.filter { $0.webView != nil }.count,
+        ]
+        return result
+    }
+
+    /// Runs `action` and draws the windows it changed, returning how long that took in ms.
+    /// Page content composites asynchronously in WebKit's own process and isn't included.
+    private static func timed(_ action: () -> Void) -> Double {
+        let start = DispatchTime.now()
+        action()
+        for window in NSApp.windows where window.isVisible { window.displayIfNeeded() }
+        return (Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 10_000).rounded() / 100
+    }
+
     private static func listCommands(_ p: AgentParams) async throws -> Any {
         Command.allCases.map { command -> [String: Any] in
             [
@@ -75,8 +97,8 @@ enum AgentMethods {
         let browser = try p.string("windowId").map(window) ?? currentBrowser
         if let tab = browser?.activeTab, command.actsOnActiveTab { try checkControl(tab) }
         if command == .closeWindow { try browser?.tabs.forEach(checkControl) } // every tab in it goes
-        CommandRouter.perform(command, in: browser)
-        return ["ok": true]
+        let duration = timed { CommandRouter.perform(command, in: browser) }
+        return ["ok": true, "durationMs": duration]
     }
 
     // MARK: windows
@@ -117,9 +139,13 @@ enum AgentMethods {
 
     private static func activateTab(_ p: AgentParams) async throws -> Any {
         let tab = try findTab(p, required: true)
-        tab.owner?.activate(tab)
-        tab.owner?.window?.makeKeyAndOrderFront(nil)
-        return describe(tab)
+        let duration = timed {
+            tab.owner?.activate(tab)
+            tab.owner?.window?.makeKeyAndOrderFront(nil)
+        }
+        var result = describe(tab)
+        result["durationMs"] = duration
+        return result
     }
 
     private static func closeTab(_ p: AgentParams) async throws -> Any {

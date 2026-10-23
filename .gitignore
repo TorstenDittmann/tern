@@ -9,3 +9,6 @@ Sources/App/Info.plist
 .DS_Store
 *.xcuserstate
 xcuserdata/
+
+# Python bytecode (Scripts/bench.py)
+__pycache__/

@@ -221,6 +221,12 @@ enum SmokeTest {
         let hello = await tern(["hello"])
         check(hello.status == 0 && (hello.json?["apiVersion"] as? Int) == 1, "tern hello (\(hello.out.prefix(80)))")
 
+        let metrics = await tern(["call", "tern.metrics"])
+        let launch = metrics.json?["launch"] as? [String: Any], memory = metrics.json?["memory"] as? [String: Any]
+        check(launch?["firstPageMs"] is Double && (memory?["appMB"] as? Double ?? 0) > 0
+              && ((memory?["webProcesses"] as? [Any])?.isEmpty == false),
+              "tern.metrics reports launch timings and memory (\(metrics.out.prefix(160)))")
+
         let opened = await tern(["tabs", "open", "\(base)/one.html", "--windowId", browser.id.uuidString])
         let id = opened.json?["id"] as? String ?? ""
         check(opened.json?["title"] as? String == "Page One" && opened.json?["openedByAgent"] as? Bool == true,
