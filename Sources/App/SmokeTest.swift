@@ -263,6 +263,41 @@ enum SmokeTest {
         defaults.set(previous, forKey: "agentOwnTabsOnly")
 
         await agentPage(browser: browser, base: base)
+        await agentLogs(browser: browser, base: base)
+    }
+
+    /// console.*, network.*, events.*, and the "agent is driving" marking.
+    private static func agentLogs(browser: BrowserWindowController, base: String) async {
+        let opened = await tern(["tabs", "open", "\(base)/form.html", "--windowId", browser.id.uuidString])
+        let id = opened.json?["id"] as? String ?? ""
+
+        async let streamed = tern(["events", "subscribe", "console.message", "--count", "1", "--timeoutMs", "10000"])
+        for _ in 0..<50 where !AgentServer.shared.hasSubscribers { try? await Task.sleep(nanoseconds: 100_000_000) }
+        check(AgentServer.shared.hasSubscribers && AgentActivity.shared.isActive, "events subscribe keeps a listener connected")
+
+        _ = await tern(["page", "eval", "console.warn('tern-warn', {a: 1}); fetch('one.html').then(r => r.status)", "--tabId", id])
+        _ = await tern(["page", "eval", "fetch('missing.html').then(r => r.status)", "--tabId", id])
+        _ = await tern(["page", "eval", "setTimeout(() => { throw new Error('tern-uncaught') }, 0); 1", "--tabId", id])
+        let tab = browser.tabs.first { $0.id.uuidString == id }
+        check(tab?.isAgentDriving == true, "a tab an agent acts on is marked as driven")
+        try? await Task.sleep(nanoseconds: 500_000_000)
+
+        let warn = await tern(["console", "read", "--tabId", id, "--level", "warn"])
+        check(warn.out.contains("[warn] tern-warn {\"a\":1}"), "console read captures console.warn (\(warn.out.prefix(80)))")
+        let errors = await tern(["console", "read", "--tabId", id, "--level", "error", "--json"])
+        check(errors.out.contains("tern-uncaught"), "console read captures uncaught errors")
+        let net = await tern(["network", "list", "--tabId", id, "--json"])
+        check(net.out.contains("one.html") && net.out.contains("\"status\" : 200"), "network list records fetch requests")
+        let failed = await tern(["network", "list", "--tabId", id, "--failedOnly", "true"])
+        check(failed.out.contains("404") && !failed.out.contains("one.html"), "network list --failedOnly (\(failed.out.prefix(80)))")
+        let since = (net.json?["last"] as? Int).map(String.init) ?? "0"
+        let none = await tern(["network", "list", "--tabId", id, "--since", since, "--json"])
+        check((none.json?["entries"] as? [Any])?.isEmpty == true, "network list --since skips entries already read")
+
+        let events = await streamed
+        check(events.status == 0 && events.out.contains("console.message") && events.out.contains("tern-warn"),
+              "events subscribe streams console messages")
+        _ = await tern(["tabs", "close", id])
     }
 
     /// page.*: snapshot, refs, native input, eval, text, audit, screenshot, waitFor, stale refs.

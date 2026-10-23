@@ -21,6 +21,9 @@ examples:
   tern page click e12
   tern page type e3 "ada@example.com" --submit true
   tern page screenshot shot.png
+  tern console read --level error        what the page logged (also uncaught errors)
+  tern network list --failedOnly true    fetch/XHR requests the page made
+  tern events subscribe console.message  stream events as JSON lines (--count n, --timeoutMs ms)
 
 Turn the API on with "Enable Agent API" in Tern's command palette (⌘K).
 """
@@ -34,6 +37,7 @@ let positionalParams: [String: [String]] = [
     "page.click": ["ref"], "page.type": ["ref", "text"], "page.press": ["key"],
     "page.select": ["ref", "values"], "page.scroll": ["ref"], "page.eval": ["js"],
     "page.waitFor": ["text"], "page.text": ["format"], "page.screenshot": ["path"],
+    "network.list": ["urlMatches"], "events.subscribe": ["events"], "events.unsubscribe": ["events"],
 ]
 
 /// Results whose main content is text print it as-is (a snapshot reads better than escaped JSON).
@@ -62,6 +66,11 @@ func value(_ raw: String) -> Any {
 
 var args = Array(CommandLine.arguments.dropFirst())
 var plain = false, json = false
+var eventCount: Int?
+if let i = args.firstIndex(of: "--count"), i + 1 < args.count {
+    eventCount = Int(args[i + 1])
+    args.removeSubrange(i...(i + 1))
+}
 args.removeAll { arg in
     switch arg {
     case "--plain": plain = true; return true
@@ -148,6 +157,12 @@ guard let fd = connectSocket(path) else {
     fail("Can't reach Tern at \(path).\nIs Tern running, with \"Enable Agent API\" turned on in the command palette (⌘K)?", code: 2)
 }
 
+// A subscription with timeoutMs stops listening once that long passes without an event.
+if method == "events.subscribe", let ms = params["timeoutMs"] as? Double {
+    var limit = timeval(tv_sec: Int(ms / 1000), tv_usec: Int32(ms.truncatingRemainder(dividingBy: 1000) * 1000))
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &limit, socklen_t(MemoryLayout<timeval>.size))
+}
+
 let request: [String: Any] = ["jsonrpc": "2.0", "id": 1, "method": method, "params": params]
 var line = (try? JSONSerialization.data(withJSONObject: request)) ?? Data()
 line.append(0x0A)
@@ -160,24 +175,55 @@ line.withUnsafeBytes { raw in
     }
 }
 
-var response = Data()
-var chunk = [UInt8](repeating: 0, count: 64 * 1024)
-while !response.contains(0x0A) {
-    let n = read(fd, &chunk, chunk.count)
-    if n <= 0 { fail("Tern closed the connection without replying") }
-    response.append(contentsOf: chunk[0..<n])
+/// Reads one newline-terminated message, keeping anything after it for the next call.
+var pending = Data()
+func readMessage(from fd: Int32) -> Data? {
+    var chunk = [UInt8](repeating: 0, count: 64 * 1024)
+    while true {
+        if let newline = pending.firstIndex(of: 0x0A) {
+            let line = Data(pending[pending.startIndex..<newline])
+            pending.removeSubrange(pending.startIndex...newline)
+            return line
+        }
+        let n = read(fd, &chunk, chunk.count)
+        if n <= 0 { return nil }
+        pending.append(contentsOf: chunk[0..<n])
+    }
 }
-close(fd)
+
+// Events can arrive just before the reply to `events.subscribe`; keep them for the stream below.
+var early: [Data] = []
+var reply: [String: Any] = [:]
+while true {
+    guard let message = readMessage(from: fd) else { fail("Tern closed the connection without replying") }
+    guard let object = try? JSONSerialization.jsonObject(with: message) as? [String: Any] else {
+        fail("Tern sent a reply that isn't JSON")
+    }
+    if object["id"] == nil { early.append(message); continue }
+    reply = object
+    break
+}
 
 // MARK: Output
 
-guard let reply = try? JSONSerialization.jsonObject(with: response) as? [String: Any] else {
-    fail("Tern sent a reply that isn't JSON")
-}
 if let error = reply["error"] as? [String: Any] {
     fail("error \(error["code"] ?? ""): \(error["message"] ?? "unknown")")
 }
 let result = reply["result"] ?? NSNull()
+
+// `events subscribe` keeps the connection open and prints each notification as one JSON line.
+if method == "events.subscribe" {
+    FileHandle.standardError.write(Data("Listening for \((result as? [String: Any])?["subscribed"] ?? "events")…\n".utf8))
+    var received = 0
+    while eventCount.map({ received < $0 }) ?? true, let line = early.isEmpty ? readMessage(from: fd) : early.removeFirst() {
+        print(String(decoding: line, as: UTF8.self))
+        fflush(stdout)
+        received += 1
+    }
+    close(fd)
+    exit(0)
+}
+close(fd)
 
 func text(_ v: Any) -> String {
     switch v {
@@ -193,6 +239,17 @@ func text(_ v: Any) -> String {
 if !json, let object = result as? [String: Any],
    let key = textResultKeys.first(where: { object[$0] is String }) {
     print(object[key] as! String)
+} else if !json, method == "console.read" || method == "network.list",
+          let entries = (result as? [String: Any])?["entries"] as? [[String: Any]] {
+    // One line per entry, like a log.
+    for e in entries {
+        if method == "console.read" {
+            print("[\(e["level"].map(text) ?? "log")] \(e["text"].map(text) ?? "")")
+        } else {
+            let failure = (e["error"] as? String).map { "  (\($0))" } ?? ""
+            print("\(e["status"].map(text) ?? "-") \(e["method"].map(text) ?? "") \(e["url"].map(text) ?? "")  \(e["durationMs"].map(text) ?? "?")ms\(failure)")
+        }
+    }
 } else if plain {
     // One line per item: the fields people scan for, tab-separated.
     let columns = ["id", "name", "title", "binding", "url"]

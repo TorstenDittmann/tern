@@ -24,6 +24,8 @@ final class SidebarViewController: NSViewController {
     private var windowObservers: [NSObjectProtocol] = []
     private var isSyncingSelection = false
     private var actionButtons: [ObjectIdentifier: ExtensionActionButton] = [:]
+    private let agentPill = AgentPill()
+    private var agentObserver: NSObjectProtocol?
 
     private var tabs: [Tab] { browser?.tabs ?? [] }
 
@@ -66,7 +68,11 @@ final class SidebarViewController: NSViewController {
         let newTab = NewTabButton(target: self, action: #selector(newTabClicked))
         extensionStack.orientation = .horizontal
         extensionStack.spacing = 2
-        let bottom = NSStackView(views: [newTab, NSView(), extensionStack])
+        agentPill.isHidden = !AgentActivity.shared.isActive
+        agentObserver = NotificationCenter.default.addObserver(forName: AgentActivity.changed, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.agentPill.isHidden = !AgentActivity.shared.isActive }
+        }
+        let bottom = NSStackView(views: [newTab, agentPill, NSView(), extensionStack])
         bottom.spacing = 4
         bottom.translatesAutoresizingMaskIntoConstraints = false
 
@@ -462,9 +468,11 @@ final class TabCellView: NSTableCellView {
     var isSelected = false { didSet { updateState() } }
     var isHovering = false { didSet { updateState() } }
     var isPaired = false { didSet { updateState() } }
+    private var isAgentDriving = false
 
     private let icon = NSImageView()
     private let pairIcon = NSImageView(image: Theme.symbol("rectangle.split.2x1", size: 11, weight: .medium)!)
+    private let agentIcon = NSImageView(image: Theme.symbol("cursorarrow.rays", size: 11, weight: .semibold)!)
     private let title = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     private let closeButton = NSButton()
@@ -493,7 +501,9 @@ final class TabCellView: NSTableCellView {
 
         pairIcon.contentTintColor = .tertiaryLabelColor
         pairIcon.toolTip = "In split view"
-        for v in [icon, spinner, title, closeButton, pairIcon] as [NSView] {
+        agentIcon.contentTintColor = AgentRingView.color
+        agentIcon.toolTip = "An agent is driving this tab"
+        for v in [icon, spinner, title, closeButton, pairIcon, agentIcon] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -517,6 +527,8 @@ final class TabCellView: NSTableCellView {
             closeButton.heightAnchor.constraint(equalToConstant: 18),
             pairIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
             pairIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            agentIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
+            agentIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         updateState()
     }
@@ -533,12 +545,14 @@ final class TabCellView: NSTableCellView {
         if tab.isLoading { spinner.startAnimation(nil); icon.isHidden = true }
         else { spinner.stopAnimation(nil); icon.isHidden = false }
         suspended = tab.isSuspended
+        isAgentDriving = tab.isAgentDriving
         updateState()
     }
 
     private func updateState() {
         closeButton.isHidden = !(isHovering || isSelected)
-        pairIcon.isHidden = !isPaired || !closeButton.isHidden
+        agentIcon.isHidden = !isAgentDriving || !closeButton.isHidden
+        pairIcon.isHidden = !isPaired || !closeButton.isHidden || !agentIcon.isHidden
         title.font = .systemFont(ofSize: 13, weight: isSelected ? .medium : .regular)
         title.textColor = isSelected ? .labelColor : (suspended ? .tertiaryLabelColor : .secondaryLabelColor)
         // Suspended tabs are dimmed: they cost no memory until opened.
@@ -549,6 +563,34 @@ final class TabCellView: NSTableCellView {
 }
 
 // MARK: - Bottom bar
+
+/// "Agent connected": shown while an agent drives a tab or listens for events.
+final class AgentPill: FilledView {
+    init() {
+        super.init(frame: .zero)
+        fill = AgentRingView.color.withAlphaComponent(0.15)
+        radius = 10
+        toolTip = "A coding agent is using Tern through the agent API"
+        let dot = FilledView()
+        dot.fill = AgentRingView.color
+        dot.radius = 3
+        let label = NSTextField(labelWithString: "Agent connected")
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = AgentRingView.color
+        let stack = NSStackView(views: [dot, label])
+        stack.spacing = 5
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 9)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            dot.widthAnchor.constraint(equalToConstant: 6), dot.heightAnchor.constraint(equalToConstant: 6),
+            stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            heightAnchor.constraint(equalToConstant: 20),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
 
 final class NewTabButton: NSButton {
     private var hovering = false { didSet { needsDisplay = true } }

@@ -59,6 +59,7 @@ final class ContentViewController: NSViewController {
                 card.clip.addSubview(webView, positioned: .below, relativeTo: card.progress)
             }
             card.isFocusedPane = tabs.count > 1 && i < tabs.count && tabs[i] === focused
+            card.agentRing.isShown = i < tabs.count && tabs[i].isAgentDriving
             if i < tabs.count { card.progress.set(progress: tabs[i].progress, visible: tabs[i].isLoading) }
         }
         focusedWebView = focused.webView
@@ -67,6 +68,7 @@ final class ContentViewController: NSViewController {
     func update(for tab: Tab) {
         guard let i = shown.firstIndex(of: tab) else { return }
         panes.cards[i].progress.set(progress: tab.progress, visible: tab.isLoading)
+        panes.cards[i].agentRing.isShown = tab.isAgentDriving
     }
 
     // MARK: Find
@@ -164,6 +166,7 @@ final class PanesView: NSView {
 final class CardView: NSView {
     let clip = FilledView()
     let progress = ProgressLine()
+    let agentRing = AgentRingView()
 
     /// In split view the pane with keyboard focus gets an accent ring.
     var isFocusedPane = false {
@@ -179,9 +182,13 @@ final class CardView: NSView {
         clip.layer?.masksToBounds = true
         clip.translatesAutoresizingMaskIntoConstraints = false
         progress.translatesAutoresizingMaskIntoConstraints = false
+        agentRing.translatesAutoresizingMaskIntoConstraints = false
         addSubview(clip)
+        addSubview(agentRing)
         clip.addSubview(progress)
         NSLayoutConstraint.activate([
+            agentRing.topAnchor.constraint(equalTo: topAnchor), agentRing.bottomAnchor.constraint(equalTo: bottomAnchor),
+            agentRing.leadingAnchor.constraint(equalTo: leadingAnchor), agentRing.trailingAnchor.constraint(equalTo: trailingAnchor),
             clip.topAnchor.constraint(equalTo: topAnchor), clip.bottomAnchor.constraint(equalTo: bottomAnchor),
             clip.leadingAnchor.constraint(equalTo: leadingAnchor), clip.trailingAnchor.constraint(equalTo: trailingAnchor),
             progress.topAnchor.constraint(equalTo: clip.topAnchor),
@@ -204,6 +211,61 @@ final class CardView: NSView {
         layer?.shadowOpacity = effectiveAppearance.isDark ? 0.35 : 0.10
         layer?.shadowRadius = 6
         layer?.shadowOffset = CGSize(width: 0, height: -1)
+    }
+}
+
+/// A colored ring and a "Agent is driving" tag around a card an agent is acting on.
+/// Purely visual: clicks go through to the page.
+final class AgentRingView: NSView {
+    static let color = NSColor.systemPurple
+
+    private let tag = NSTextField(labelWithString: "Agent is driving")
+
+    var isShown = false {
+        didSet {
+            guard isShown != oldValue else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = isShown ? 0.15 : 0.4
+                animator().alphaValue = isShown ? 1 : 0
+            }
+        }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        alphaValue = 0
+        tag.font = .systemFont(ofSize: 11, weight: .semibold)
+        tag.textColor = .white
+        tag.alignment = .center
+        tag.wantsLayer = true
+        tag.drawsBackground = false
+        let pill = FilledView()
+        pill.fill = Self.color
+        pill.radius = 9
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        tag.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(pill)
+        pill.addSubview(tag)
+        NSLayoutConstraint.activate([
+            pill.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            pill.centerXAnchor.constraint(equalTo: centerXAnchor),
+            pill.heightAnchor.constraint(equalToConstant: 18),
+            tag.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 8),
+            tag.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -8),
+            tag.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        layer?.cornerRadius = Theme.cardRadius
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 2.5
+        layer?.borderColor = Self.color.cgColor
     }
 }
 
