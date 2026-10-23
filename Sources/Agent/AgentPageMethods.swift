@@ -144,15 +144,25 @@ enum AgentPageMethods {
         let tab = try AgentMethods.findTab(p)
         try AgentMethods.checkControl(tab)
         let js = try p.requiredString("js")
-        let body = js.range(of: #"\breturn\b"#, options: .regularExpression) != nil ? js : "return (\n\(js)\n);"
-        let wrapped = """
+        let usesReturn = js.range(of: #"\breturn\b"#, options: .regularExpression) != nil
+        let webView = try await ready(tab)
+        let args: [String: Any] = ["args": p.raw["args"] ?? NSNull()]
+        guard !usesReturn else { return try await callJS(webView, evalWrapper(js), args, in: .page) }
+        do {
+            return try await callJS(webView, evalWrapper("return (\n\(js)\n);"), args, in: .page)
+        } catch let error as AgentError where error.message.contains("SyntaxError") {
+            // Statements (`throw …`, `if …`) don't parse as an expression; run them as a body instead.
+            return try await callJS(webView, evalWrapper(js), args, in: .page)
+        }
+    }
+
+    private static func evalWrapper(_ body: String) -> String {
+        """
         const __ternResult = await (async () => {
         \(body)
         })();
         return __ternResult === undefined ? null : __ternResult;
         """
-        let webView = try await ready(tab)
-        return try await callJS(webView, wrapped, ["args": p.raw["args"] ?? NSNull()], in: .page)
     }
 
     private static func waitFor(_ p: AgentParams) async throws -> Any {

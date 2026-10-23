@@ -310,7 +310,7 @@ enum SmokeTest {
         let png = (shot.json?["path"] as? String).flatMap { FileManager.default.contents(atPath: $0) }
         check(png?.starts(with: [0x89, 0x50, 0x4E, 0x47]) == true, "page screenshot writes a PNG")
         let bad = await tern(["page", "eval", "throw new Error('boom')", "--tabId", id])
-        check(bad.status == 1 && bad.out.contains("-32004") && bad.out.contains("boom"), "page eval reports JS errors")
+        check(bad.status == 1 && bad.out.contains("-32004") && bad.out.contains("boom"), "page eval reports JS errors (\(bad.out))")
 
         let followed = await tern(["page", "click", link, "--tabId", id])
         check(followed.json?["title"] as? String == "Page Two", "clicking a link waits for the new page")
