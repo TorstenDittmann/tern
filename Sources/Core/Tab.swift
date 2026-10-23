@@ -22,6 +22,8 @@ final class Tab: NSObject {
     lazy var agentLog = AgentTabLog()
     /// An agent acted on this tab in the last few seconds; the UI rings it.
     var isAgentDriving = false
+    /// Pinned tabs stay at the top of the list, in their own block, and survive "Close Other Tabs".
+    var isPinned = false
 
     private var pendingState: Any?
     private var observations: [NSKeyValueObservation] = []

@@ -116,6 +116,7 @@ enum SmokeTest {
         check(browser.visibleTabs.count == 2, "split with previous tab")
         CommandRouter.perform(.toggleSplit, in: browser)
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
+        await tabList(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
@@ -213,6 +214,35 @@ enum SmokeTest {
         }
     }
 
+    /// Pinned tabs and the keyboard tab list (⌘E).
+    private static func tabList(browser: BrowserWindowController, base: String) async {
+        let plain = browser.newTab(url: URL(string: "\(base)/one.html?pin"))
+        let pinned = browser.newTab(url: URL(string: "\(base)/two.html?filtered"))
+        await wait { !plain.isLoading && pinned.pageTitle == "Page Two" && !pinned.isLoading }
+        browser.setPinned(pinned, true)
+        check(browser.tabs.first === pinned && pinned.isPinned, "pinning moves a tab to the top")
+        if let i = browser.tabs.firstIndex(of: plain) { browser.moveTab(from: i, to: 0) }
+        check(browser.tabs.first === pinned && browser.tabs[1] === plain, "unpinned tabs stay below pinned ones")
+
+        browser.activate(plain)
+        CommandRouter.perform(.focusTabList, in: browser)
+        let sidebar = browser.sidebar
+        check(sidebar.isTabListFocused, "⌘E focuses the tab list")
+        func key(_ chars: String, code: UInt16 = 0) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: browser.window?.windowNumber ?? 0,
+                             context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+        }
+        for c in "filtered" { _ = sidebar.handleTabListKey(key(String(c))) }
+        check(sidebar.visibleRowCount == 1, "typing filters the tab list (\(sidebar.visibleRowCount) rows)")
+        _ = sidebar.handleTabListKey(key("\r", code: 36))
+        check(browser.activeTab === pinned && !sidebar.isTabListFocused, "↩ opens the filtered tab and leaves the list")
+
+        browser.setPinned(pinned, false)
+        check(!pinned.isPinned && browser.pinnedCount == 0, "unpinning")
+        browser.close(plain)
+        browser.close(pinned)
+    }
+
     /// Drives the agent API through the embedded `tern` CLI, the way an agent would.
     private static func agentAPI(browser: BrowserWindowController, base: String) async {
         guard AgentServer.shared.isRunning else { return check(false, "agent API listening (TERN_SOCKET set by make smoke)") }
@@ -235,6 +265,10 @@ enum SmokeTest {
 
         let list = await tern(["tabs", "list", "--plain"])
         check(list.status == 0 && list.out.contains(id), "tabs list --plain")
+        let pin = await tern(["tabs", "pin", id])
+        let unpin = await tern(["tabs", "pin", id, "--pinned", "false"])
+        check(pin.json?["pinned"] as? Bool == true && pin.json?["index"] as? Int == 0 && unpin.json?["pinned"] as? Bool == false,
+              "tabs pin (\(pin.out.prefix(80)))")
 
         let nav = await tern(["tabs", "navigate", "\(base)/two.html", "--tabId", id])
         let history = await tern(["history", "search", "Page Two", "--json"])

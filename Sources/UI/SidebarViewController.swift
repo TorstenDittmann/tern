@@ -28,8 +28,17 @@ final class SidebarViewController: NSViewController {
     private var actionButtons: [ObjectIdentifier: ExtensionActionButton] = [:]
     private let agentPill = AgentPill()
     private var agentObserver: NSObjectProtocol?
+    private let filterPill = FilterPill()
+    private var filterHeight: NSLayoutConstraint!
+    private var filterGap: NSLayoutConstraint!
 
     private var tabs: [Tab] { browser?.tabs ?? [] }
+    /// The tabs the list shows: all of them, or those matching the filter while the tab list has focus.
+    private var rows: [Tab] = []
+    private var filter = ""
+    /// ⌘E: the tab list has keyboard focus. Typing filters, ↑↓ move, ↩ opens, ⌘⌫ closes, esc leaves.
+    private(set) var isTabListFocused = false
+    var visibleRowCount: Int { rows.count }
 
     override func loadView() {
         let root = NSView()
@@ -55,6 +64,14 @@ final class SidebarViewController: NSViewController {
         tableView.draggingDestinationFeedbackStyle = .gap
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         tableView.onMiddleClick = { [weak self] row in self?.closeTab(atRow: row) }
+        tableView.onKey = { [weak self] event in self?.handleTabListKey(event) ?? false }
+        tableView.onResign = { [weak self] in
+            // Clicking the page or the address bar ends keyboard mode.
+            DispatchQueue.main.async {
+                guard let self, self.isTabListFocused, self.view.window?.firstResponder !== self.tableView else { return }
+                self.leaveTabList(focusPage: false)
+            }
+        }
         tableView.menu = makeContextMenu()
 
         let scroll = NSScrollView()
@@ -78,10 +95,14 @@ final class SidebarViewController: NSViewController {
         bottom.spacing = 4
         bottom.translatesAutoresizingMaskIntoConstraints = false
 
-        for v in [nav, addressPill, scroll, bottom] as [NSView] { root.addSubview(v) }
+        filterPill.isHidden = true
+        for v in [nav, addressPill, filterPill, scroll, bottom] as [NSView] { root.addSubview(v) }
+        filterPill.translatesAutoresizingMaskIntoConstraints = false
         addressPill.translatesAutoresizingMaskIntoConstraints = false
 
         let inset: CGFloat = 10
+        filterHeight = filterPill.heightAnchor.constraint(equalToConstant: 0)
+        filterGap = scroll.topAnchor.constraint(equalTo: filterPill.bottomAnchor, constant: 0)
         navTop = nav.topAnchor.constraint(equalTo: root.topAnchor, constant: 2)
         navLeading = nav.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 78) // traffic lights
         NSLayoutConstraint.activate([
@@ -95,7 +116,11 @@ final class SidebarViewController: NSViewController {
             addressPill.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
             addressPill.heightAnchor.constraint(equalToConstant: 34),
 
-            scroll.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 12),
+            filterPill.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 12),
+            filterPill.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
+            filterPill.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
+            filterHeight,
+            filterGap,
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
             scroll.bottomAnchor.constraint(equalTo: bottom.topAnchor, constant: -6),
@@ -143,12 +168,21 @@ final class SidebarViewController: NSViewController {
     // MARK: Updates from the window
 
     func reloadTabs() {
+        let highlighted = tableView.selectedRow
+        refreshRows()
         tableView.reloadData()
-        syncSelection()
+        if isTabListFocused { highlight(row: min(max(highlighted, 0), rows.count - 1)) } else { syncSelection() }
+    }
+
+    private func refreshRows() {
+        rows = filter.isEmpty ? tabs : tabs.filter { tab in
+            CommandPalette.score(filter, tab.displayTitle) != nil
+                || CommandPalette.score(filter, HistoryStore.bare(tab.currentURL?.absoluteString ?? "")) != nil
+        }
     }
 
     func reload(_ tab: Tab) {
-        guard let row = tabs.firstIndex(of: tab) else { return }
+        guard let row = rows.firstIndex(of: tab) else { return }
         if let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TabCellView {
             cell.configure(with: tab)
         }
@@ -156,7 +190,7 @@ final class SidebarViewController: NSViewController {
     }
 
     func activeTabDidChange() {
-        syncSelection()
+        if !isTabListFocused { syncSelection() }
         updateChrome()
         updateExtensionActions()
     }
@@ -166,7 +200,13 @@ final class SidebarViewController: NSViewController {
     }
 
     private func syncSelection() {
-        guard let active = browser?.activeTab, let row = tabs.firstIndex(of: active) else { return }
+        guard let active = browser?.activeTab, let row = rows.firstIndex(of: active) else { return }
+        highlight(row: row)
+    }
+
+    /// Selects a row without activating its tab.
+    private func highlight(row: Int) {
+        guard rows.indices.contains(row) else { return tableView.deselectAll(nil) }
         isSyncingSelection = true
         tableView.selectRowIndexes([row], byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
@@ -174,6 +214,75 @@ final class SidebarViewController: NSViewController {
         for r in 0..<tableView.numberOfRows {
             (tableView.view(atColumn: 0, row: r, makeIfNecessary: false) as? TabCellView)?.isSelected = (r == row)
         }
+    }
+
+    // MARK: Keyboard tab list
+
+    func focusTabList() {
+        isTabListFocused = true
+        tableView.acceptsKeys = true
+        setFilter("")
+        filterPill.isHidden = false
+        filterHeight.constant = 28
+        filterGap.constant = 6
+        view.window?.makeFirstResponder(tableView)
+        if let active = browser?.activeTab, let row = rows.firstIndex(of: active) { highlight(row: row) }
+    }
+
+    func leaveTabList(focusPage: Bool) {
+        guard isTabListFocused else { return }
+        isTabListFocused = false
+        tableView.acceptsKeys = false
+        filter = ""
+        filterPill.isHidden = true
+        filterHeight.constant = 0
+        filterGap.constant = 0
+        reloadTabs()
+        if focusPage, let webView = browser?.activeTab?.webView { view.window?.makeFirstResponder(webView) }
+    }
+
+    private func setFilter(_ text: String) {
+        filter = text
+        filterPill.text = text
+        refreshRows()
+        tableView.reloadData()
+        let activeRow = browser?.activeTab.flatMap { rows.firstIndex(of: $0) }
+        highlight(row: text.isEmpty ? (activeRow ?? 0) : 0)
+    }
+
+    /// Keys while the tab list has focus. Returns false for keys it leaves to the responder chain.
+    func handleTabListKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let row = tableView.selectedRow
+        switch event.keyCode {
+        case 53: // esc: clear the filter, then leave
+            if filter.isEmpty { leaveTabList(focusPage: true) } else { setFilter("") }
+            return true
+        case 36, 76: // return, enter
+            guard rows.indices.contains(row) else { return true }
+            let tab = rows[row]
+            leaveTabList(focusPage: false)
+            browser?.activate(tab)
+            return true
+        case 125: highlight(row: min(row + 1, rows.count - 1)); return true // ↓
+        case 126: highlight(row: max(row - 1, 0)); return true // ↑
+        case 51, 117: // ⌫, ⌦
+            if flags.contains(.command) || event.keyCode == 117 {
+                if rows.indices.contains(row) { browser?.close(rows[row]) }
+            } else if !filter.isEmpty {
+                setFilter(String(filter.dropLast()))
+            }
+            return true
+        default: break
+        }
+        if flags == .control, let key = event.charactersIgnoringModifiers {
+            if key == "n" { highlight(row: min(row + 1, rows.count - 1)); return true }
+            if key == "p" { highlight(row: max(row - 1, 0)); return true }
+        }
+        guard flags.isDisjoint(with: [.command, .control]), let chars = event.characters, !chars.isEmpty,
+              chars.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { return false }
+        setFilter(filter + chars)
+        return true
     }
 
     private func updateChrome() {
@@ -223,8 +332,8 @@ final class SidebarViewController: NSViewController {
     @objc private func newTabClicked() { browser?.newTab(url: nil) }
 
     private func closeTab(atRow row: Int) {
-        guard tabs.indices.contains(row) else { return }
-        browser?.close(tabs[row])
+        guard rows.indices.contains(row) else { return }
+        browser?.close(rows[row])
     }
 
     // MARK: Context menu
@@ -234,6 +343,7 @@ final class SidebarViewController: NSViewController {
         let items: [(String, Selector)?] = [
             ("Open in Split View", #selector(ctxSplit)),
             nil,
+            ("Pin Tab", #selector(ctxPin)),
             ("Duplicate", #selector(ctxDuplicate)), ("Copy URL", #selector(ctxCopyURL)), ("Suspend", #selector(ctxSuspend)),
             nil,
             ("Close Tab", #selector(ctxClose)), ("Close Tabs Below", #selector(ctxCloseBelow)), ("Close Other Tabs", #selector(ctxCloseOthers)),
@@ -245,7 +355,8 @@ final class SidebarViewController: NSViewController {
         return menu
     }
 
-    private var clickedTab: Tab? { tabs.indices.contains(tableView.clickedRow) ? tabs[tableView.clickedRow] : nil }
+    private var clickedTab: Tab? { rows.indices.contains(tableView.clickedRow) ? rows[tableView.clickedRow] : nil }
+    @objc private func ctxPin() { clickedTab.map { browser?.setPinned($0, !$0.isPinned) } }
     @objc private func ctxSplit() {
         guard let browser, let clicked = clickedTab, let active = browser.activeTab else { return }
         if clicked === active { browser.toggleSplit() } else { browser.split(active, with: clicked, focus: clicked) }
@@ -265,7 +376,7 @@ final class SidebarViewController: NSViewController {
 // MARK: - Table
 
 extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
-    func numberOfRows(in tableView: NSTableView) -> Int { tabs.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         (tableView.makeView(withIdentifier: TabRowView.reuseID, owner: nil) as? TabRowView) ?? TabRowView()
@@ -273,9 +384,9 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = (tableView.makeView(withIdentifier: TabCellView.reuseID, owner: nil) as? TabCellView) ?? TabCellView()
-        let tab = tabs[row]
+        let tab = rows[row]
         cell.configure(with: tab)
-        cell.isSelected = tab.isActive
+        cell.isSelected = isTabListFocused ? row == tableView.selectedRow : tab.isActive
         cell.isPaired = browser?.isPaired(tab) ?? false
         cell.onClose = { [weak self, weak cell] in
             guard let self, let cell else { return }
@@ -285,8 +396,10 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard !isSyncingSelection, tabs.indices.contains(tableView.selectedRow) else { return }
-        browser?.activate(tabs[tableView.selectedRow])
+        guard !isSyncingSelection, rows.indices.contains(tableView.selectedRow) else { return }
+        let tab = rows[tableView.selectedRow]
+        leaveTabList(focusPage: false)
+        browser?.activate(tab)
     }
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
@@ -297,6 +410,7 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
+        guard filter.isEmpty else { return [] } // rows don't map to positions while filtered
         if op == .on { tableView.setDropRow(row, dropOperation: .above) }
         return .move
     }
@@ -427,6 +541,22 @@ final class AddressField: NSTextField {
 
 final class TabTableView: NSTableView {
     var onMiddleClick: ((Int) -> Void)?
+    /// Keys while the list has keyboard focus (⌘E); return false to pass a key on.
+    var onKey: ((NSEvent) -> Bool)?
+    var onResign: (() -> Void)?
+    /// Off except in keyboard mode, so clicking a tab leaves focus on the page.
+    var acceptsKeys = false
+
+    override func keyDown(with event: NSEvent) {
+        if acceptsKeys, onKey?(event) == true { return }
+        super.keyDown(with: event)
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let ok = super.resignFirstResponder()
+        if ok { onResign?() }
+        return ok
+    }
 
     override func otherMouseUp(with event: NSEvent) {
         guard event.buttonNumber == 2 else { return super.otherMouseUp(with: event) }
@@ -435,7 +565,7 @@ final class TabTableView: NSTableView {
     }
 
     // No focus ring / emphasized blue: selection is drawn by TabRowView.
-    override var acceptsFirstResponder: Bool { false }
+    override var acceptsFirstResponder: Bool { acceptsKeys }
 }
 
 // MARK: - Rows
@@ -493,6 +623,8 @@ final class TabCellView: NSTableCellView {
     private let icon = NSImageView()
     private let pairIcon = NSImageView(image: Theme.symbol("rectangle.split.2x1", size: 11, weight: .medium)!)
     private let agentIcon = NSImageView(image: Theme.symbol("cursorarrow.rays", size: 11, weight: .semibold)!)
+    private let pinIcon = NSImageView(image: Theme.symbol("pin.fill", size: 10, weight: .medium)!)
+    private var isPinned = false
     private let title = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     private let closeButton = NSButton()
@@ -523,7 +655,9 @@ final class TabCellView: NSTableCellView {
         pairIcon.toolTip = "In split view"
         agentIcon.contentTintColor = AgentRingView.color
         agentIcon.toolTip = "An agent is driving this tab"
-        for v in [icon, spinner, title, closeButton, pairIcon, agentIcon] as [NSView] {
+        pinIcon.contentTintColor = .tertiaryLabelColor
+        pinIcon.toolTip = "Pinned"
+        for v in [icon, spinner, title, closeButton, pairIcon, agentIcon, pinIcon] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -549,6 +683,8 @@ final class TabCellView: NSTableCellView {
             pairIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
             agentIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
             agentIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            pinIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
+            pinIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         updateState()
     }
@@ -566,6 +702,7 @@ final class TabCellView: NSTableCellView {
         else { spinner.stopAnimation(nil); icon.isHidden = false }
         suspended = tab.isSuspended
         isAgentDriving = tab.isAgentDriving
+        isPinned = tab.isPinned
         updateState()
     }
 
@@ -573,6 +710,7 @@ final class TabCellView: NSTableCellView {
         closeButton.isHidden = !(isHovering || isSelected)
         agentIcon.isHidden = !isAgentDriving || !closeButton.isHidden
         pairIcon.isHidden = !isPaired || !closeButton.isHidden || !agentIcon.isHidden
+        pinIcon.isHidden = !isPinned || !closeButton.isHidden || !agentIcon.isHidden || !pairIcon.isHidden
         title.font = .systemFont(ofSize: 13, weight: isSelected ? .medium : .regular)
         title.textColor = isSelected ? .labelColor : (suspended ? .tertiaryLabelColor : .secondaryLabelColor)
         // Suspended tabs are dimmed: they cost no memory until opened.
@@ -580,6 +718,44 @@ final class TabCellView: NSTableCellView {
     }
 
     @objc private func closeClicked() { onClose?() }
+}
+
+extension SidebarViewController: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(ctxPin) { item.title = clickedTab?.isPinned == true ? "Unpin Tab" : "Pin Tab" }
+        return true
+    }
+}
+
+/// Shown above the tab list while it has keyboard focus: the filter text, or how to use it.
+final class FilterPill: FilledView {
+    private let label = NSTextField(labelWithString: "")
+    var text = "" { didSet { update() } }
+
+    init() {
+        super.init(frame: .zero)
+        fill = Theme.fieldFill
+        radius = 8
+        let icon = NSImageView(image: Theme.symbol("line.3.horizontal.decrease", size: 11, weight: .semibold)!)
+        icon.contentTintColor = .tertiaryLabelColor
+        label.font = .systemFont(ofSize: 12)
+        label.lineBreakMode = .byTruncatingTail
+        for v in [icon, label] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        NSLayoutConstraint.activate([
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        update()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func update() {
+        label.stringValue = text.isEmpty ? "Type to filter · ↩ open · ⌘⌫ close · esc" : text
+        label.textColor = text.isEmpty ? .tertiaryLabelColor : .labelColor
+    }
 }
 
 // MARK: - Bottom bar

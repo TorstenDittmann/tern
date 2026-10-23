@@ -29,6 +29,7 @@ enum AgentMethods {
         "tabs.forward": { try await history($0, needs: \.canGoForward, "go forward to") { $0.goForward() } },
         "tabs.reload": { try await history($0) { $0.reload() } },
         "tabs.split": split,
+        "tabs.pin": pin,
         "history.search": searchHistory,
         "history.clear": { _ in HistoryStore.shared.clear(); return ["ok": true] },
     ]
@@ -200,6 +201,13 @@ enum AgentMethods {
         return describe(browser)
     }
 
+    private static func pin(_ p: AgentParams) async throws -> Any {
+        let tab = try findTab(p, required: true)
+        try checkControl(tab)
+        tab.owner?.setPinned(tab, try p.bool("pinned") ?? true)
+        return describe(tab)
+    }
+
     // MARK: history
 
     /// Pages from history, best match first (or by frecency without a query).
@@ -316,6 +324,7 @@ enum AgentMethods {
             "active": tab.isActive,
             "visible": tab.isVisible,
             "openedByAgent": agentTabs.contains(tab.id),
+            "pinned": tab.isPinned,
         ]
     }
 
@@ -335,7 +344,7 @@ private extension Command {
     var actsOnActiveTab: Bool {
         switch self {
         case .closeTab, .duplicateTab, .reload, .hardReload, .stopLoading, .goBack, .goForward,
-             .moveTabUp, .moveTabDown, .toggleSplit, .splitWith, .splitWithPreviousTab, .swapPanes,
+             .moveTabUp, .moveTabDown, .togglePinTab, .toggleSplit, .splitWith, .splitWithPreviousTab, .swapPanes,
              .zoomIn, .zoomOut, .zoomReset: true
         default: false
         }

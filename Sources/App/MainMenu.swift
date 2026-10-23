@@ -70,10 +70,11 @@ enum MainMenu {
             std("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         ]))
 
-        main.addItem(menu("History", [item(.goBack), item(.goForward)]))
+        main.addItem(menu("History", [item(.goBack), item(.goForward), .separator(), item(.clearHistory)]))
 
         main.addItem(menu("Tabs", [
-            item(.nextTab), item(.previousTab), item(.moveTabUp), item(.moveTabDown), .separator(),
+            item(.nextTab), item(.previousTab), item(.moveTabUp), item(.moveTabDown), item(.focusTabList), .separator(),
+            item(.togglePinTab),
             item(.duplicateTab), item(.suspendBackgroundTabs), .separator(),
             item(.toggleSplit), item(.splitWith), item(.splitWithPreviousTab), item(.swapPanes), item(.focusLeftPane), item(.focusRightPane), .separator(),
         ] + [Command.selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectLastTab].map(item)))

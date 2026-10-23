@@ -72,6 +72,8 @@ let mcpTools: [MCPTool] = [
     MCPTool(name: "tabs_split", method: "tabs.split", description: "Show two tabs of the same window side by side.",
             properties: ["leftTabId": string("Tab for the left pane."), "rightTabId": string("Tab for the right pane.")],
             required: ["leftTabId", "rightTabId"]),
+    MCPTool(name: "tabs_pin", method: "tabs.pin", description: "Pin a tab to the top of the tab list, or unpin it.",
+            properties: ["tabId": tabId, "pinned": boolean("false to unpin (default true).")], required: ["tabId"]),
     MCPTool(name: "page_snapshot", method: "page.snapshot",
             description: "The page as an indented outline of headings, text, links and form controls. Interactive elements get refs like e12 for page_click, page_type and friends. Refs stay valid until the page navigates.",
             properties: ["tabId": tabId, "scope": scope, "maxLines": integer("Cut the outline after this many lines.")],

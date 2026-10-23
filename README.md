@@ -10,7 +10,8 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 ## Highlights
 
 - **Native and lightweight.** Plain AppKit around `WKWebView`: no Electron and no bundled Chromium. The release build is under 1 MB.
-- **Vertical tabs.** Drag to reorder, middle-click to close, and right-click for duplicate, suspend, or close others.
+- **Vertical tabs.** Drag to reorder, middle-click to close, and right-click for pin, duplicate, suspend, or close others. Pinned tabs stay at the top.
+- **Keyboard tab list (⌘E).** Type to filter the sidebar, ↑↓ to move, ↩ to open, ⌘⌫ to close, esc to go back to the page.
 - **Split view.** Two tabs side by side, with a draggable divider. Focus follows the pane you click.
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
 - **History.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. **Clear History** in ⌘K forgets them.
@@ -52,6 +53,7 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Split with a tab, page or address | ⌥⌘\\ |
 | Swap panes | ⇧⌘\\ |
 | Focus left / right pane | ⌥⌘← / ⌥⌘→ |
+| Filter tabs in the sidebar | ⌘E |
 | Toggle sidebar | ⌘S |
 | Back / forward | ⌘[ / ⌘] |
 | Reload / ignoring cache / stop | ⌘R / ⇧⌘R / ⌘. |
@@ -104,7 +106,7 @@ Coding agents and scripts can drive Tern through a local JSON-RPC API. It's off 
 
 - It listens only on a Unix socket, `~/Library/Application Support/Tern/agent.sock`, created `0600`. Connections from other users are refused, and no network port is opened. `TERN_SOCKET` overrides the path.
 - Messages are JSON-RPC 2.0, one object per line. Calls that load a page take `wait` (`none`, `load` or `idle`) and `timeoutMs`.
-  - **Browser:** `tern.hello`, `tern.metrics`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, `history.search`, `history.clear`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload` and `split`.
+  - **Browser:** `tern.hello`, `tern.metrics`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, `history.search`, `history.clear`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload`, `split` and `pin`.
   - **Page:** `page.snapshot` returns the page as a compact outline, with a ref such as `e12` on every element you can act on. `page.click`, `type`, `press`, `select` and `scroll` act on those refs. `page.text` returns text, Markdown or HTML, `page.eval` runs JavaScript, `page.waitFor` waits for text, a selector or a URL, `page.screenshot` saves a PNG, and `page.audit` runs basic accessibility checks.
   - **Logs:** `console.read` returns what a page logged, including uncaught errors and unhandled rejections. `network.list` returns its fetch and XHR requests with status and timing. Each tab keeps the last 500 of each, and `since` (the `last` of an earlier read) pages through newer entries, oldest first, `limit` at a time. `clear` drops everything up to the last entry a read returned.
   - **Events:** `events.subscribe` streams `tab.updated`, `console.message` and `network.request` to that connection as JSON-RPC notifications.

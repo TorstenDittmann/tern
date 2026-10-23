@@ -5,7 +5,7 @@ enum Command: String, CaseIterable {
     case newTab, newWindow, closeTab, closeWindow, reopenClosedTab, duplicateTab
     case focusAddressBar, commandPalette, tabPicker, toggleSidebar
     case reload, hardReload, stopLoading, goBack, goForward
-    case nextTab, previousTab, moveTabUp, moveTabDown
+    case nextTab, previousTab, moveTabUp, moveTabDown, focusTabList, togglePinTab
     case toggleSplit, splitWith, splitWithPreviousTab, swapPanes, focusLeftPane, focusRightPane
     case selectTab1, selectTab2, selectTab3, selectTab4, selectTab5, selectTab6, selectTab7, selectTab8, selectLastTab
     case find, findNext, findPrevious
@@ -42,6 +42,8 @@ enum Command: String, CaseIterable {
         case .previousTab: "Previous Tab"
         case .moveTabUp: "Move Tab Up"
         case .moveTabDown: "Move Tab Down"
+        case .focusTabList: "Filter Tabs…"
+        case .togglePinTab: "Pin or Unpin Tab"
         case .selectTab1, .selectTab2, .selectTab3, .selectTab4,
              .selectTab5, .selectTab6, .selectTab7, .selectTab8: "Select Tab \(selectIndex! + 1)"
         case .selectLastTab: "Select Last Tab"
@@ -93,6 +95,8 @@ enum Command: String, CaseIterable {
         case .previousTab: "arrow.up.square"
         case .moveTabUp: "arrow.up.to.line"
         case .moveTabDown: "arrow.down.to.line"
+        case .focusTabList: "line.3.horizontal.decrease"
+        case .togglePinTab: "pin"
         case .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectLastTab: "number.square"
         case .find: "magnifyingglass"
         case .findNext: "chevron.down"
@@ -173,6 +177,8 @@ enum CommandRouter {
         case .previousTab: browser.selectRelative(-1)
         case .moveTabUp: browser.moveActiveTab(by: -1)
         case .moveTabDown: browser.moveActiveTab(by: 1)
+        case .focusTabList: browser.focusTabList()
+        case .togglePinTab: if let tab { browser.setPinned(tab, !tab.isPinned) }
         case .selectLastTab: browser.select(index: browser.tabs.count - 1)
         case .find: browser.content.showFindBar()
         case .findNext: browser.content.findAgain(backwards: false)

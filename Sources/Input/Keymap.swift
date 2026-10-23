@@ -92,7 +92,7 @@ final class Keymap {
         ("cmd+shift+t", .reopenClosedTab), ("cmd+shift+d", .duplicateTab),
         ("cmd+l", .focusAddressBar), ("cmd+k", .commandPalette), ("cmd+shift+p", .commandPalette),
         ("cmd+p", .tabPicker), ("cmd+shift+a", .tabPicker),
-        ("cmd+s", .toggleSidebar),
+        ("cmd+s", .toggleSidebar), ("cmd+e", .focusTabList),
         ("cmd+r", .reload), ("cmd+shift+r", .hardReload), ("cmd+.", .stopLoading),
         ("cmd+[", .goBack), ("cmd+]", .goForward),
         ("ctrl+tab", .nextTab), ("cmd+shift+]", .nextTab), ("cmd+alt+down", .nextTab),

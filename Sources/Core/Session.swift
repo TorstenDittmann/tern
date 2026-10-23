@@ -13,7 +13,7 @@ enum AppPaths {
 /// only each window's active tab gets a web view at launch.
 @MainActor
 enum SessionStore {
-    struct SavedTab: Codable { var id: UUID; var url: String?; var title: String?; var state: Data? }
+    struct SavedTab: Codable { var id: UUID; var url: String?; var title: String?; var state: Data?; var pinned: Bool? }
     struct SavedWindow: Codable {
         var tabs: [SavedTab]; var active: Int; var frame: String; var sidebarCollapsed: Bool
         var split: [Int]?; var splitFraction: Double?
@@ -24,7 +24,8 @@ enum SessionStore {
     static func save(_ windows: [BrowserWindowController]) {
         let saved = windows.map { w in
             SavedWindow(
-                tabs: w.tabs.map { SavedTab(id: $0.id, url: $0.currentURL?.absoluteString, title: $0.pageTitle, state: $0.interactionStateData) },
+                tabs: w.tabs.map { SavedTab(id: $0.id, url: $0.currentURL?.absoluteString, title: $0.pageTitle, state: $0.interactionStateData,
+                                       pinned: $0.isPinned ? true : nil) },
                 active: w.activeTab.flatMap { w.tabs.firstIndex(of: $0) } ?? 0,
                 frame: NSStringFromRect(w.window?.frame ?? .zero),
                 sidebarCollapsed: w.isSidebarCollapsed,
@@ -45,7 +46,11 @@ enum SessionStore {
               let saved = try? JSONDecoder().decode([SavedWindow].self, from: data),
               !saved.isEmpty else { return false }
         for w in saved where !w.tabs.isEmpty {
-            let tabs = w.tabs.map { Tab(url: $0.url.flatMap(URL.init(string:)), title: $0.title, interactionState: $0.state, id: $0.id) }
+            let tabs = w.tabs.map { saved in
+                let tab = Tab(url: saved.url.flatMap(URL.init(string:)), title: saved.title, interactionState: saved.state, id: saved.id)
+                tab.isPinned = saved.pinned ?? false
+                return tab
+            }
             let frame = NSRectFromString(w.frame)
             let browser = app.openWindow(restoring: tabs, active: w.active, frame: frame == .zero ? nil : frame, sidebarCollapsed: w.sidebarCollapsed)
             if let pair = w.split, pair.count == 2, tabs.indices.contains(pair[0]), tabs.indices.contains(pair[1]) {
