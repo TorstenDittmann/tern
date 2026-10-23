@@ -11,7 +11,7 @@ final class BrowserEngine {
     let extensionController: WKWebExtensionController
 
     /// Search used when the address bar input isn't a URL. `%s` is replaced with the query.
-    var searchTemplate = UserDefaults.standard.string(forKey: "searchTemplate") ?? "https://duckduckgo.com/?q=%s"
+    var searchTemplate: String { Preferences.searchTemplate }
 
     private init() {
         let config = WKWebExtensionController.Configuration.default()

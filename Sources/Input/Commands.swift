@@ -13,7 +13,7 @@ enum Command: String, CaseIterable {
     case toggleInspector, showConsole, copyURL, copyMarkdownLink
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
     case loadUnpackedExtension, revealExtensionsFolder
-    case toggleAgentAPI, clearHistory, showWelcome
+    case toggleAgentAPI, clearHistory, showWelcome, openSettings
 
     var title: String {
         switch self {
@@ -66,6 +66,7 @@ enum Command: String, CaseIterable {
         case .toggleAgentAPI: AgentServer.isEnabled ? "Disable Agent API" : "Enable Agent API"
         case .clearHistory: "Clear History"
         case .showWelcome: "Welcome to Tern"
+        case .openSettings: "Settings…"
         }
     }
 
@@ -119,6 +120,7 @@ enum Command: String, CaseIterable {
         case .toggleAgentAPI: "point.3.connected.trianglepath.dotted"
         case .clearHistory: "clock.arrow.circlepath"
         case .showWelcome: "hand.wave"
+        case .openSettings: "gearshape"
         }
     }
 
@@ -143,6 +145,7 @@ enum CommandRouter {
         case .suspendBackgroundTabs: TabSuspender.shared.suspendAllBackgroundTabs(); return
         case .toggleAgentAPI: AgentServer.shared.toggle(); return
         case .clearHistory: HistoryStore.shared.clear(); return
+        case .openSettings: SettingsWindow.shared.show(); return
         case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
         case .revealExtensionsFolder:
             NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return
@@ -151,6 +154,8 @@ enum CommandRouter {
 
         guard let browser else {
             if command == .newTab { app.openWindow() }
+            // ⌘W in Settings or another non-browser window closes it.
+            if command == .closeTab || command == .closeWindow { NSApp.keyWindow?.performClose(nil) }
             return
         }
         let tab = browser.activeTab

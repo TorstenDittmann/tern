@@ -1,0 +1,47 @@
+import Foundation
+
+/// User settings shown in the Settings window. The smoke test keeps them in memory, so it never
+/// changes your real preferences.
+@MainActor
+enum Preferences {
+    static let searchEngines: [(name: String, template: String)] = [
+        ("DuckDuckGo", "https://duckduckgo.com/?q=%s"),
+        ("Google", "https://www.google.com/search?q=%s"),
+        ("Bing", "https://www.bing.com/search?q=%s"),
+        ("Brave Search", "https://search.brave.com/search?q=%s"),
+        ("Kagi", "https://kagi.com/search?q=%s"),
+        ("Ecosia", "https://www.ecosia.org/search?q=%s"),
+        ("Startpage", "https://www.startpage.com/do/search?q=%s"),
+    ]
+
+    /// Seconds; negative means never.
+    static let suspendChoices: [(name: String, seconds: TimeInterval)] = [
+        ("After 5 minutes", 5 * 60), ("After 15 minutes", 15 * 60), ("After 30 minutes", 30 * 60),
+        ("After 1 hour", 60 * 60), ("After 4 hours", 4 * 60 * 60), ("Never", -1),
+    ]
+
+    private static var memory: [String: Any] = [:]
+
+    private static func value(_ key: String) -> Any? {
+        SmokeTest.isRunning ? memory[key] : UserDefaults.standard.object(forKey: key)
+    }
+
+    private static func store(_ value: Any, _ key: String) {
+        if SmokeTest.isRunning { memory[key] = value } else { UserDefaults.standard.set(value, forKey: key) }
+    }
+
+    /// Search used when the address bar input isn't a URL. `%s` is replaced with the query.
+    static var searchTemplate: String {
+        get { value("searchTemplate") as? String ?? searchEngines[0].template }
+        set { store(newValue, "searchTemplate") }
+    }
+
+    /// How long a background tab may stay idle before it gives its memory back; `nil` means never.
+    static var suspendAfter: TimeInterval? {
+        get {
+            let v = value("suspendAfter") as? Double ?? 0
+            return v < 0 ? nil : v > 0 ? v : 15 * 60
+        }
+        set { store(newValue ?? -1, "suspendAfter") }
+    }
+}

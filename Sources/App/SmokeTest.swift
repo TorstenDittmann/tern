@@ -120,6 +120,7 @@ enum SmokeTest {
         await linkTools(browser: browser, base: base)
         dragToSplit(browser: browser, base: base)
         await welcome(browser: browser)
+        settings()
         await agentAPI(browser: browser, base: base)
 
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
@@ -306,6 +307,42 @@ enum SmokeTest {
         (sheet?.contentViewController as? Welcome)?.close()
         await wait { browser.window?.attachedSheet == nil }
         check(browser.window?.attachedSheet == nil, "Get Started closes it")
+    }
+
+    /// Settings ▸ General values and the shortcut editor (on a throwaway keymap file).
+    private static func settings() {
+        Preferences.searchTemplate = Preferences.searchEngines[1].template
+        check(BrowserEngine.shared.resolve(input: "swift actors")?.host == "www.google.com", "search engine setting")
+        Preferences.searchTemplate = Preferences.searchEngines[0].template
+        Preferences.suspendAfter = nil
+        check(TabSuspender.shared.idleInterval == nil, "suspend idle tabs: never")
+        Preferences.suspendAfter = 15 * 60
+
+        let keymap = Keymap.shared
+        let j = KeyChord(string: "cmd+j")!, y = KeyChord(string: "cmd+shift+y")!
+        keymap.setShortcut(y, for: .linkHints)
+        check(keymap.command(for: y) == .linkHints && keymap.primaryChord(for: .linkHints) == y && keymap.command(for: j) == nil,
+              "recording a shortcut replaces the old one")
+        keymap.setShortcut(y, for: .toggleSidebar)
+        check(keymap.command(for: y) == .toggleSidebar && keymap.primaryChord(for: .linkHints) == nil, "a taken shortcut moves to the new command")
+        keymap.setShortcut(nil, for: .commandPalette)
+        check(keymap.chords(for: .commandPalette).isEmpty, "clearing removes every shortcut of a command")
+        keymap.resetToDefaults()
+        check(keymap.command(for: j) == .linkHints && keymap.primaryChord(for: .commandPalette) == KeyChord(string: "cmd+k")
+              && !keymap.hasCustomShortcuts, "restore defaults")
+
+        let window = SettingsWindow.shared
+        window.show(tab: 1)
+        window.shortcuts.startRecording(.copyURL)
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .option], timestamp: 0,
+                                     windowNumber: window.window?.windowNumber ?? 0, context: nil, characters: "u",
+                                     charactersIgnoringModifiers: "u", isARepeat: false, keyCode: 32)!
+        window.shortcuts.record(event)
+        check(keymap.command(for: KeyChord(string: "cmd+alt+u")!) == .copyURL && window.shortcuts.recording == nil,
+              "Settings ▸ Shortcuts records a key (\(keymap.primaryChord(for: .copyURL)?.spec ?? "none"))")
+        keymap.resetToDefaults()
+        window.close()
+        try? FileManager.default.removeItem(at: Keymap.fileURL)
     }
 
     private static func agentAPI(browser: BrowserWindowController, base: String) async {

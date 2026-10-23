@@ -21,6 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Metrics.markLaunched()
         LegacyMigration.run() // before anything reads settings or starts WebKit
+        if SmokeTest.isRunning {
+            // A throwaway keymap file: the smoke test edits shortcuts and must start from the defaults.
+            Keymap.fileOverride = FileManager.default.temporaryDirectory.appendingPathComponent("tern-smoke-keymap-\(getpid()).json")
+        }
         Keymap.shared.load()
         NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: self)
         installKeyMonitor()
@@ -111,6 +115,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func reloadKeymap() {
+        if SmokeTest.isRunning {
+            // A throwaway keymap file: the smoke test edits shortcuts and must start from the defaults.
+            Keymap.fileOverride = FileManager.default.temporaryDirectory.appendingPathComponent("tern-smoke-keymap-\(getpid()).json")
+        }
         Keymap.shared.load()
         NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: self)
     }

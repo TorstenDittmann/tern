@@ -34,6 +34,8 @@ enum MainMenu {
             std("About Tern", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
             item(.showWelcome),
             .separator(),
+            item(.openSettings),
+            .separator(),
             item(.openKeymapFile),
             item(.reloadKeymap),
             .separator(),

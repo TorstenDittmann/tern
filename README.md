@@ -19,7 +19,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **History.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. **Clear History** in ⌘K forgets them.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
 - **Welcome sheet.** The first launch shows the four shortcuts worth learning, each with a Try It button. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
-- **Rebindable shortcuts.** Every command has a binding, set in a JSON file. The menus always show your current bindings.
+- **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
 - **Safari Web Extensions.** Tern finds Safari extensions installed with your apps and also loads unpacked or `.zip` extensions in place.
 - **Memory-friendly tabs.** Background tabs give their memory back after 15 minutes idle, or when macOS runs low on memory, and keep their history.
@@ -174,9 +174,16 @@ Each launch is isolated, as in the smoke test: one window, and no saved session 
 
 ## Settings
 
+**Settings…** (⌘,) has two panes:
+
+- **General:** the search engine (DuckDuckGo, Google, Bing, Brave Search, Kagi, Ecosia, Startpage, or a custom URL with `%s`), how long idle background tabs wait before they're suspended (or never), the agent API switch, and Clear History.
+- **Shortcuts:** every command and its shortcut. Click a shortcut and press the new keys; esc cancels and ⌫ removes it. A shortcut that's already taken moves to the new command. Changes are saved to `~/.config/tern/keymap.json`, which you can still edit by hand. **Restore Defaults** undoes them all.
+
+The same values can be set from the terminal:
+
 ```sh
 defaults write dev.tern.browser searchTemplate "https://www.google.com/search?q=%s"   # default: DuckDuckGo
-defaults write dev.tern.browser suspendAfter 600                                     # seconds; default 900
+defaults write dev.tern.browser suspendAfter 600                                     # seconds; -1 for never; default 900
 ```
 
 ## Project layout

@@ -1,0 +1,347 @@
+import AppKit
+
+/// Settings (⌘,): General (search engine, tab suspension, agent API, history) and Shortcuts.
+@MainActor
+final class SettingsWindow: NSWindowController {
+    static let shared = SettingsWindow()
+
+    let general = GeneralSettings()
+    let shortcuts = ShortcutSettings()
+
+    private init() {
+        super.init(window: nil)
+        let tabs = NSTabViewController()
+        tabs.tabStyle = .toolbar
+        let panes: [(NSViewController, String, String)] = [(general, "General", "gearshape"), (shortcuts, "Shortcuts", "keyboard")]
+        for (vc, title, symbol) in panes {
+            let item = NSTabViewItem(viewController: vc)
+            item.label = title
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+            tabs.addTabViewItem(item)
+        }
+        let window = NSWindow(contentViewController: tabs)
+        window.styleMask = [.titled, .closable]
+        window.toolbarStyle = .preference
+        window.isReleasedWhenClosed = false
+        self.window = window
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(tab: Int = 0) {
+        (window?.contentViewController as? NSTabViewController)?.selectedTabViewItemIndex = tab
+        general.refresh()
+        shortcuts.reload()
+        if window?.isVisible != true { window?.center() }
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+    }
+}
+
+// MARK: - General
+
+@MainActor
+final class GeneralSettings: NSViewController, NSTextFieldDelegate {
+    let searchPopup = NSPopUpButton()
+    let customSearch = NSTextField()
+    let suspendPopup = NSPopUpButton()
+    let agentCheckbox = NSButton(checkboxWithTitle: "Let coding agents control Tern", target: nil, action: nil)
+
+    override func loadView() {
+        title = "General"
+        searchPopup.addItems(withTitles: Preferences.searchEngines.map(\.name) + ["Custom…"])
+        searchPopup.target = self
+        searchPopup.action = #selector(searchChanged)
+        customSearch.placeholderString = "https://example.com/search?q=%s"
+        customSearch.delegate = self
+        customSearch.widthAnchor.constraint(equalToConstant: 280).isActive = true
+
+        suspendPopup.addItems(withTitles: Preferences.suspendChoices.map(\.name))
+        suspendPopup.target = self
+        suspendPopup.action = #selector(suspendChanged)
+
+        agentCheckbox.target = self
+        agentCheckbox.action = #selector(agentChanged)
+
+        let clear = NSButton(title: "Clear History", target: self, action: #selector(clearHistory))
+        clear.bezelStyle = .push
+
+        let grid = NSGridView(views: [
+            [label("Search engine:"), searchPopup],
+            [NSGridCell.emptyContentView, customSearch],
+            [label("Suspend idle tabs:"), suspendPopup],
+            [NSGridCell.emptyContentView, note("Background tabs give their memory back and keep their history.")],
+            [label("Agent API:"), agentCheckbox],
+            [NSGridCell.emptyContentView, note("A local socket for the tern CLI and MCP server. Only your user can connect.")],
+            [label("History:"), clear],
+        ])
+        grid.column(at: 0).xPlacement = .trailing
+        grid.rowAlignment = .firstBaseline
+        grid.rowSpacing = 8
+        grid.columnSpacing = 10
+        for row in [1, 3, 5] { grid.row(at: row).topPadding = -4 }
+        grid.row(at: 2).topPadding = 8
+        grid.row(at: 4).topPadding = 8
+        grid.row(at: 6).topPadding = 8
+        grid.translatesAutoresizingMaskIntoConstraints = false
+
+        let root = NSView()
+        root.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.topAnchor.constraint(equalTo: root.topAnchor, constant: 24),
+            grid.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -24),
+            grid.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 32),
+            grid.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -32),
+            root.widthAnchor.constraint(equalToConstant: 520),
+        ])
+        view = root
+        refresh()
+    }
+
+    func refresh() {
+        guard isViewLoaded else { return }
+        let template = Preferences.searchTemplate
+        let index = Preferences.searchEngines.firstIndex { $0.template == template }
+        searchPopup.selectItem(at: index ?? Preferences.searchEngines.count)
+        customSearch.stringValue = index == nil ? template : ""
+        customSearch.isHidden = index != nil
+        let suspend = Preferences.suspendAfter ?? -1
+        suspendPopup.selectItem(at: Preferences.suspendChoices.firstIndex { $0.seconds == suspend } ?? 1)
+        agentCheckbox.state = AgentServer.isEnabled ? .on : .off
+    }
+
+    @objc func searchChanged() {
+        let i = searchPopup.indexOfSelectedItem
+        if Preferences.searchEngines.indices.contains(i) {
+            Preferences.searchTemplate = Preferences.searchEngines[i].template
+            customSearch.isHidden = true
+        } else {
+            customSearch.isHidden = false
+            view.window?.makeFirstResponder(customSearch)
+        }
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        let text = customSearch.stringValue.trimmingCharacters(in: .whitespaces)
+        // Only a template that names where the query goes, on the web.
+        guard text.contains("%s"), let url = URL(string: text.replacingOccurrences(of: "%s", with: "q")),
+              url.scheme == "https" || url.scheme == "http" else { return NSSound.beep() }
+        Preferences.searchTemplate = text
+    }
+
+    @objc func suspendChanged() {
+        let seconds = Preferences.suspendChoices[suspendPopup.indexOfSelectedItem].seconds
+        Preferences.suspendAfter = seconds < 0 ? nil : seconds
+    }
+
+    @objc private func agentChanged() {
+        if (agentCheckbox.state == .on) != AgentServer.isEnabled { AgentServer.shared.toggle() }
+        NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: AppDelegate.shared)
+    }
+
+    @objc private func clearHistory() {
+        let alert = NSAlert()
+        alert.messageText = "Clear all history?"
+        alert.informativeText = "Tern forgets every page you've visited. Open tabs and their back/forward lists stay."
+        alert.addButton(withTitle: "Clear History")
+        alert.addButton(withTitle: "Cancel")
+        guard let window = view.window else { return }
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { HistoryStore.shared.clear() }
+        }
+    }
+
+    private func label(_ text: String) -> NSTextField {
+        NSTextField(labelWithString: text)
+    }
+
+    private func note(_ text: String) -> NSTextField {
+        let field = NSTextField(wrappingLabelWithString: text)
+        field.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        field.textColor = .secondaryLabelColor
+        field.preferredMaxLayoutWidth = 300
+        return field
+    }
+}
+
+// MARK: - Shortcuts
+
+/// Every command and its shortcut. Click a shortcut to record a new one: esc cancels, ⌫ clears.
+/// Changes are written to the keymap file, which stays the source of truth.
+@MainActor
+final class ShortcutSettings: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
+    private let table = NSTableView()
+    private let search = NSSearchField()
+    private let status = NSTextField(labelWithString: "")
+    private(set) var commands: [Command] = []
+    /// The row waiting for a key, if any.
+    private(set) var recording: Command?
+    private var monitor: Any?
+
+    override func loadView() {
+        title = "Shortcuts"
+        search.placeholderString = "Filter commands"
+        search.delegate = self
+
+        for (id, title, width) in [("command", "Command", 300.0), ("shortcut", "Shortcut", 160.0)] {
+            let column = NSTableColumn(identifier: .init(id))
+            column.title = title
+            column.width = width
+            table.addTableColumn(column)
+        }
+        table.dataSource = self
+        table.delegate = self
+        table.rowHeight = 26
+        table.style = .inset
+        table.usesAlternatingRowBackgroundColors = true
+        let scroll = NSScrollView()
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+
+        status.textColor = .secondaryLabelColor
+        status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        status.lineBreakMode = .byTruncatingTail
+        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let reset = NSButton(title: "Restore Defaults", target: self, action: #selector(restoreDefaults))
+        let file = NSButton(title: "Open keymap.json", target: self, action: #selector(openFile))
+        let bottom = NSStackView(views: [status, file, reset])
+        bottom.spacing = 8
+
+        let stack = NSStackView(views: [search, scroll, bottom])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 16, right: 20)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let root = NSView()
+        root.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: root.topAnchor), stack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: root.leadingAnchor), stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            search.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            bottom.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            scroll.heightAnchor.constraint(equalToConstant: 380),
+            root.widthAnchor.constraint(equalToConstant: 560),
+        ])
+        view = root
+        reload()
+    }
+
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        stopRecording()
+    }
+
+    func reload() {
+        guard isViewLoaded else { return }
+        let q = search.stringValue
+        commands = Command.allCases.filter { command in
+            q.isEmpty || CommandPalette.score(q, command.title) != nil
+                || Keymap.shared.chords(for: command).contains { $0.description.localizedCaseInsensitiveContains(q) }
+        }
+        table.reloadData()
+    }
+
+    func controlTextDidChange(_ obj: Notification) { reload() }
+
+    // MARK: Recording
+
+    func startRecording(_ command: Command) {
+        stopRecording()
+        recording = command
+        status.stringValue = "Type the new shortcut for \(command.title). esc cancels, ⌫ clears."
+        table.reloadData()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            MainActor.assumeIsolated { self?.record(event) ?? false } ? nil : event
+        }
+    }
+
+    /// Takes the key while recording. Returns whether it was used.
+    @discardableResult
+    func record(_ event: NSEvent) -> Bool {
+        guard let command = recording, event.window === view.window else { return false }
+        let chord = KeyChord(event: event)
+        if chord.flags.isEmpty, event.keyCode == 53 { // esc
+            status.stringValue = ""
+        } else if chord.flags.isEmpty, event.keyCode == 51 || event.keyCode == 117 { // ⌫ / ⌦
+            Keymap.shared.setShortcut(nil, for: command)
+            status.stringValue = "\(command.title) has no shortcut now."
+        } else if chord.flags.intersection([.command, .control, .option]).isEmpty, !chord.key.hasPrefix("f") || chord.key.count == 1 {
+            // Plain keys would fire while typing in pages; ask for a modifier (function keys are fine).
+            NSSound.beep()
+            status.stringValue = "Use ⌘, ⌃ or ⌥ with the key."
+            return true
+        } else {
+            let previous = Keymap.shared.command(for: chord)
+            Keymap.shared.setShortcut(chord, for: command)
+            status.stringValue = previous.map { $0 == command ? "" : "\(chord) moved from \($0.title)." } ?? ""
+        }
+        stopRecording()
+        reload()
+        return true
+    }
+
+    private func stopRecording() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        if recording != nil {
+            recording = nil
+            table.reloadData()
+        }
+    }
+
+    @objc private func restoreDefaults() {
+        stopRecording()
+        Keymap.shared.resetToDefaults()
+        status.stringValue = "All shortcuts are back to their defaults."
+        reload()
+    }
+
+    @objc private func openFile() {
+        Keymap.shared.ensureFileExists()
+        NSWorkspace.shared.open(Keymap.fileURL)
+    }
+
+    @objc private func shortcutClicked(_ sender: NSButton) {
+        guard commands.indices.contains(sender.tag) else { return }
+        let command = commands[sender.tag]
+        if recording == command { stopRecording() } else { startRecording(command) }
+    }
+
+    // MARK: Table
+
+    func numberOfRows(in tableView: NSTableView) -> Int { commands.count }
+
+    func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
+        let command = commands[row]
+        if column?.identifier.rawValue == "command" {
+            let cell = NSTableCellView()
+            let icon = NSImageView(image: Theme.symbol(command.symbol, size: 12) ?? NSImage())
+            icon.contentTintColor = .secondaryLabelColor
+            let text = NSTextField(labelWithString: command.title)
+            text.lineBreakMode = .byTruncatingTail
+            let stack = NSStackView(views: [icon, text])
+            stack.spacing = 8
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(stack)
+            NSLayoutConstraint.activate([
+                stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                stack.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
+                stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 16),
+            ])
+            return cell
+        }
+        let chords = Keymap.shared.chords(for: command)
+        let title = recording == command ? "Type shortcut…" : chords.first?.description ?? "—"
+        let button = NSButton(title: title, target: self, action: #selector(shortcutClicked(_:)))
+        button.tag = row
+        button.bezelStyle = .push
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 12, weight: recording == command ? .regular : .medium)
+        if chords.count > 1 { button.toolTip = "Also: " + chords.dropFirst().map(\.description).joined(separator: ", ") }
+        return button
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
+}

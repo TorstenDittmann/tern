@@ -41,6 +41,16 @@ struct KeyChord: Hashable, CustomStringConvertible {
 
     var description: String { glyphs.joined() }
 
+    /// The keymap-file spelling: "cmd+shift+t".
+    var spec: String {
+        var parts: [String] = []
+        if flags.contains(.control) { parts.append("ctrl") }
+        if flags.contains(.option) { parts.append("alt") }
+        if flags.contains(.shift) { parts.append("shift") }
+        if flags.contains(.command) { parts.append("cmd") }
+        return (parts + [key == "+" ? "plus" : key]).joined(separator: "+")
+    }
+
     /// Modifier symbols in Apple's canonical order, then the key: ["⇧", "⌘", "T"].
     var glyphs: [String] {
         var g: [String] = []
@@ -107,11 +117,14 @@ final class Keymap {
         ("cmd+=", .zoomIn), ("cmd+-", .zoomOut), ("cmd+0", .zoomReset),
         ("cmd+alt+i", .toggleInspector), ("cmd+alt+c", .showConsole),
         ("cmd+shift+c", .copyURL), ("cmd+alt+shift+c", .copyMarkdownLink),
-        ("cmd+alt+,", .openKeymapFile),
+        ("cmd+,", .openSettings), ("cmd+alt+,", .openKeymapFile),
     ]
 
+    /// Set by the smoke test, so it never touches your real keymap.
+    static var fileOverride: URL?
+
     static var fileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/tern/keymap.json")
+        fileOverride ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/tern/keymap.json")
     }
 
     private(set) var bindings: [KeyChord: Command] = [:]
@@ -150,6 +163,48 @@ final class Keymap {
             bindings[chord] = cmd
             if primary[cmd] == nil { primary[cmd] = chord }
         }
+    }
+
+    /// Every chord bound to `command`, the primary one first.
+    func chords(for command: Command) -> [KeyChord] {
+        let all = bindings.filter { $0.value == command }.map(\.key)
+        return all.sorted { a, b in a == primary[command] || (b != primary[command] && a.description < b.description) }
+    }
+
+    /// Makes `chord` the shortcut for `command` (nil clears every shortcut it has), by writing the
+    /// keymap file, then reloads. A chord that belonged to another command moves to this one.
+    func setShortcut(_ chord: KeyChord?, for command: Command) {
+        var json = userFile()
+        // Drop the old shortcut(s): a default is unbound with null, a custom one is removed.
+        let old = chord == nil ? chords(for: command) : primaryChord(for: command).map { [$0] } ?? []
+        for c in old {
+            if Self.defaults.contains(where: { KeyChord(string: $0.0) == c }) { json[c.spec] = NSNull() }
+            else { json.removeValue(forKey: c.spec) }
+        }
+        if let chord { json[chord.spec] = command.rawValue }
+        writeUserFile(json)
+    }
+
+    /// Forgets every custom shortcut (the file's comments stay).
+    func resetToDefaults() {
+        writeUserFile(userFile().filter { $0.key.hasPrefix("_") })
+    }
+
+    var hasCustomShortcuts: Bool { userFile().keys.contains { !$0.hasPrefix("_") } }
+
+    private func userFile() -> [String: Any] {
+        guard let data = try? Data(contentsOf: Self.fileURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return json
+    }
+
+    private func writeUserFile(_ json: [String: Any]) {
+        let url = Self.fileURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) {
+            try? data.write(to: url, options: .atomic)
+        }
+        AppDelegate.shared.reloadKeymap()
     }
 
     func ensureFileExists() {

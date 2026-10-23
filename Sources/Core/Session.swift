@@ -67,11 +67,8 @@ enum SessionStore {
 final class TabSuspender {
     static let shared = TabSuspender()
 
-    /// Seconds a background tab may stay idle before it's suspended. `defaults write dev.tern.browser suspendAfter 600`
-    var idleInterval: TimeInterval {
-        let v = UserDefaults.standard.double(forKey: "suspendAfter")
-        return v > 0 ? v : 15 * 60
-    }
+    /// Seconds a background tab may stay idle before it's suspended (Settings ▸ General); nil: never.
+    var idleInterval: TimeInterval? { Preferences.suspendAfter }
 
     private var timer: Timer?
     private var pressureSource: DispatchSourceMemoryPressure?
@@ -96,6 +93,7 @@ final class TabSuspender {
     }
 
     func sweep() {
+        guard let idleInterval else { return }
         let cutoff = Date().addingTimeInterval(-idleInterval)
         for tab in AppDelegate.shared.allTabs where !tab.isSuspended && !tab.isVisible && tab.lastActivated < cutoff {
             tab.suspendIfIdle()
