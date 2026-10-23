@@ -16,7 +16,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Link peek.** ⌥-click a link to open it in a floating preview. ⌘↩ keeps it as a tab, ⇧⌘↩ opens it in a split, esc closes it.
 - **Split view.** Two tabs side by side, with a draggable divider. Drag a tab onto the page to split with it. Focus follows the pane you click.
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
-- **History.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. **Clear History** in ⌘K forgets them.
+- **History and bookmarks.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. ⌘D (or the star in the address bar) bookmarks a page. ⌘Y and ⌥⌘B open a window to search, open, rename or delete them. New tabs show your bookmarks and most visited sites.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
 - **Welcome sheet.** The first launch shows the four shortcuts worth learning, each with a Try It button. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
 - **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
@@ -61,6 +61,8 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Back / forward | ⌘[ / ⌘] |
 | Reload / ignoring cache / stop | ⌘R / ⇧⌘R / ⌘. |
 | Find / next / previous | ⌘F / ⌘G / ⇧⌘G |
+| Bookmark page / show bookmarks / show history | ⌘D / ⌥⌘B / ⌘Y |
+| Settings | ⌘, |
 | Link hints (click links from the keyboard) | ⌘J |
 | Peek at a link / keep it as a tab / in a split | ⌥-click / ⌘↩ / ⇧⌘↩ |
 | Zoom in / out / actual size | ⌘= / ⌘- / ⌘0 |

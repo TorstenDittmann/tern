@@ -14,6 +14,7 @@ enum Command: String, CaseIterable {
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
     case loadUnpackedExtension, revealExtensionsFolder
     case toggleAgentAPI, clearHistory, showWelcome, openSettings
+    case toggleBookmark, showHistory, showBookmarks
 
     var title: String {
         switch self {
@@ -67,6 +68,9 @@ enum Command: String, CaseIterable {
         case .clearHistory: "Clear History"
         case .showWelcome: "Welcome to Tern"
         case .openSettings: "Settings…"
+        case .toggleBookmark: "Add or Remove Bookmark"
+        case .showHistory: "Show History"
+        case .showBookmarks: "Show Bookmarks"
         }
     }
 
@@ -121,6 +125,9 @@ enum Command: String, CaseIterable {
         case .clearHistory: "clock.arrow.circlepath"
         case .showWelcome: "hand.wave"
         case .openSettings: "gearshape"
+        case .toggleBookmark: "star"
+        case .showHistory: "clock"
+        case .showBookmarks: "book"
         }
     }
 
@@ -146,6 +153,8 @@ enum CommandRouter {
         case .toggleAgentAPI: AgentServer.shared.toggle(); return
         case .clearHistory: HistoryStore.shared.clear(); return
         case .openSettings: SettingsWindow.shared.show(); return
+        case .showHistory: LibraryWindow.shared.show(.history); return
+        case .showBookmarks: LibraryWindow.shared.show(.bookmarks); return
         case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
         case .revealExtensionsFolder:
             NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return
@@ -193,6 +202,7 @@ enum CommandRouter {
         case .findNext: browser.content.findAgain(backwards: false)
         case .findPrevious: browser.content.findAgain(backwards: true)
         case .showWelcome: Welcome.show(in: browser)
+        case .toggleBookmark: if let tab { BookmarkStore.shared.toggle(tab.currentURL, title: tab.pageTitle) }
         case .linkHints: Task { await LinkHints.start(in: browser) }
         case .zoomIn: webView.map { $0.pageZoom = min($0.pageZoom + 0.1, 3) }
         case .zoomOut: webView.map { $0.pageZoom = max($0.pageZoom - 0.1, 0.3) }

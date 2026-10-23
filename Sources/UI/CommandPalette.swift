@@ -1,6 +1,6 @@
 import AppKit
 
-/// ⌘K: fuzzy-switch tabs, revisit pages from history, run any command, or open a URL / search.
+/// ⌘K: fuzzy-switch tabs, open bookmarks and pages from history, run any command, or open a URL / search.
 /// Pages and commands you use often and recently rank higher (frecency).
 /// ⌘P: the same panel limited to open tabs (all windows, most recent first).
 /// ⌥⌘\ ("Split with…"): pick a tab, page or address to show beside the current tab.
@@ -13,6 +13,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         case open(String)
         case tab(Tab)
         case page(HistoryStore.Entry)
+        case bookmark(BookmarkStore.Bookmark)
         case command(Command)
 
         var isHeader: Bool { if case .header = self { true } else { false } }
@@ -158,11 +159,21 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             .sorted { $0.lastActivated > $1.lastActivated }
     }
 
-    /// History pages that aren't already open in a tab.
-    private func candidatePages(excluding tabs: [Tab]) -> [HistoryStore.Entry] {
+    private func openURLs(_ tabs: [Tab]) -> Set<String> {
         var open = Set(tabs.compactMap { $0.currentURL?.absoluteString })
         if let current = browser?.activeTab?.currentURL?.absoluteString { open.insert(current) }
-        return HistoryStore.shared.ranked().filter { !open.contains($0.url) }
+        return open
+    }
+
+    /// History pages that aren't already open in a tab or listed as bookmarks.
+    private func candidatePages(excluding tabs: [Tab]) -> [HistoryStore.Entry] {
+        let open = openURLs(tabs)
+        return HistoryStore.shared.ranked().filter { !open.contains($0.url) && !BookmarkStore.shared.contains(URL(string: $0.url)) }
+    }
+
+    private func candidateBookmarks(excluding tabs: [Tab]) -> [BookmarkStore.Bookmark] {
+        let open = openURLs(tabs)
+        return BookmarkStore.shared.all.filter { !open.contains($0.url) }
     }
 
     private func refilter() {
@@ -184,6 +195,8 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
                 if !pages.isEmpty { result.append(.header("Frequent Pages")); result += pages.map(Item.page) }
             case .everything:
                 if !tabs.isEmpty { result.append(.header("Recent Tabs")); result += tabs.prefix(5).map(Item.tab) }
+                let bookmarks = candidateBookmarks(excluding: tabs).prefix(5)
+                if !bookmarks.isEmpty { result.append(.header("Bookmarks")); result += bookmarks.map(Item.bookmark) }
                 result.append(.header("Commands"))
                 result += rankedCommands.map(Item.command)
             }
@@ -200,12 +213,17 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
                     guard let s = [Self.score(q, e.title ?? ""), Self.score(q, HistoryStore.bare(e.url))].compactMap({ $0 }).max() else { return nil }
                     return (s + Frecency.bonus(e.frecency), e)
                 }.sorted { $0.0 > $1.0 }.prefix(6).map(\.1)
+                let matchedBookmarks = candidateBookmarks(excluding: tabs).compactMap { b -> (Int, BookmarkStore.Bookmark)? in
+                    guard let s = [Self.score(q, b.title), Self.score(q, HistoryStore.bare(b.url))].compactMap({ $0 }).max() else { return nil }
+                    return (s, b)
+                }.sorted { $0.0 > $1.0 }.prefix(5).map(\.1)
                 let matchedCommands = mode == .splitWith ? [] : commands.compactMap { c in
                     Self.score(q, c.title).map { ($0 + Frecency.bonus(CommandUsage.frecency(c)), c) }
                 }.sorted { $0.0 > $1.0 }.map(\.1)
                 let looksLikeURL = q.contains(".") || q.contains("://") || q.hasPrefix("localhost")
                 if looksLikeURL { result.append(.open(q)) }
                 if !matchedTabs.isEmpty { result.append(.header("Tabs")); result += matchedTabs.map(Item.tab) }
+                if !matchedBookmarks.isEmpty { result.append(.header("Bookmarks")); result += matchedBookmarks.map(Item.bookmark) }
                 if !matchedPages.isEmpty { result.append(.header("History")); result += matchedPages.map(Item.page) }
                 if !matchedCommands.isEmpty { result.append(.header("Commands")); result += matchedCommands.map(Item.command) }
                 if !looksLikeURL {
@@ -266,6 +284,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         case .header: break
         case .open(let input): browser.open(input: input, inNewTab: inNewTab)
         case .page(let entry): browser.open(input: entry.url, inNewTab: inNewTab)
+        case .bookmark(let bookmark): browser.open(input: bookmark.url, inNewTab: inNewTab)
         case .tab(let tab):
             tab.owner?.activate(tab)
             tab.owner?.window?.makeKeyAndOrderFront(nil)
@@ -286,6 +305,9 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             partner = browser.newTab(url: url, activate: false, after: active)
         case .page(let entry):
             guard let url = URL(string: entry.url) else { return }
+            partner = browser.newTab(url: url, activate: false, after: active)
+        case .bookmark(let bookmark):
+            guard let url = URL(string: bookmark.url) else { return }
             partner = browser.newTab(url: url, activate: false, after: active)
         case .header, .command: return
         }
@@ -370,6 +392,15 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
                                title: entry.title?.isEmpty == false ? entry.title! : HistoryStore.bare(entry.url),
                                subtitle: HistoryStore.bare(entry.url),
                                accessory: nil)
+        case .bookmark(let bookmark):
+            let url = URL(string: bookmark.url)
+            let star = NSImageView(image: Theme.symbol("star.fill", size: 10) ?? NSImage())
+            star.contentTintColor = .tertiaryLabelColor
+            return PaletteCell(icon: FaviconLoader.cached(for: url) ?? Monogram.image(for: url, title: bookmark.title),
+                               tinted: false,
+                               title: bookmark.title,
+                               subtitle: HistoryStore.bare(bookmark.url),
+                               accessory: star)
         case .command(let cmd):
             let chord = Keymap.shared.primaryChord(for: cmd)
             return PaletteCell(icon: Theme.symbol(cmd.symbol, size: 14) ?? Theme.symbol("command", size: 14),

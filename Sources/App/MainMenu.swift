@@ -73,7 +73,8 @@ enum MainMenu {
             std("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         ]))
 
-        main.addItem(menu("History", [item(.goBack), item(.goForward), .separator(), item(.clearHistory)]))
+        main.addItem(menu("History", [item(.goBack), item(.goForward), .separator(), item(.showHistory), item(.clearHistory)]))
+        main.addItem(menu("Bookmarks", [item(.toggleBookmark), item(.showBookmarks)]))
 
         main.addItem(menu("Tabs", [
             item(.nextTab), item(.previousTab), item(.moveTabUp), item(.moveTabDown), item(.focusTabList), .separator(),

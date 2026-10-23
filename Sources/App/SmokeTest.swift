@@ -121,6 +121,7 @@ enum SmokeTest {
         dragToSplit(browser: browser, base: base)
         await welcome(browser: browser)
         settings()
+        await bookmarksAndLibrary(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
@@ -343,6 +344,36 @@ enum SmokeTest {
         keymap.resetToDefaults()
         window.close()
         try? FileManager.default.removeItem(at: Keymap.fileURL)
+    }
+
+    /// ⌘D bookmarks, the star, the start page tiles, and the History/Bookmarks window.
+    private static func bookmarksAndLibrary(browser: BrowserWindowController, base: String) async {
+        let tab = browser.newTab(url: URL(string: "\(base)/two.html?bookmark"))
+        await wait { tab.pageTitle == "Page Two" && !tab.isLoading }
+        CommandRouter.perform(.toggleBookmark, in: browser)
+        check(BookmarkStore.shared.contains(tab.currentURL) && BookmarkStore.shared.all.first?.title == "Page Two", "⌘D bookmarks the page")
+        check(StartPage.html.contains("Bookmarks") && StartPage.html.contains("two.html?bookmark"), "start page shows bookmarks as tiles")
+
+        let library = LibraryWindow.shared
+        library.show(.bookmarks)
+        check(library.rows.count == 1 && library.rows.first?.url == tab.currentURL?.absoluteString, "Show Bookmarks lists the bookmark")
+        library.show(.history)
+        check(library.rows.contains { $0.url == tab.currentURL?.absoluteString }, "Show History lists visited pages")
+        let other = browser.newTab(url: nil)
+        library.open([LibraryWindow.Row(url: "\(base)/one.html?fromLibrary", title: "x", date: Date())], inNewTabs: false)
+        await wait { other.pageTitle == "Page One" && !other.isLoading }
+        check(other.currentURL?.query == "fromLibrary", "opening from the library loads the front tab")
+        library.close()
+
+        CommandRouter.perform(.toggleBookmark, in: browser) // `other` is active now; bookmark it, then remove both
+        BookmarkStore.shared.remove(other.currentURL?.absoluteString ?? "")
+        browser.activate(tab)
+        CommandRouter.perform(.toggleBookmark, in: browser)
+        check(BookmarkStore.shared.all.isEmpty, "⌘D again removes the bookmark")
+        HistoryStore.shared.remove(other.currentURL?.absoluteString ?? "")
+        check(!HistoryStore.shared.entries.keys.contains(other.currentURL?.absoluteString ?? ""), "removing a page from history")
+        browser.close(other)
+        browser.close(tab)
     }
 
     private static func agentAPI(browser: BrowserWindowController, base: String) async {

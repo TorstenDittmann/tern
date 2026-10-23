@@ -117,7 +117,7 @@ final class Keymap {
         ("cmd+=", .zoomIn), ("cmd+-", .zoomOut), ("cmd+0", .zoomReset),
         ("cmd+alt+i", .toggleInspector), ("cmd+alt+c", .showConsole),
         ("cmd+shift+c", .copyURL), ("cmd+alt+shift+c", .copyMarkdownLink),
-        ("cmd+,", .openSettings), ("cmd+alt+,", .openKeymapFile),
+        ("cmd+,", .openSettings), ("cmd+d", .toggleBookmark), ("cmd+y", .showHistory), ("cmd+alt+b", .showBookmarks), ("cmd+alt+,", .openKeymapFile),
     ]
 
     /// Set by the smoke test, so it never touches your real keymap.
