@@ -329,11 +329,24 @@ enum AgentPageMethods {
             _ = try await run(tab, "pressFallback", ["key": chord.lowercased()])
             return
         }
-        let parts = chord.lowercased().split(separator: "+").map(String.init)
-        guard let name = parts.last, let key = KeyCodes.lookup(name) else {
-            throw AgentError.invalidParams("Unknown key \(chord)")
+        // Modifiers first, the key last; a trailing "+" is the plus key itself ("+", "cmd++").
+        let spec = chord.lowercased()
+        let isPlus = spec == "+" || spec.hasSuffix("++")
+        var parts = isPlus ? [] : spec.split(separator: "+").map(String.init)
+        let name = isPlus ? "+" : parts.popLast() ?? ""
+        let modifierSpec = isPlus ? String(spec.dropLast(2)) : parts.joined(separator: "+")
+        var flags = try modifiers(modifierSpec)
+        let key: KeyCodes.Key
+        if isPlus {
+            key = KeyCodes.Key(code: 24, characters: "+") // shift + the = key on ANSI layouts
+            flags.insert(.shift)
+        } else if let known = KeyCodes.lookup(name) {
+            key = known
+        } else {
+            // Keys without an ANSI key code still reach the page as DOM events.
+            _ = try await run(tab, "pressFallback", ["key": spec])
+            return
         }
-        let flags = try modifiers(parts.dropLast().joined(separator: "+"))
         let characters = flags.contains(.shift) ? key.characters.uppercased() : key.characters
         window.makeFirstResponder(webView)
         for type in [NSEvent.EventType.keyDown, .keyUp] {
