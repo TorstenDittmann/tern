@@ -28,7 +28,7 @@ enum AgentPageMethods {
         let tab = try AgentMethods.findTab(p)
         var args: [String: Any] = [:]
         if let scope = try p.string("scope") { args["scope"] = scope }
-        if let max = try p.number("maxLines") { args["maxLines"] = Int(max) }
+        if let max = try p.integer("maxLines") { args["maxLines"] = max }
         return try await run(tab, "snapshot", args)
     }
 

@@ -15,10 +15,14 @@ final class AgentActivity {
 
     func touch(_ tab: Tab) {
         timers[tab.id]?.invalidate()
-        timers[tab.id] = Timer.scheduledTimer(withTimeInterval: Self.linger, repeats: false) { [weak self, weak tab] _ in
+        let id = tab.id
+        timers[id] = Timer.scheduledTimer(withTimeInterval: Self.linger, repeats: false) { [weak self, weak tab] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if let tab { self.end(tab) }
+                if let tab { return self.end(tab) }
+                // The tab closed meanwhile: drop its timer so isActive can go false again.
+                self.timers[id] = nil
+                NotificationCenter.default.post(name: Self.changed, object: nil)
             }
         }
         guard !tab.isAgentDriving else { return }

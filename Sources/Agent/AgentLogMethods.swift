@@ -12,11 +12,13 @@ enum AgentLogMethods {
 
     static let events = ["tab.updated", "console.message", "network.request"]
 
-    /// Entries after `since` (a seq from an earlier read), newest last, at most `limit`.
+    /// Entries after `since` (a seq from an earlier read), oldest first, at most `limit`. Without
+    /// `since` it returns the newest `limit`; with it, the oldest unread ones, so polling with
+    /// `last` never skips entries.
     private static func read(_ kind: AgentTabLog.Kind, _ p: AgentParams) throws -> Any {
         let tab = try AgentMethods.findTab(p)
-        let since = try p.number("since").map { Int($0) } ?? 0
-        let limit = try max(1, p.number("limit").map { Int($0) } ?? 100)
+        let since = try p.integer("since")
+        let limit = try max(1, p.integer("limit") ?? 100)
         let level = try p.string("level")
         let failedOnly = try p.bool("failedOnly") ?? false
         let regex = try p.string("urlMatches").map { pattern -> NSRegularExpression in
@@ -25,7 +27,7 @@ enum AgentLogMethods {
 
         let log = tab.agentLog
         let matching = log.entries(kind).filter { entry in
-            guard (entry["seq"] as? Int ?? 0) > since else { return false }
+            guard (entry["seq"] as? Int ?? 0) > since ?? 0 else { return false }
             if let level, entry["level"] as? String != level { return false }
             if failedOnly, entry["ok"] as? Bool != false { return false }
             if let regex {
@@ -34,12 +36,14 @@ enum AgentLogMethods {
             }
             return true
         }
-        let entries = Array(matching.suffix(limit))
-        if try p.bool("clear") == true { log.clear(kind) }
+        let entries = Array(since == nil ? matching.suffix(limit) : matching.prefix(limit))
+        let last = entries.last?["seq"] as? Int ?? since ?? 0
+        // Clears what this read covered; anything newer stays for the next one.
+        if try p.bool("clear") == true { log.clear(kind, through: last) }
         let result: [String: Any] = [
             "tabId": tab.id.uuidString,
             "entries": entries,
-            "last": entries.last?["seq"] ?? since,
+            "last": last,
             "monitoring": AgentServer.shared.isRunning,
         ]
         return result

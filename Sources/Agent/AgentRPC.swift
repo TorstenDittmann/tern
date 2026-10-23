@@ -85,4 +85,11 @@ struct AgentParams {
         }
         return n.doubleValue
     }
+
+    /// A whole number; fractions are cut off, and values `Int` can't hold are rejected rather than trapping.
+    func integer(_ key: String) throws -> Int? {
+        guard let n = try number(key) else { return nil }
+        guard let i = Int(exactly: n.rounded(.towardZero)) else { throw AgentError.invalidParams("\(key) is out of range") }
+        return i
+    }
 }

@@ -134,8 +134,10 @@ final class AgentTabLog {
 
     func entries(_ kind: Kind) -> [[String: Any]] { kind == .console ? console : network }
 
-    func clear(_ kind: Kind) {
-        if kind == .console { console.removeAll() } else { network.removeAll() }
+    /// Drops entries up to and including `seq`.
+    func clear(_ kind: Kind, through seq: Int) {
+        let read = { (entry: [String: Any]) in (entry["seq"] as? Int ?? 0) <= seq }
+        if kind == .console { console.removeAll(where: read) } else { network.removeAll(where: read) }
     }
 
     @discardableResult

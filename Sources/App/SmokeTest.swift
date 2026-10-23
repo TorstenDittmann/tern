@@ -294,6 +294,8 @@ enum SmokeTest {
         let since = (net.json?["last"] as? Int).map(String.init) ?? "0"
         let none = await tern(["network", "list", "--tabId", id, "--since", since, "--json"])
         check((none.json?["entries"] as? [Any])?.isEmpty == true, "network list --since skips entries already read")
+        let oldest = await tern(["network", "list", "--tabId", id, "--since", "0", "--limit", "1", "--json"])
+        check(oldest.out.contains("one.html") && !oldest.out.contains("missing.html"), "network list --since pages from the oldest unread entry")
 
         let events = await streamed
         check(events.status == 0 && events.out.contains("console.message") && events.out.contains("tern-warn"),
