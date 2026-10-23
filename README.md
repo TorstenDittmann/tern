@@ -14,7 +14,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Keyboard tab list (⌘E).** Type to filter the sidebar, ↑↓ to move, ↩ to open, ⌘⌫ to close, esc to go back to the page.
 - **Link hints (⌘J).** Every link, button and field on screen gets a short letter code. Type it to click; hold ⇧ on the last letter to open a link in a background tab, or ⌥ to peek at it.
 - **Link peek.** ⌥-click a link to open it in a floating preview. ⌘↩ keeps it as a tab, ⇧⌘↩ opens it in a split, esc closes it.
-- **Split view.** Two tabs side by side, with a draggable divider. Focus follows the pane you click.
+- **Split view.** Two tabs side by side, with a draggable divider. Drag a tab onto the page to split with it. Focus follows the pane you click.
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
 - **History.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. **Clear History** in ⌘K forgets them.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
@@ -88,6 +88,7 @@ Chords combine `cmd`, `shift`, `alt` and `ctrl` with a key. Key names include `t
 ![Split view](docs/split.png)
 
 - **⌘\\** opens a new tab next to the current one. Press it again to end the split.
+- **Drag a tab from the sidebar onto the page.** Drop it on the left or right half to open it on that side; in a split, it replaces that pane.
 - **Right-click a tab ▸ Open in Split View** pairs that tab with the current one. **Split with Previous Tab** is available in the palette.
 - Clicking into a pane makes it the active tab: the address bar, history, find, ⌘W, and extensions all follow it.
 - Drag the gap between the panes to resize them, and double-click it to return to 50/50.

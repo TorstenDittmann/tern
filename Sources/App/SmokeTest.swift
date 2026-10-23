@@ -118,6 +118,7 @@ enum SmokeTest {
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
         await tabList(browser: browser, base: base)
         await linkTools(browser: browser, base: base)
+        dragToSplit(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
         if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
@@ -281,6 +282,20 @@ enum SmokeTest {
         browser.unsplit()
         if let peeked { browser.close(peeked) }
         browser.close(tab)
+    }
+
+    /// Dropping a sidebar tab on the left or right half of the page.
+    private static func dragToSplit(browser: BrowserWindowController, base: String) {
+        let a = browser.newTab(url: URL(string: "\(base)/one.html?dropA"))
+        let b = browser.newTab(url: URL(string: "\(base)/one.html?dropB"), activate: false)
+        let c = browser.newTab(url: URL(string: "\(base)/one.html?dropC"), activate: false)
+        browser.content.dropTab(b, onRight: true)
+        check(browser.visibleTabs == [a, b] && browser.activeTab === b, "dropping a tab on the right half splits with it")
+        browser.content.dropTab(c, onRight: false)
+        check(browser.visibleTabs == [c, b] && browser.activeTab === c, "dropping on the left half of a split replaces the left pane")
+        check(!browser.content.dropTab(c, onRight: true), "dropping a tab beside itself does nothing")
+        browser.unsplit()
+        [a, b, c].forEach(browser.close)
     }
 
     private static func agentAPI(browser: BrowserWindowController, base: String) async {

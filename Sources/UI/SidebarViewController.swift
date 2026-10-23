@@ -405,7 +405,17 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         let item = NSPasteboardItem()
         item.setString(String(row), forType: .tabRow)
+        if rows.indices.contains(row) { item.setString(rows[row].id.uuidString, forType: .tabID) }
         return item
+    }
+
+    // While a tab is dragged, the page accepts it as the other half of a split.
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        browser?.content.beginTabDrag()
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        browser?.content.endTabDrag()
     }
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
