@@ -110,8 +110,8 @@ enum AgentPageMethods {
         let key = try p.requiredString("key")
         _ = try await ready(tab)
         let loadsBefore = tab.loadsEnded
-        let native = try p.bool("native") ?? true && canSendEvents(to: tab)
-        try await sendKey(key, to: tab, native: native)
+        let wantsNative = try p.bool("native") ?? true && canSendEvents(to: tab)
+        let native = try await sendKey(key, to: tab, native: wantsNative)
         try await AgentMethods.settle(tab, loadsBefore: loadsBefore, p)
         var result = AgentMethods.describe(tab)
         result["native"] = native
@@ -324,10 +324,12 @@ enum AgentPageMethods {
         return false
     }
 
-    private static func sendKey(_ chord: String, to tab: Tab, native: Bool) async throws {
+    /// Returns whether real key events were sent (false when it fell back to DOM events).
+    @discardableResult
+    private static func sendKey(_ chord: String, to tab: Tab, native: Bool) async throws -> Bool {
         guard native, let webView = tab.webView, let window = webView.window else {
             _ = try await run(tab, "pressFallback", ["key": chord.lowercased()])
-            return
+            return false
         }
         // Modifiers first, the key last; a trailing "+" is the plus key itself ("+", "cmd++").
         let spec = chord.lowercased()
@@ -345,7 +347,7 @@ enum AgentPageMethods {
         } else {
             // Keys without an ANSI key code still reach the page as DOM events.
             _ = try await run(tab, "pressFallback", ["key": spec])
-            return
+            return false
         }
         let characters = flags.contains(.shift) ? key.characters.uppercased() : key.characters
         window.makeFirstResponder(webView)
@@ -356,6 +358,7 @@ enum AgentPageMethods {
                                                isARepeat: false, keyCode: key.code) else { continue }
             if type == .keyDown { webView.keyDown(with: event) } else { webView.keyUp(with: event) }
         }
+        return true
     }
 
     private static func modifiers(_ spec: String?) throws -> NSEvent.ModifierFlags {
