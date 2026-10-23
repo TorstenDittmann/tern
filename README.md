@@ -134,7 +134,15 @@ tern run toggleSplit                         # any command name from `tern comma
 tern call tabs.reload '{"wait":"none"}'      # any method, raw JSON params
 ```
 
-An MCP server is next.
+### MCP
+
+`tern mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server on stdin and stdout, so MCP clients get the API as tools without any glue. For Claude Code:
+
+```sh
+claude mcp add tern -- /Applications/Tern.app/Contents/Helpers/tern mcp
+```
+
+The tools mirror the methods: `tabs_list`, `tabs_open`, `tabs_navigate`, `page_snapshot`, `page_click`, `page_type`, `page_eval`, `page_screenshot` (returned as an image), `console_read`, `network_list` and the rest. Each call connects to the socket on its own, so restarting Tern doesn't break the MCP session. Failed calls come back as tool errors the model can read.
 
 ## Performance
 
@@ -159,7 +167,7 @@ defaults write dev.tern.browser suspendAfter 600                                
 | `Sources/UI` | Window controller (tabs and split view), sidebar, content panes, command palette, theme, and the new-tab page |
 | `Sources/Input` | Commands, chord parsing, and the keymap |
 | `Sources/Agent` | The agent API: socket server, JSON-RPC dispatch, and the methods |
-| `Sources/CLI` | The `tern` command-line client, embedded at `Tern.app/Contents/Helpers/tern` |
+| `Sources/CLI` | The `tern` command-line client and MCP server, embedded at `Tern.app/Contents/Helpers/tern` |
 | `Sources/Extensions` | Extension discovery and loading, and the bridges WebKit uses to see tabs and windows |
 | `Sources/App` | App delegate, menus, and the smoke test |
 | `Tests/Smoke` | Local test pages and a small MV3 extension used by `make smoke` |
@@ -173,7 +181,7 @@ defaults write dev.tern.browser suspendAfter 600                                
 - suspending a tab and restoring it with its history
 - split view
 - an unpacked MV3 extension: content script injection, background messaging, `tabs.query`, and the badge
-- the agent API, driven through the real `tern` CLI: opening, navigating, splitting and closing tabs, errors, `agentOwnTabsOnly`, and on a test form, snapshots, typing, selecting, clicking, key presses, eval, Markdown, the audit, screenshots and stale refs
+- the agent API, driven through the real `tern` CLI: opening, navigating, splitting and closing tabs, errors, `agentOwnTabsOnly`, and on a test form, snapshots, typing, selecting, clicking, key presses, eval, Markdown, the audit, screenshots and stale refs; console and network logs and the event stream; and `tern mcp` end to end
 
 The test never touches your saved session or your extensions, and it exits non-zero on failure.
 

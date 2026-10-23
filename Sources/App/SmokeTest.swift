@@ -264,6 +264,48 @@ enum SmokeTest {
 
         await agentPage(browser: browser, base: base)
         await agentLogs(browser: browser, base: base)
+        await agentMCP(base: base)
+    }
+
+    /// `tern mcp`: the handshake, the tool list, and tool calls answered with text, images and errors.
+    private static func agentMCP(base: String) async {
+        let requests: [[String: Any]] = [
+            ["jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": ["protocolVersion": "2025-06-18", "capabilities": [:], "clientInfo": ["name": "smoke", "version": "1"]]],
+            ["jsonrpc": "2.0", "method": "notifications/initialized"],
+            ["jsonrpc": "2.0", "id": 2, "method": "tools/list"],
+            ["jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": ["name": "tabs_open", "arguments": ["url": "\(base)/form.html"]]],
+            ["jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": ["name": "page_snapshot", "arguments": [:]]],
+            ["jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": ["name": "page_screenshot", "arguments": [:]]],
+            ["jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": ["name": "page_eval", "arguments": ["js": "throw new Error('mcp-boom')"]]],
+            ["jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": ["name": "nope", "arguments": [:]]],
+        ]
+        let input = requests.compactMap { try? JSONSerialization.data(withJSONObject: $0) }
+            .map { String(decoding: $0, as: UTF8.self) }.joined(separator: "\n") + "\n"
+        let run = await tern(["mcp"], input: input)
+        var replies: [Int: [String: Any]] = [:]
+        for line in run.out.split(separator: "\n") {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let id = object["id"] as? Int else { continue }
+            replies[id] = object
+        }
+        func result(_ id: Int) -> [String: Any] { replies[id]?["result"] as? [String: Any] ?? [:] }
+        func content(_ id: Int) -> [[String: Any]] { result(id)["content"] as? [[String: Any]] ?? [] }
+
+        check(result(1)["protocolVersion"] as? String == "2025-06-18" && replies.count == 7,
+              "mcp initialize (\(replies.count) replies: \(run.out.prefix(120)))")
+        let names = (result(2)["tools"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
+        check(names.contains("page_snapshot") && names.contains("console_read"), "mcp tools/list (\(names.count) tools)")
+        check((content(3).first?["text"] as? String)?.contains("form.html") == true, "mcp tabs_open")
+        check((content(4).first?["text"] as? String)?.contains("Submit") == true, "mcp page_snapshot returns the outline")
+        check(content(5).first?["type"] as? String == "image" && content(5).first?["mimeType"] as? String == "image/png",
+              "mcp page_screenshot returns an image")
+        check(result(6)["isError"] as? Bool == true && (content(6).first?["text"] as? String)?.contains("mcp-boom") == true,
+              "mcp tool errors come back as isError results")
+        check((replies[7]?["error"] as? [String: Any])?["code"] as? Int == -32602, "mcp unknown tool is a protocol error")
+        if let id = (content(3).first?["text"] as? String).flatMap({ try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] })?["id"] as? String {
+            _ = await tern(["tabs", "close", id])
+        }
     }
 
     /// console.*, network.*, events.*, and the "agent is driving" marking.
@@ -374,20 +416,28 @@ enum SmokeTest {
     }
 
     /// Runs the CLI without blocking the main thread, which the server needs to answer it.
-    private static func tern(_ args: [String]) async -> CLIResult {
+    private static func tern(_ args: [String], input: String? = nil) async -> CLIResult {
         let process = Process()
         process.executableURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/tern")
         process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
+        if let input {
+            let stdin = Pipe()
+            process.standardInput = stdin
+            stdin.fileHandleForWriting.write(Data(input.utf8))
+            try? stdin.fileHandleForWriting.close()
+        }
         return await withCheckedContinuation { done in
-            process.terminationHandler = { p in
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                done.resume(returning: CLIResult(status: p.terminationStatus, out: String(decoding: data, as: UTF8.self)))
-            }
             do { try process.run() } catch {
-                done.resume(returning: CLIResult(status: -1, out: "\(error)"))
+                return done.resume(returning: CLIResult(status: -1, out: "\(error)"))
+            }
+            // Drain output while it runs: a large result (a screenshot) would fill the pipe and stall it.
+            DispatchQueue.global().async {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                done.resume(returning: CLIResult(status: process.terminationStatus, out: String(decoding: data, as: UTF8.self)))
             }
         }
     }
