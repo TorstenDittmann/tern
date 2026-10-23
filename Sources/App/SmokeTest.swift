@@ -224,7 +224,7 @@ enum SmokeTest {
         let opened = await tern(["tabs", "open", "\(base)/one.html", "--windowId", browser.id.uuidString])
         let id = opened.json?["id"] as? String ?? ""
         check(opened.json?["title"] as? String == "Page One" && opened.json?["openedByAgent"] as? Bool == true,
-              "tabs open waits for the load")
+              "tabs open waits for the load (\(opened.out.prefix(160)))")
         check(browser.tabs.count == before + 1 && browser.activeTab?.id.uuidString == id, "tabs open adds an active tab")
 
         let list = await tern(["tabs", "list", "--plain"])
@@ -271,7 +271,8 @@ enum SmokeTest {
         let opened = await tern(["tabs", "open", "\(base)/form.html", "--windowId", browser.id.uuidString])
         let id = opened.json?["id"] as? String ?? ""
 
-        async let streamed = tern(["events", "subscribe", "console.message", "--count", "1", "--timeoutMs", "10000"])
+        // No --count: other pages can log too, so collect everything until the stream goes quiet.
+        async let streamed = tern(["events", "subscribe", "console.message", "--timeoutMs", "3000"])
         for _ in 0..<50 where !AgentServer.shared.hasSubscribers { try? await Task.sleep(nanoseconds: 100_000_000) }
         check(AgentServer.shared.hasSubscribers && AgentActivity.shared.isActive, "events subscribe keeps a listener connected")
 
@@ -296,7 +297,7 @@ enum SmokeTest {
 
         let events = await streamed
         check(events.status == 0 && events.out.contains("console.message") && events.out.contains("tern-warn"),
-              "events subscribe streams console messages")
+              "events subscribe streams console messages (\(events.status): \(events.out.prefix(200)))")
         _ = await tern(["tabs", "close", id])
     }
 
