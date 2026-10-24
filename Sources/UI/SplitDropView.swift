@@ -23,11 +23,11 @@ final class SplitDropView: NSView {
         super.init(frame: frame)
         registerForDraggedTypes([.tabID])
         highlight.radius = Theme.cardRadius
-        highlight.fill = NSColor.controlAccentColor.withAlphaComponent(0.16)
-        highlight.border = NSColor.controlAccentColor.withAlphaComponent(0.7)
+        highlight.fill = Theme.accentWash
+        highlight.border = Theme.accent
         highlight.isHidden = true
         label.font = .systemFont(ofSize: 13, weight: .semibold)
-        label.textColor = .controlAccentColor
+        label.textColor = Theme.accent
         label.alignment = .center
         addSubview(highlight)
         highlight.addSubview(label)

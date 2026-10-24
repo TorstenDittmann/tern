@@ -235,6 +235,8 @@ enum SmokeTest {
         check(browser.tabs.first === pinned && pinned.isPinned, "pinning moves a tab to the top")
         if let i = browser.tabs.firstIndex(of: plain) { browser.moveTab(from: i, to: 0) }
         check(browser.tabs.first === pinned && browser.tabs[1] === plain, "unpinned tabs stay below pinned ones")
+        check(browser.sidebar.pinnedTileCount == 1 && browser.sidebar.visibleRowCount == browser.tabs.count - 1,
+              "a pinned tab shows as a tile above the list, not as a row (\(browser.sidebar.pinnedTileCount) tiles, \(browser.sidebar.visibleRowCount) rows)")
 
         browser.activate(plain)
         CommandRouter.perform(.focusTabList, in: browser)
@@ -250,7 +252,7 @@ enum SmokeTest {
         check(browser.activeTab === pinned && !sidebar.isTabListFocused, "↩ opens the filtered tab and leaves the list")
 
         browser.setPinned(pinned, false)
-        check(!pinned.isPinned && browser.pinnedCount == 0, "unpinning")
+        check(!pinned.isPinned && browser.pinnedCount == 0 && browser.sidebar.pinnedTileCount == 0, "unpinning")
         browser.close(plain)
         browser.close(pinned)
     }
