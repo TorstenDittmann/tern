@@ -407,6 +407,25 @@ enum SmokeTest {
         let bar = browser.content.topBar
         let root = browser.window!.contentView!
         root.layoutSubtreeIfNeeded()
+
+        // The default: the tab list on the right, its first row level with the top bar, no empty band above it.
+        let rightFrame = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil)
+        check(browser.isSidebarOnRight && rightFrame.maxX >= root.bounds.width - 1, "the tab list starts on the right")
+        if let first = browser.sidebar.firstRowFrame {
+            let (row, block, visible) = first
+            // Measured from the real row, not from the constants that placed it.
+            let chipTop = row.maxY - browser.sidebar.rowChipInset, barTop = bar.convert(bar.bounds, to: nil).maxY
+            check(abs(chipTop - barTop) <= 1, "on the right, the first tab starts level with the address bar (tab \(chipTop), bar \(barTop))")
+            check(block.maxY <= visible.maxY + 0.5 && block.maxY < root.bounds.height - 1,
+                  "on the right, a split block around the first row isn't cut off at the top (block \(block.maxY), list \(visible.maxY))")
+        } else {
+            check(false, "on the right, the tab list has a first row")
+        }
+        check(bar.convert(bar.bounds, to: nil).minX >= 70, "with the tab list on the right, the top bar clears the traffic lights")
+
+        // The rest checks the left side, then switches back.
+        browser.setSidebarOnRight(false)
+        root.layoutSubtreeIfNeeded()
         check(bar.window != nil && bar.pill.frame.width > browser.sidebar.view.frame.width,
               "the address bar sits above the page and is wider than the sidebar (\(Int(bar.pill.frame.width))pt)")
         let barMid = bar.convert(bar.bounds, to: nil).midY
@@ -440,6 +459,8 @@ enum SmokeTest {
         root.layoutSubtreeIfNeeded()
         check(browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil).minX < 1 && bar.convert(bar.bounds, to: nil).minX > sidebarWidth - 1,
               "and back to the left")
+        browser.setSidebarOnRight(true)
+        root.layoutSubtreeIfNeeded()
     }
 
     private static func welcome(browser: BrowserWindowController) async {
