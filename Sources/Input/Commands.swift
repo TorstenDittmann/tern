@@ -29,7 +29,7 @@ enum Command: String, CaseIterable {
         case .commandPalette: "Command Palette…"
         case .tabPicker: "Switch to Tab…"
         case .toggleSidebar: "Toggle Sidebar"
-        case .moveSidebar: Preferences.sidebarOnRight ? "Move Tab List to the Left" : "Move Tab List to the Right"
+        case .moveSidebar: MainActor.assumeIsolated { Preferences.sidebarOnRight } ? "Move Tab List to the Left" : "Move Tab List to the Right"
         case .reload: "Reload Page"
         case .hardReload: "Reload Ignoring Cache"
         case .stopLoading: "Stop Loading"

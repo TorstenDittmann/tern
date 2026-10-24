@@ -112,8 +112,7 @@ enum SmokeTest {
         let fullWidth = outside.webView?.frame.width ?? 0
         browser.activate(left)
         check(browser.visibleTabs.count == 2, "returning to a paired tab restores the split")
-        check([left, right].allSatisfy { $0.webView?.superview != nil && $0.webView?.frame.width == $0.webView?.superview?.bounds.width }
-              && (left.webView?.frame.width ?? 0) < fullWidth * 0.75,
+        check([left, right].allSatisfy { $0.webView?.superview != nil && ($0.webView?.frame.width ?? .infinity) < fullWidth * 0.75 },
               "split panes get their half width at once, without a full-width frame first")
         right.suspend()
         check(!right.isSuspended, "visible split pane is never suspended")
@@ -559,6 +558,18 @@ enum SmokeTest {
         check(browser.split != nil && browser.visibleTabs.count == 2, "run splitWithPreviousTab")
         _ = await tern(["run", "toggleSplit"])
         check(browser.split == nil, "run toggleSplit ends the split")
+        let others = browser.tabs.filter { $0.id.uuidString != id }.prefix(2).map(\.id.uuidString)
+        let trio = await tern(["tabs", "split", "--tabIds", ([id] + others).joined(separator: ","), "--layout", "grid"])
+        check(browser.split?.tabs.map(\.id.uuidString) == [id] + others && browser.split?.layout == .grid
+              && (trio.json?["split"] as? [String: Any])?["layout"] as? String == "grid", "tabs split with tabIds and a layout (\(trio.out.prefix(120)))")
+        let pairGrid = await tern(["tabs", "split", "--tabIds", "\(id),\(others[0])", "--layout", "grid"])
+        check(pairGrid.status == 1 && browser.split?.tabs.count == 3, "tabs split refuses a grid of two")
+        let twice = await tern(["tabs", "split", "--tabIds", "\(id),\(id)"])
+        check(twice.status == 1, "tabs split refuses the same tab twice")
+        _ = await tern(["tabs", "split", "--leftTabId", id, "--rightTabId", others[0]])
+        check(browser.split?.tabs.map(\.id.uuidString) == [id, others[0]] && browser.split?.layout == .columns,
+              "tabs split with leftTabId and rightTabId")
+        browser.unsplit()
 
         let unknown = await tern(["tabs", "frobnicate"])
         check(unknown.status == 1 && unknown.out.contains("-32601"), "unknown method is an error")

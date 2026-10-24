@@ -332,7 +332,8 @@ extension SidebarViewController {
         guard let browser, browser.tabs.indices.contains(from) else { return }
         let tab = browser.tabs[from]
         browser.moveTab(from: from, to: to)
-        guard browser.isPaired(tab), let i = browser.tabs.firstIndex(of: tab) else { return }
+        // A drop back in place isn't a drag out, even when the split's rows aren't next to each other.
+        guard browser.isPaired(tab), let i = browser.tabs.firstIndex(of: tab), i != from else { return }
         let neighbors = [i - 1, i + 1].filter(browser.tabs.indices.contains).map { browser.tabs[$0] }
         if !neighbors.contains(where: browser.isPaired) { browser.removeFromSplit(tab) }
     }
