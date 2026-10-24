@@ -135,6 +135,15 @@ final class SidebarViewController: NSViewController {
         listTop.constant = top
     }
 
+    /// Space between a row's edge and its chip (half the gap between rows).
+    var rowChipInset: CGFloat { tableView.intercellSpacing.height / 2 }
+
+    /// The first row and the list's visible area, in window coordinates (for the smoke test).
+    var firstRowFrame: (row: NSRect, visible: NSRect)? {
+        guard tableView.numberOfRows > 0, let clip = tableView.enclosingScrollView?.contentView else { return nil }
+        return (tableView.convert(tableView.rect(ofRow: 0), to: nil), clip.convert(clip.bounds, to: nil))
+    }
+
     // MARK: Updates from the window
 
     func reloadTabs() {
@@ -464,7 +473,9 @@ final class TabTableView: NSTableView {
     override func drawBackground(inClipRect clipRect: NSRect) {
         super.drawBackground(inClipRect: clipRect)
         for run in splitRuns where run.rows.upperBound < numberOfRows {
-            let rect = rect(ofRow: run.rows.lowerBound).union(rect(ofRow: run.rows.upperBound)).insetBy(dx: 0, dy: -1)
+            // The row rects already leave a point around each chip; staying inside them keeps the block's
+            // top edge on screen when the split's first tab is the first row.
+            let rect = rect(ofRow: run.rows.lowerBound).union(rect(ofRow: run.rows.upperBound))
             guard rect.intersects(clipRect) else { continue }
             let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: Theme.rowRadius + 2, yRadius: Theme.rowRadius + 2)
             Theme.accent.withAlphaComponent(run.onScreen ? 0.12 : 0.06).setFill()

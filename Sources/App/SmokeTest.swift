@@ -410,10 +410,17 @@ enum SmokeTest {
 
         // The default: the tab list on the right, its first row level with the top bar, no empty band above it.
         let rightFrame = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil)
-        let rowMid = rightFrame.maxY - browser.sidebar.contentTop - Theme.rowHeight / 2
         check(browser.isSidebarOnRight && rightFrame.maxX >= root.bounds.width - 1, "the tab list starts on the right")
-        check(abs(rowMid - bar.convert(bar.bounds, to: nil).midY) <= 1,
-              "on the right, the first tab row sits level with the top bar (row \(rowMid), bar \(bar.convert(bar.bounds, to: nil).midY))")
+        if let first = browser.sidebar.firstRowFrame {
+            let (row, visible) = first
+            // Measured from the real row, not from the constants that placed it.
+            let chipTop = row.maxY - browser.sidebar.rowChipInset, barTop = bar.convert(bar.bounds, to: nil).maxY
+            check(abs(chipTop - barTop) <= 1, "on the right, the first tab starts level with the address bar (tab \(chipTop), bar \(barTop))")
+            check(row.maxY <= visible.maxY + 0.5 && row.maxY < root.bounds.height - 1,
+                  "on the right, the first row (and a split block around it) isn't cut off at the top (row \(row.maxY), list \(visible.maxY))")
+        } else {
+            check(false, "on the right, the tab list has a first row")
+        }
         check(bar.convert(bar.bounds, to: nil).minX >= 70, "with the tab list on the right, the top bar clears the traffic lights")
 
         // The rest checks the left side, then switches back.
