@@ -189,15 +189,31 @@ enum AgentMethods {
         return describe(tab)
     }
 
+    /// `tabIds` (two to four, in pane order) with an optional `layout`, or `leftTabId` and `rightTabId`.
     private static func split(_ p: AgentParams) async throws -> Any {
-        let left = try findTab(id: p.requiredString("leftTabId"))
-        let right = try findTab(id: p.requiredString("rightTabId"))
-        guard let browser = left.owner, browser === right.owner else {
-            throw AgentError.invalidParams("Both tabs must be in the same window")
+        let ids: [String]
+        switch p.raw["tabIds"] {
+        case nil, is NSNull: ids = [try p.requiredString("leftTabId"), try p.requiredString("rightTabId")]
+        case let one as String: ids = one.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        case let many as [String]: ids = many
+        default: throw AgentError.invalidParams("tabIds must be a list of tab ids")
         }
-        try checkControl(left)
-        try checkControl(right)
-        browser.split(left, with: right, focus: left)
+        guard (2...SplitGroup.maxTabs).contains(ids.count) else { throw AgentError.invalidParams("A split has 2 to \(SplitGroup.maxTabs) tabs") }
+        let tabs = try ids.map { try findTab(id: $0) }
+        guard let browser = tabs[0].owner, tabs.allSatisfy({ $0.owner === browser }) else {
+            throw AgentError.invalidParams("All tabs must be in the same window")
+        }
+        guard Set(tabs.map(ObjectIdentifier.init)).count == tabs.count else { throw AgentError.invalidParams("Each tab can be in the split once") }
+        let layout: SplitLayout
+        if let name = try p.string("layout") {
+            guard let l = SplitLayout(rawValue: name) else { throw AgentError.invalidParams("layout must be columns, rows or grid") }
+            guard l.fits(tabs.count) else { throw AgentError.invalidParams("A grid needs 3 or 4 tabs") }
+            layout = l
+        } else {
+            layout = tabs.count == SplitGroup.maxTabs ? .grid : .columns
+        }
+        try tabs.forEach(checkControl)
+        browser.split(tabs, layout: layout, focus: tabs[0])
         return describe(browser)
     }
 
@@ -334,7 +350,10 @@ enum AgentMethods {
             "key": browser.window?.isKeyWindow ?? false,
             "activeTabId": orNull(browser.activeTab?.id.uuidString),
             "tabIds": browser.tabs.map(\.id.uuidString),
-            "split": orNull(browser.split.map { ["leftTabId": $0.left.id.uuidString, "rightTabId": $0.right.id.uuidString] }),
+            "split": orNull(browser.split.map { g in
+                ["tabIds": g.tabs.map(\.id.uuidString), "layout": g.layout.rawValue,
+                 "leftTabId": g.tabs[0].id.uuidString, "rightTabId": g.tabs[1].id.uuidString]
+            }),
         ]
     }
 }
@@ -344,7 +363,8 @@ private extension Command {
     var actsOnActiveTab: Bool {
         switch self {
         case .closeTab, .duplicateTab, .reload, .hardReload, .stopLoading, .goBack, .goForward,
-             .moveTabUp, .moveTabDown, .togglePinTab, .toggleSplit, .splitWith, .splitWithPreviousTab, .swapPanes,
+             .moveTabUp, .moveTabDown, .togglePinTab, .toggleSplit, .splitDown, .splitWith, .splitWithPreviousTab, .addPane,
+             .removeFromSplit, .changeSplitLayout, .swapPanes,
              .zoomIn, .zoomOut, .zoomReset, .linkHints: true
         default: false
         }

@@ -16,7 +16,8 @@ enum SessionStore {
     struct SavedTab: Codable { var id: UUID; var url: String?; var title: String?; var state: Data?; var pinned: Bool? }
     struct SavedWindow: Codable {
         var tabs: [SavedTab]; var active: Int; var frame: String; var sidebarCollapsed: Bool
-        var split: [Int]?; var splitFraction: Double?
+        /// Indices of the split's tabs, in pane order. `splitFraction` is from when splits had two side-by-side panes.
+        var split: [Int]?; var splitFraction: Double?; var splitLayout: String?; var splitDividers: [Double]?
     }
 
     private static var fileURL: URL { AppPaths.support.appendingPathComponent("session.json") }
@@ -29,11 +30,12 @@ enum SessionStore {
                 active: w.activeTab.flatMap { w.tabs.firstIndex(of: $0) } ?? 0,
                 frame: NSStringFromRect(w.window?.frame ?? .zero),
                 sidebarCollapsed: w.isSidebarCollapsed,
-                split: w.split.flatMap { p in
-                    guard let l = w.tabs.firstIndex(of: p.left), let r = w.tabs.firstIndex(of: p.right) else { return nil }
-                    return [l, r]
+                split: w.split.flatMap { g in
+                    let indices = g.tabs.compactMap { w.tabs.firstIndex(of: $0) }
+                    return indices.count == g.tabs.count ? indices : nil
                 },
-                splitFraction: w.split.map { Double($0.fraction) }
+                splitLayout: w.split?.layout.rawValue,
+                splitDividers: w.split?.dividers.map(Double.init)
             )
         }
         guard let data = try? JSONEncoder().encode(saved) else { return }
@@ -53,8 +55,10 @@ enum SessionStore {
             }
             let frame = NSRectFromString(w.frame)
             let browser = app.openWindow(restoring: tabs, active: w.active, frame: frame == .zero ? nil : frame, sidebarCollapsed: w.sidebarCollapsed)
-            if let pair = w.split, pair.count == 2, tabs.indices.contains(pair[0]), tabs.indices.contains(pair[1]) {
-                browser.restoreSplit(left: tabs[pair[0]], right: tabs[pair[1]], fraction: CGFloat(w.splitFraction ?? 0.5))
+            if let indices = w.split, indices.allSatisfy(tabs.indices.contains) {
+                let dividers = w.splitDividers ?? w.splitFraction.map { [$0] }
+                browser.restoreSplit(indices.map { tabs[$0] }, layout: w.splitLayout.flatMap(SplitLayout.init(rawValue:)) ?? .columns,
+                                     dividers: dividers?.map { CGFloat($0) })
             }
         }
         return !app.windows.isEmpty

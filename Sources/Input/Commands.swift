@@ -6,7 +6,8 @@ enum Command: String, CaseIterable {
     case focusAddressBar, commandPalette, tabPicker, toggleSidebar
     case reload, hardReload, stopLoading, goBack, goForward
     case nextTab, previousTab, moveTabUp, moveTabDown, focusTabList, togglePinTab
-    case toggleSplit, splitWith, splitWithPreviousTab, swapPanes, focusLeftPane, focusRightPane
+    case toggleSplit, splitDown, splitWith, splitWithPreviousTab, addPane, removeFromSplit, changeSplitLayout, swapPanes
+    case focusLeftPane, focusRightPane, focusPaneAbove, focusPaneBelow
     case selectTab1, selectTab2, selectTab3, selectTab4, selectTab5, selectTab6, selectTab7, selectTab8, selectLastTab
     case find, findNext, findPrevious, linkHints
     case zoomIn, zoomOut, zoomReset
@@ -34,11 +35,17 @@ enum Command: String, CaseIterable {
         case .goBack: "Back"
         case .goForward: "Forward"
         case .toggleSplit: "Split View"
+        case .splitDown: "Split Down"
         case .splitWith: "Split with…"
         case .splitWithPreviousTab: "Split with Previous Tab"
+        case .addPane: "Add Pane to Split"
+        case .removeFromSplit: "Remove Tab from Split"
+        case .changeSplitLayout: "Change Split Layout"
         case .swapPanes: "Swap Split Panes"
         case .focusLeftPane: "Focus Left Pane"
         case .focusRightPane: "Focus Right Pane"
+        case .focusPaneAbove: "Focus Pane Above"
+        case .focusPaneBelow: "Focus Pane Below"
         case .nextTab: "Next Tab"
         case .previousTab: "Previous Tab"
         case .moveTabUp: "Move Tab Up"
@@ -93,11 +100,17 @@ enum Command: String, CaseIterable {
         case .goBack: "chevron.backward"
         case .goForward: "chevron.forward"
         case .toggleSplit: "rectangle.split.2x1"
+        case .splitDown: "rectangle.split.1x2"
         case .splitWith: "rectangle.split.2x1.fill"
         case .splitWithPreviousTab: "rectangle.righthalf.inset.filled"
+        case .addPane: "rectangle.split.3x1"
+        case .removeFromSplit: "rectangle"
+        case .changeSplitLayout: "rectangle.split.2x2"
         case .swapPanes: "arrow.left.arrow.right"
         case .focusLeftPane: "rectangle.lefthalf.filled"
         case .focusRightPane: "rectangle.righthalf.filled"
+        case .focusPaneAbove: "rectangle.tophalf.filled"
+        case .focusPaneBelow: "rectangle.bottomhalf.filled"
         case .nextTab: "arrow.down.square"
         case .previousTab: "arrow.up.square"
         case .moveTabUp: "arrow.up.to.line"
@@ -187,10 +200,16 @@ enum CommandRouter {
         case .goForward: webView?.goForward()
         case .toggleSplit: browser.toggleSplit()
         case .splitWith: CommandPalette.toggle(for: browser, mode: .splitWith)
+        case .splitDown: browser.splitDown()
         case .splitWithPreviousTab: browser.splitWithPreviousTab()
+        case .addPane: browser.addPane()
+        case .removeFromSplit: if let tab { browser.removeFromSplit(tab) }
+        case .changeSplitLayout: browser.setSplitLayout(nil)
         case .swapPanes: browser.swapPanes()
-        case .focusLeftPane: browser.focusPane(right: false)
-        case .focusRightPane: browser.focusPane(right: true)
+        case .focusLeftPane: browser.focusPane(.left)
+        case .focusRightPane: browser.focusPane(.right)
+        case .focusPaneAbove: browser.focusPane(.up)
+        case .focusPaneBelow: browser.focusPane(.down)
         case .nextTab: browser.selectRelative(1)
         case .previousTab: browser.selectRelative(-1)
         case .moveTabUp: browser.moveActiveTab(by: -1)
