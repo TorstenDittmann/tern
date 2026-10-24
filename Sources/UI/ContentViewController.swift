@@ -17,6 +17,7 @@ final class ContentViewController: NSViewController {
     private var panesTrailing: NSLayoutConstraint!
     private var barTop: NSLayoutConstraint!
     private var barLeading: NSLayoutConstraint!
+    private var barGap: NSLayoutConstraint!
 
     override func loadView() {
         let root = NSView()
@@ -37,13 +38,15 @@ final class ContentViewController: NSViewController {
         let g = Theme.gutter
         panesLeading = panes.leadingAnchor.constraint(equalTo: root.leadingAnchor)
         panesTrailing = panes.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -g)
-        barTop = topBar.topAnchor.constraint(equalTo: root.topAnchor, constant: TopBar.defaultContentTop - TopBar.height - g)
+        let defaultTop = (TopBar.defaultContentTop - TopBar.height) / 2
+        barTop = topBar.topAnchor.constraint(equalTo: root.topAnchor, constant: defaultTop)
         barLeading = topBar.leadingAnchor.constraint(equalTo: panes.leadingAnchor)
+        barGap = panes.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: defaultTop)
         NSLayoutConstraint.activate([
             barTop, barLeading,
             topBar.trailingAnchor.constraint(equalTo: panes.trailingAnchor),
             topBar.heightAnchor.constraint(equalToConstant: TopBar.height),
-            panes.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: g),
+            barGap,
             panesLeading,
             panesTrailing,
             panes.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -g),
@@ -63,10 +66,15 @@ final class ContentViewController: NSViewController {
         topBar.setSidebarSide(right: onRight)
     }
 
-    /// Centers the top bar on the traffic lights, `lightsInset` points from its leading edge to clear them.
+    /// The page area (all panes), in window coordinates.
+    var pageFrameInWindow: NSRect { panes.convert(panes.bounds, to: nil) }
+
+    /// Places the top bar `top` below the window edge, with the same space between it and the page,
+    /// and `lightsInset` points from its leading edge to clear the traffic lights.
     func setTitlebar(barTop top: CGFloat, lightsInset: CGFloat) {
         loadViewIfNeeded()
         barTop.constant = top
+        barGap.constant = top
         barLeading.constant = lightsInset
     }
 

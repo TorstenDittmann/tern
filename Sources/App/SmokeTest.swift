@@ -435,7 +435,11 @@ enum SmokeTest {
                   "the top bar is centered on the traffic lights (bar \(barMid), lights \(lightsMid))")
         }
         let firstRow = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil).maxY - browser.sidebar.contentTop
-        check(abs(firstRow - (bar.convert(bar.bounds, to: nil).minY - Theme.gutter)) <= 1, "the tab list starts level with the page")
+        let barFrame = bar.convert(bar.bounds, to: nil)
+        let pageTop = browser.content.pageFrameInWindow.maxY
+        check(abs(firstRow - pageTop) <= 1, "the tab list starts level with the page")
+        check(abs((root.bounds.height - barFrame.maxY) - (barFrame.minY - pageTop)) <= 1,
+              "the top bar has the same space above and below it (\(Int(root.bounds.height - barFrame.maxY)) / \(Int(barFrame.minY - pageTop)))")
 
         browser.toggleSidebar()
         try? await Task.sleep(for: .milliseconds(300))
@@ -461,6 +465,20 @@ enum SmokeTest {
               "and back to the left")
         browser.setSidebarOnRight(true)
         root.layoutSubtreeIfNeeded()
+
+        // Dragged to its narrowest, the tab list goes down to the minimum: nothing inside it holds it wider.
+        let before = browser.sidebar.view.frame.width
+        browser.setSidebarWidth(100)
+        root.layoutSubtreeIfNeeded()
+        let narrowest = browser.sidebar.view.frame.width
+        check(narrowest <= 101 && !browser.isSidebarCollapsed,
+              "the tab list drags down to 100pt (\(Int(narrowest))pt)")
+        let compact = browser.sidebar.bottomBarCompact
+        check(compact.isCompact && compact.newTabWidth < 40,
+              "a narrow tab list shows just the + for New Tab (New Tab \(Int(compact.newTabWidth))pt)")
+        browser.setSidebarWidth(before)
+        root.layoutSubtreeIfNeeded()
+        if before >= 170 { check(!browser.sidebar.bottomBarCompact.isCompact, "and its label comes back when it widens again") }
     }
 
     private static func welcome(browser: BrowserWindowController) async {
