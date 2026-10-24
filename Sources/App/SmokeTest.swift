@@ -3,7 +3,7 @@ import WebKit
 
 /// End-to-end smoke test driven through the real UI objects. Run with
 /// `TERN_SMOKE=<out dir> TERN_SMOKE_BASE=http://localhost:8765 TERN_SMOKE_EXT=<unpacked ext dir> Tern.app/Contents/MacOS/Tern`.
-/// It doesn't touch the saved session or enabled extensions, and exits with 0 on success.
+/// It doesn't touch the saved session, settings or enabled extensions, and exits with 0 on success.
 @MainActor
 enum SmokeTest {
     static var isRunning: Bool { ProcessInfo.processInfo.environment["TERN_SMOKE"] != nil }
@@ -451,7 +451,9 @@ enum SmokeTest {
         check(breakdown.url?.absoluteString == edited, "editing parameters rebuilds the URL and encodes new values (\(breakdown.url?.absoluteString ?? "nil"))")
         breakdown.onOpen?(breakdown.url!, false)
         await wait { !tab.isLoading && tab.currentURL?.absoluteString == edited }
-        check(tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true, "Open loads the edited URL and closes the breakdown")
+        check(tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true,
+              "Open loads the edited URL and closes the breakdown (got \(tab.currentURL?.absoluteString ?? "nil"), loading \(tab.isLoading), "
+              + "popover shown \(bar.popover?.isShown == true), active tab \(browser.activeTab === tab))")
 
         CommandRouter.perform(.showSiteInfo, in: browser)
         let site = bar.popover?.contentViewController as? SiteInfoController
@@ -481,9 +483,14 @@ enum SmokeTest {
         let bar = browser.content.topBar
         let root = browser.window!.contentView!
         root.layoutSubtreeIfNeeded()
+        let realWidths = ["TernSidebarWidth", "TernSidebarWidthRight"].map {
+            UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \($0)") as? [String]
+        }
 
         // The default: the tab list on the right, its first row level with the top bar, no empty band above it.
         let rightFrame = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil)
+        check(abs(rightFrame.width - BrowserWindowController.defaultSidebarWidth) <= 1,
+              "with no saved width, the tab list starts \(Int(BrowserWindowController.defaultSidebarWidth))pt wide (\(Int(rightFrame.width))pt)")
         check(browser.isSidebarOnRight && rightFrame.maxX >= root.bounds.width - 1, "the tab list starts on the right")
         if let first = browser.sidebar.firstRowFrame {
             let (row, block, visible) = first
@@ -557,6 +564,11 @@ enum SmokeTest {
         browser.setSidebarWidth(before)
         root.layoutSubtreeIfNeeded()
         if before >= 170 { check(!browser.sidebar.bottomBarCompact.isCompact, "and its label comes back when it widens again") }
+
+        let widthsAfter = ["TernSidebarWidth", "TernSidebarWidthRight"].map {
+            UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \($0)") as? [String]
+        }
+        check(widthsAfter == realWidths, "resizing and moving the tab list leaves your own saved widths alone")
     }
 
     private static func welcome(browser: BrowserWindowController) async {
@@ -776,7 +788,7 @@ enum SmokeTest {
         check(unknown.status == 1 && unknown.out.contains("-32601"), "unknown method is an error")
 
         // agentOwnTabsOnly: tabs the agent didn't open are read-only.
-        let defaults = UserDefaults.standard
+        let defaults = UserDefaults.tern
         let previous = defaults.object(forKey: "agentOwnTabsOnly")
         defaults.set(true, forKey: "agentOwnTabsOnly")
         let theirs = browser.tabs.first { $0.id.uuidString != id && !$0.isActive }!

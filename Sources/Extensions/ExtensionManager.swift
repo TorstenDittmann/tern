@@ -35,7 +35,7 @@ final class ExtensionManager: NSObject {
         return url
     }()
 
-    private let defaults = UserDefaults.standard
+    private let defaults = UserDefaults.tern
     private var enabledIDs: Set<String> {
         get { Set(defaults.stringArray(forKey: "enabledExtensions") ?? []) }
         set { defaults.set(Array(newValue), forKey: "enabledExtensions") }

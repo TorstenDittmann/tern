@@ -44,7 +44,7 @@ enum AgentMethods {
     /// Tabs opened through the API. With `agentOwnTabsOnly` on, agents can act on these and
     /// only read the rest. Off by default: agents drive any tab, including logged-in ones.
     private static var agentTabs: Set<UUID> = []
-    private static var ownTabsOnly: Bool { UserDefaults.standard.bool(forKey: "agentOwnTabsOnly") }
+    private static var ownTabsOnly: Bool { UserDefaults.tern.bool(forKey: "agentOwnTabsOnly") }
 
     static func checkControl(_ tab: Tab) throws {
         if ownTabsOnly, !agentTabs.contains(tab.id) { throw AgentError.notAllowed }
