@@ -77,13 +77,14 @@ final class LinkHints {
         guard let target = result["hit"] as? [String: Any], let tab else { return }
         finish()
         let href = (target["href"] as? String).flatMap(URL.init(string:)).flatMap { HistoryStore.isRecordable($0) ? $0 : nil }
+        let point = (target["x"] as? Double).flatMap { x in (target["y"] as? Double).map { AgentPageMethods.windowPoint(webView, x: x, y: $0) } }
         if let href, peek, let browser = tab.owner {
-            browser.content.peek(href, from: tab)
+            browser.content.peek(href, from: tab, at: point)
         } else if let href, background, let browser = tab.owner {
             browser.newTab(url: href, activate: false, after: tab)
-        } else if let x = target["x"] as? Double, let y = target["y"] as? Double, AgentPageMethods.canSendEvents(to: tab) {
+        } else if let point, AgentPageMethods.canSendEvents(to: tab) {
             webView.window?.makeFirstResponder(webView)
-            AgentPageMethods.sendClick(to: webView, at: AgentPageMethods.windowPoint(webView, x: x, y: y), modifiers: [])
+            AgentPageMethods.sendClick(to: webView, at: point, modifiers: [])
         } else {
             _ = try? await Self.call(webView, "click", [:])
         }
