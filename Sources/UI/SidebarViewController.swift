@@ -150,8 +150,13 @@ final class SidebarViewController: NSViewController {
         super.viewDidAppear()
         updateMemory()
         memoryTimer?.invalidate()
-        memoryTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateMemory() }
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                // The window closed: stop. Minimized, hidden or covered: skip the measurement.
+                guard let self, let window = self.view.window,
+                      window.isVisible || window.isMiniaturized || NSApp.isHidden else { return timer.invalidate() }
+                if window.occlusionState.contains(.visible) { self.updateMemory() }
+            }
         }
         memoryTimer?.tolerance = 1
     }
