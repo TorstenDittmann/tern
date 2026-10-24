@@ -6,7 +6,7 @@ import WebKit
 /// sidebar is hidden or on the right.
 @MainActor
 final class TopBar: NSView {
-    static let height: CGFloat = 32
+    static let height: CGFloat = 28
     /// Window top to page top before the traffic lights have been measured.
     static let defaultContentTop: CGFloat = 46
 
