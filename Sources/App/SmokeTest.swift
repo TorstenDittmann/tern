@@ -126,7 +126,7 @@ enum SmokeTest {
         await tabList(browser: browser, base: base)
         await linkTools(browser: browser, base: base)
         dragToSplit(browser: browser, base: base)
-        splitInTabList(browser: browser, base: base)
+        await splitInTabList(browser: browser, base: base)
         await welcome(browser: browser)
         settings()
         await bookmarksAndLibrary(browser: browser, base: base)
@@ -381,7 +381,7 @@ enum SmokeTest {
     }
 
     /// The tab list shows a split as one block, and dragging a tab out of it unsplits that tab.
-    private static func splitInTabList(browser: BrowserWindowController, base: String) {
+    private static func splitInTabList(browser: BrowserWindowController, base: String) async {
         let p = browser.newTab(url: URL(string: "\(base)/one.html?listP"))
         let q = browser.newTab(url: URL(string: "\(base)/one.html?listQ"), activate: false)
         let r = browser.newTab(url: URL(string: "\(base)/one.html?listR"), activate: false)
@@ -396,6 +396,8 @@ enum SmokeTest {
         browser.removeFromSplit(p)
         check(browser.split == nil && browser.visibleTabs == [p] && browser.sidebar.lastSplitRuns.isEmpty,
               "taking one of two tabs out ends the split")
+        // Let the pages finish loading before closing them, so no half-loaded page races the checks that follow.
+        await wait { [p, q, r].allSatisfy { !$0.isLoading && $0.pageTitle == "Page One" } }
         [p, q, r].forEach(browser.close)
     }
 
@@ -497,7 +499,7 @@ enum SmokeTest {
         let opened = await tern(["tabs", "open", "\(base)/one.html", "--windowId", browser.id.uuidString])
         let id = opened.json?["id"] as? String ?? ""
         check(opened.json?["title"] as? String == "Page One" && opened.json?["openedByAgent"] as? Bool == true,
-              "tabs open waits for the load (\(opened.out.prefix(160)))")
+              "tabs open waits for the load (\(opened.out.prefix(400)))")
         check(browser.tabs.count == before + 1 && browser.activeTab?.id.uuidString == id, "tabs open adds an active tab")
 
         let list = await tern(["tabs", "list", "--plain"])
