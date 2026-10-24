@@ -126,13 +126,21 @@ enum SmokeTest {
         await tabList(browser: browser, base: base)
         await linkTools(browser: browser, base: base)
         dragToSplit(browser: browser, base: base)
+        splitInTabList(browser: browser, base: base)
         await welcome(browser: browser)
         settings()
         await bookmarksAndLibrary(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
-        if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
-            CommandRouter.perform(.splitWithPreviousTab, in: browser)
+        // TERN_SMOKE_SPLIT=1 leaves a pair on screen for the snapshots; =columns|rows|grid leaves three or four tabs.
+        if let kind = ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"], let active = browser.activeTab {
+            if let layout = SplitLayout(rawValue: kind) {
+                let extra = (0..<(layout == .grid ? 3 : 2)).map { browser.newTab(url: URL(string: "\(base)/two.html?shot\($0)"), activate: false) }
+                browser.split([active] + extra, layout: layout, focus: active)
+                await wait { extra.allSatisfy { !$0.isLoading } }
+            } else {
+                CommandRouter.perform(.splitWithPreviousTab, in: browser)
+            }
         }
 
         // Safari extensions installed on this Mac: can WebKit parse them?
@@ -368,6 +376,25 @@ enum SmokeTest {
               "in a split, a pane is replaced, and the outer edge adds a pane while there's room")
         browser.unsplit()
         [a, b, c, e].forEach(browser.close)
+    }
+
+    /// The tab list shows a split as one block, and dragging a tab out of it unsplits that tab.
+    private static func splitInTabList(browser: BrowserWindowController, base: String) {
+        let p = browser.newTab(url: URL(string: "\(base)/one.html?listP"))
+        let q = browser.newTab(url: URL(string: "\(base)/one.html?listQ"), activate: false)
+        let r = browser.newTab(url: URL(string: "\(base)/one.html?listR"), activate: false)
+        browser.split([p, q, r], layout: .columns, focus: p)
+        let first = browser.tabs.firstIndex(of: p)!
+        check(browser.sidebar.lastSplitRuns == [first...first + 2], "a split's tabs show as one block in the tab list")
+        browser.sidebar.moveRow(from: first + 1, to: first + 2)
+        check(browser.split?.tabs == [p, q, r], "reordering inside the block keeps the split")
+        browser.sidebar.moveRow(from: browser.tabs.firstIndex(of: r)!, to: 0)
+        check(!browser.isPaired(r) && browser.split?.tabs == [p, q] && browser.visibleTabs == [p, q],
+              "dragging a tab out of the block takes it out of the split")
+        browser.removeFromSplit(p)
+        check(browser.split == nil && browser.visibleTabs == [p] && browser.sidebar.lastSplitRuns.isEmpty,
+              "taking one of two tabs out ends the split")
+        [p, q, r].forEach(browser.close)
     }
 
     private static func welcome(browser: BrowserWindowController) async {
