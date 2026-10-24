@@ -176,7 +176,7 @@ final class PanesView: NSView {
     let cards = (0..<SplitGroup.maxTabs).map { _ in CardView() }
     var onDividersChange: (([CGFloat]) -> Void)?
     private(set) var count = 1
-    private(set) var layout = SplitLayout.columns
+    private(set) var arrangement = SplitLayout.columns
     private(set) var dividers: [CGFloat] = []
     private var handles: [SplitHandle] = []
 
@@ -195,9 +195,9 @@ final class PanesView: NSView {
 
     func arrange(count: Int, layout: SplitLayout, dividers: [CGFloat]) {
         let count = max(1, min(count, cards.count))
-        guard count != self.count || layout != self.layout || dividers != self.dividers else { return }
+        guard count != self.count || layout != arrangement || dividers != self.dividers else { return }
         self.count = count
-        self.layout = layout
+        arrangement = layout
         self.dividers = dividers
         for (i, card) in cards.enumerated() { card.isHidden = i >= count }
         needsLayout = true
@@ -205,9 +205,9 @@ final class PanesView: NSView {
 
     override func layout() {
         super.layout()
-        let frames = SplitGeometry.frames(count: count, layout: layout, dividers: dividers, in: bounds, gap: gap)
+        let frames = SplitGeometry.frames(count: count, layout: arrangement, dividers: dividers, in: bounds, gap: gap)
         for (card, frame) in zip(cards, frames) { card.frame = frame }
-        handles = SplitGeometry.handles(count: count, layout: layout, frames: frames, in: bounds, gap: gap)
+        handles = SplitGeometry.handles(count: count, layout: arrangement, frames: frames, in: bounds, gap: gap)
         window?.invalidateCursorRects(for: self)
     }
 
@@ -218,13 +218,13 @@ final class PanesView: NSView {
     override func mouseDown(with event: NSEvent) {
         let start = convert(event.locationInWindow, from: nil)
         guard let handle = handles.first(where: { $0.rect.contains(start) }) else { return super.mouseDown(with: event) }
-        if event.clickCount == 2 { return setDividers(SplitGroup.evenDividers(count, layout)) }
+        if event.clickCount == 2 { return setDividers(SplitGroup.evenDividers(count, arrangement)) }
         window?.trackEvents(matching: [.leftMouseDragged, .leftMouseUp], timeout: .infinity, mode: .eventTracking) { [weak self] e, stop in
             guard let self, let e else { return }
             if e.type == .leftMouseUp { stop.pointee = true; return }
             var d = self.dividers
             d[handle.divider] = SplitGeometry.divider(for: handle, at: self.convert(e.locationInWindow, from: nil), count: self.count,
-                                                      layout: self.layout, dividers: d, in: self.bounds, gap: self.gap)
+                                                      layout: self.arrangement, dividers: d, in: self.bounds, gap: self.gap)
             self.setDividers(d)
         }
     }
