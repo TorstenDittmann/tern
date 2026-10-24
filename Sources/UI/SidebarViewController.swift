@@ -474,6 +474,10 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
 }
 
 final class TabTableView: NSTableView {
+    /// The first rows can sit in the titlebar strip (tab list on the right), where the window is movable by
+    /// its background: a press on a tab must start a tab drag there, never move the window.
+    override var mouseDownCanMoveWindow: Bool { false }
+
     /// Rows of the split's tabs, drawn behind them as one block so the group reads as a unit.
     struct SplitRun: Equatable { var rows: ClosedRange<Int>; var onScreen: Bool }
     var splitRuns: [SplitRun] = [] { didSet { if splitRuns != oldValue { needsDisplay = true } } }
@@ -536,6 +540,7 @@ final class TabTableView: NSTableView {
 
 /// Draws the selected tab as a raised chip and a soft fill on hover.
 final class TabRowView: NSTableRowView {
+    override var mouseDownCanMoveWindow: Bool { false }
     static let reuseID = NSUserInterfaceItemIdentifier("TabRow")
     private var hovering = false { didSet { needsDisplay = true; cell?.isHovering = hovering } }
     private var cell: TabCellView? { subviews.first as? TabCellView }
@@ -579,6 +584,13 @@ extension NSAppearance {
 }
 
 final class TabCellView: NSTableCellView {
+    override var mouseDownCanMoveWindow: Bool { false }
+    /// Presses on the icon and title land on the cell (which never moves the window); buttons and the
+    /// pane glyph keep their own clicks.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return hit is NSButton || hit === glyph ? hit : self
+    }
     static let reuseID = NSUserInterfaceItemIdentifier("TabCell")
 
     var onClose: (() -> Void)?
@@ -700,6 +712,7 @@ final class TabCellView: NSTableCellView {
 /// A tiny map of the split's panes with this tab's pane filled in. Hovering it turns it into a button
 /// that takes the tab out of the split.
 final class PaneGlyph: NSView {
+    override var mouseDownCanMoveWindow: Bool { false }
     var pane: TabCellView.SplitPane? { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     private var pointerInside = false {
