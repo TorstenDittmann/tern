@@ -519,6 +519,15 @@ enum SmokeTest {
         check(trigger(3)["unless-domain"] as? [String] == ["*example.com"] && trigger(4)["if-domain"] as? [String] == ["*example.com"],
               "filter list: element hiding per site, and its exceptions")
         check(action(5) == "ignore-previous-rules", "filter list: exceptions come last")
+        // `$~image` expands to every other type, fetch, websocket, ping and other included: WebKit must take them all.
+        let json = String(decoding: (try? JSONSerialization.data(withJSONObject: rules)) ?? Data(), as: UTF8.self)
+        let compiled: Bool = await withCheckedContinuation { done in
+            WKContentRuleListStore.default()!.compileContentRuleList(forIdentifier: "smoke-types", encodedContentRuleList: json) { list, error in
+                if let error { print("INFO  rule list error: \(error)") }
+                done.resume(returning: list != nil)
+            }
+        }
+        check(compiled, "filter list: converted rules compile, every resource type included")
 
         check(TrackingParameters.strip(URL(string: "https://a.com/p?utm_source=x&id=2&fbclid=y#top")!)?.absoluteString == "https://a.com/p?id=2#top",
               "tracking parameters stripped, the rest kept")
