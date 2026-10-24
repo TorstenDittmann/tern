@@ -16,6 +16,7 @@ enum Command: String, CaseIterable {
     case loadUnpackedExtension, revealExtensionsFolder
     case toggleAgentAPI, clearHistory, showWelcome, openSettings
     case toggleBookmark, showHistory, showBookmarks
+    case toggleSiteBlocking
 
     var title: String {
         switch self {
@@ -79,6 +80,7 @@ enum Command: String, CaseIterable {
         case .toggleBookmark: "Add or Remove Bookmark"
         case .showHistory: "Show History"
         case .showBookmarks: "Show Bookmarks"
+        case .toggleSiteBlocking: "Toggle Ad Blocking for This Site"
         }
     }
 
@@ -143,6 +145,7 @@ enum Command: String, CaseIterable {
         case .toggleBookmark: "star"
         case .showHistory: "clock"
         case .showBookmarks: "book"
+        case .toggleSiteBlocking: "shield.lefthalf.filled"
         }
     }
 
@@ -235,6 +238,9 @@ enum CommandRouter {
         case .zoomReset: webView?.pageZoom = 1
         case .toggleInspector: webView.map { Inspector.toggle($0) }
         case .showConsole: webView.map { Inspector.showConsole($0) }
+        case .toggleSiteBlocking:
+            ContentBlocker.shared.toggle(for: tab?.currentURL)
+            webView?.reload()
         case .copyURL:
             if let url = tab?.currentURL { copy(url.absoluteString) }
         case .copyMarkdownLink:

@@ -23,6 +23,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
 - **Safari Web Extensions.** Tern finds Safari extensions installed with your apps and also loads unpacked or `.zip` extensions in place.
+- **Private by default.** Ads and trackers are blocked with EasyList and EasyPrivacy, compiled to native WebKit content rules, so blocking costs the page almost nothing. Links lose tracking parameters like `utm_source` and `fbclid` before they load, and third-party pings are dropped. Local dev servers (`localhost`, `*.test`, `*.local`) are left alone. **Toggle Ad Blocking for This Site** in ⌘K turns it off for a site, or on for a dev server, and Settings turns it off everywhere.
 - **Memory-friendly tabs.** Background tabs give their memory back after 15 minutes idle, or when macOS runs low on memory, and keep their history.
 
 ## Build and run

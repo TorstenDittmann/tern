@@ -1,6 +1,6 @@
 import AppKit
 
-/// Settings (⌘,): General (search engine, tab suspension, agent API, history) and Shortcuts.
+/// Settings (⌘,): General (search engine, tab suspension, ad blocking, agent API, history) and Shortcuts.
 @MainActor
 final class SettingsWindow: NSWindowController {
     static let shared = SettingsWindow()
@@ -47,6 +47,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     let suspendPopup = NSPopUpButton()
     let agentCheckbox = NSButton(checkboxWithTitle: "Let coding agents control Tern", target: nil, action: nil)
     let sidebarPopup = NSPopUpButton()
+    let blockingCheckbox = NSButton(checkboxWithTitle: "Block ads and trackers", target: nil, action: nil)
 
     override func loadView() {
         title = "General"
@@ -65,6 +66,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         suspendPopup.action = #selector(suspendChanged)
 
         agentCheckbox.target = self
+        blockingCheckbox.target = self
+        blockingCheckbox.action = #selector(blockingChanged)
         agentCheckbox.action = #selector(agentChanged)
 
         sidebarPopup.addItems(withTitles: ["On the Left", "On the Right"])
@@ -81,6 +84,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
             [label("Suspend idle tabs:"), suspendPopup],
             [NSGridCell.emptyContentView, note("Background tabs give their memory back and keep their history.")],
             [label("Tab list:"), sidebarPopup],
+            [label("Privacy:"), blockingCheckbox],
+            [NSGridCell.emptyContentView, note("EasyList and EasyPrivacy, plus tracking parameters like utm_source removed from links. Local dev servers are left alone. Toggle Ad Blocking for This Site in ⌘K changes one site.")],
             [label("Agent API:"), agentCheckbox],
             [NSGridCell.emptyContentView, note("A local socket for the tern CLI and MCP server. Only your user can connect.")],
             [label("History:"), clear],
@@ -89,8 +94,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
         grid.columnSpacing = 10
-        for row in [2, 4, 7] { grid.row(at: row).topPadding = -4 }
-        for row in [1, 3, 5, 6, 8] { grid.row(at: row).topPadding = 8 }
+        for row in [2, 4, 7, 9] { grid.row(at: row).topPadding = -4 }
+        for row in [1, 3, 5, 6, 8, 10] { grid.row(at: row).topPadding = 8 }
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
@@ -125,6 +130,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
             suspendPopup.selectItem(at: suspendPopup.numberOfItems - 1)
         }
         agentCheckbox.state = AgentServer.isEnabled ? .on : .off
+        blockingCheckbox.state = Preferences.blocksTrackers ? .on : .off
         sidebarPopup.selectItem(at: Preferences.sidebarOnRight ? 1 : 0)
     }
 
@@ -165,6 +171,11 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     @objc private func agentChanged() {
         if (agentCheckbox.state == .on) != AgentServer.isEnabled { AgentServer.shared.toggle() }
         NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: AppDelegate.shared)
+    }
+
+    @objc private func blockingChanged() {
+        Preferences.blocksTrackers = blockingCheckbox.state == .on
+        if Preferences.blocksTrackers { Task { await ContentBlocker.shared.update() } }
     }
 
     @objc private func clearHistory() {

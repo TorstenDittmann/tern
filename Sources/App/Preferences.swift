@@ -75,4 +75,22 @@ enum Preferences {
         }
         set { store(newValue ?? -1, "suspendAfter") }
     }
+
+    /// Ad and tracker blocking, and stripping tracking parameters from links. On unless turned off.
+    static var blocksTrackers: Bool {
+        get { value("blocksTrackers") as? Bool ?? true }
+        set { store(newValue, "blocksTrackers") }
+    }
+
+    /// Sites where blocking is the other way round from the default: off on a web site, on for a local dev server.
+    static var blockingExceptions: Set<String> {
+        get { Set(value("blockingExceptions") as? [String] ?? []) }
+        set { store(newValue.sorted(), "blockingExceptions") }
+    }
+
+    /// When each filter list was last downloaded, by list identifier, in seconds since 1970.
+    static var blocklistsUpdated: [String: Double] {
+        get { value("blocklistsUpdated") as? [String: Double] ?? [:] }
+        set { store(newValue, "blocklistsUpdated") }
+    }
 }

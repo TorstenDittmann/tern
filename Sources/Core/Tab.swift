@@ -187,28 +187,43 @@ final class TernWebView: WKWebView {
 extension Tab: WKNavigationDelegate {
     private static let inAppSchemes: Set<String> = ["http", "https", "about", "file", "data", "blob", "javascript", "webkit-extension"]
 
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = action.request.url else { return decisionHandler(.allow) }
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, preferences: WKWebpagePreferences,
+                 decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+        let decide = { (policy: WKNavigationActionPolicy) in decisionHandler(policy, preferences) }
+        guard let url = action.request.url else { return decide(.allow) }
 
         // mailto:, vscode://, zoommtg:// … go to the system.
         if let scheme = url.scheme?.lowercased(), !Self.inAppSchemes.contains(scheme) {
             NSWorkspace.shared.open(url)
-            return decisionHandler(.cancel)
+            return decide(.cancel)
         }
         // ⌥-click peeks at a link without leaving the page (Safari would download it).
         if action.navigationType == .linkActivated, owner != nil,
            action.modifierFlags.intersection([.command, .shift, .option, .control]) == .option,
            HistoryStore.isRecordable(url), let browser = owner {
             browser.content.peek(url, from: self)
-            return decisionHandler(.cancel)
+            return decide(.cancel)
         }
         // ⌘-click / middle-click opens a background tab (⇧ to bring it to front).
         if action.navigationType == .linkActivated,
            action.modifierFlags.contains(.command) || action.buttonNumber == 4 {
             owner?.newTab(url: url, activate: action.modifierFlags.contains(.shift), after: self)
-            return decisionHandler(.cancel)
+            return decide(.cancel)
         }
-        decisionHandler(action.shouldPerformDownload ? .download : .allow)
+        if action.targetFrame?.isMainFrame == true {
+            let blocking = ContentBlocker.shared.isEnabled(for: url)
+            ContentBlocker.apply(blocking, to: preferences)
+            // Links and typed addresses lose their click IDs before they load. Back/forward and
+            // form posts are left as they are.
+            if blocking, action.navigationType == .linkActivated || action.navigationType == .other,
+               action.request.httpMethod ?? "GET" == "GET", action.request.httpBody == nil,
+               let clean = TrackingParameters.strip(url) {
+                decide(.cancel)
+                webView.load(URLRequest(url: clean))
+                return
+            }
+        }
+        decide(action.shouldPerformDownload ? .download : .allow)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {

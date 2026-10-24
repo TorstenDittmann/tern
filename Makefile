@@ -18,12 +18,12 @@ release:
 clean:
 	rm -rf build Tern.xcodeproj
 
-# End-to-end smoke test: real windows, tabs, suspension and an unpacked MV3 extension.
+# End-to-end smoke test: real windows, tabs, suspension, an unpacked MV3 extension and ad blocking.
 smoke: build
 	@mkdir -p build/smoke
 	@python3 -m http.server 8765 --bind 127.0.0.1 --directory Tests/Smoke/site >/dev/null 2>&1 & echo $$! > build/smoke/server.pid
 	@for i in $$(seq 100); do curl -sf -o /dev/null http://127.0.0.1:8765/one.html && break; sleep 0.1; done
-	@TERN_SMOKE="$(CURDIR)/build/smoke" TERN_SOCKET=/tmp/tern-smoke-$$$$.sock TERN_SMOKE_BASE=http://localhost:8765 TERN_SMOKE_EXT="$(CURDIR)/Tests/Smoke/extension" \
+	@TERN_SMOKE="$(CURDIR)/build/smoke" TERN_SOCKET=/tmp/tern-smoke-$$$$.sock TERN_SMOKE_BASE=http://localhost:8765 TERN_SMOKE_EXT="$(CURDIR)/Tests/Smoke/extension" TERN_SMOKE_FILTERS="$(CURDIR)/Tests/Smoke/filters.txt" \
 		"$(APP)/Contents/MacOS/Tern"; status=$$?; kill `cat build/smoke/server.pid`; exit $$status
 
 # Launch time, memory per tab, and palette and tab-switch latency, measured through the agent API.

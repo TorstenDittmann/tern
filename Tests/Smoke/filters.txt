@@ -1,0 +1,5 @@
+[Adblock Plus 2.0]
+! Title: Tern smoke test
+! A first-party script and an element, so the page on localhost shows whether blocking is on.
+/ads/banner.js
+##.tern-test-ad

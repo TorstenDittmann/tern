@@ -129,6 +129,7 @@ enum SmokeTest {
         await windowChrome(browser: browser)
         await welcome(browser: browser)
         settings()
+        await privacy(browser: browser, base: base)
         await bookmarksAndLibrary(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
@@ -491,6 +492,70 @@ enum SmokeTest {
         keymap.resetToDefaults()
         window.close()
         try? FileManager.default.removeItem(at: Keymap.fileURL)
+    }
+
+    /// Filter-list conversion, tracking parameters, and blocking on a page with the smoke filter list.
+    private static func privacy(browser: BrowserWindowController, base: String) async {
+        let rules = FilterList.convert("""
+        ||ads.example^$third-party,script
+        /track/*$~image
+        @@||ads.example/ok.js
+        example.com##.promo
+        ##.banner
+        example.com#@#.banner
+        /^regex$/
+        ||x.example^$redirect=noop.js
+        ##div:has-text(Sponsored)
+        """)
+        func trigger(_ i: Int) -> [String: Any] { rules.indices.contains(i) ? rules[i]["trigger"] as? [String: Any] ?? [:] : [:] }
+        func action(_ i: Int) -> String? { rules.indices.contains(i) ? (rules[i]["action"] as? [String: Any])?["type"] as? String : nil }
+        check(rules.count == 6, "filter list: unsupported filters skipped (got \(rules.count) rules)")
+        check(trigger(0)["url-filter"] as? String == #"^[^:]+:(//)?([^/]+\.)?ads\.example[^a-zA-Z0-9_.%-]"#
+              && trigger(0)["load-type"] as? [String] == ["third-party"] && trigger(0)["resource-type"] as? [String] == ["script"],
+              "filter list: host anchor, separator, type and party")
+        check((trigger(1)["resource-type"] as? [String])?.contains("image") == false && trigger(1)["url-filter"] as? String == "/track/",
+              "filter list: negated type")
+        check(trigger(2)["load-context"] as? [String] == ["top-frame"] && action(2) == "ignore-previous-rules", "filter list: pages you open aren't blocked")
+        check(trigger(3)["unless-domain"] as? [String] == ["*example.com"] && trigger(4)["if-domain"] as? [String] == ["*example.com"],
+              "filter list: element hiding per site, and its exceptions")
+        check(action(5) == "ignore-previous-rules", "filter list: exceptions come last")
+
+        check(TrackingParameters.strip(URL(string: "https://a.com/p?utm_source=x&id=2&fbclid=y#top")!)?.absoluteString == "https://a.com/p?id=2#top",
+              "tracking parameters stripped, the rest kept")
+        check(TrackingParameters.strip(URL(string: "https://a.com/?utm_medium=a")!)?.absoluteString == "https://a.com/"
+              && TrackingParameters.strip(URL(string: "https://a.com/?q=utm_source")!) == nil, "tracking parameters: whole query, and values left alone")
+
+        let blocker = ContentBlocker.shared
+        let page = URL(string: "\(base)/ads.html")!
+        check(!blocker.isEnabled(for: page) && blocker.isEnabled(for: URL(string: "https://www.example.com/")), "blocking is off on localhost, on elsewhere")
+        blocker.toggle(for: URL(string: "https://example.com/a"))
+        check(!blocker.isEnabled(for: URL(string: "https://www.example.com/b")), "turning a site off covers its www. host")
+        blocker.toggle(for: URL(string: "https://example.com/a"))
+
+        await blocker.update()
+        check(blocker.installed["smoke"] != nil && blocker.installed["tern"] != nil, "filter lists compiled")
+        let tab = browser.newTab(url: page)
+        await wait { tab.pageTitle == "Ads" && !tab.isLoading }
+        func probe() async -> String? {
+            try? await tab.webView?.evaluateJavaScript("(window.ternAd ? 'ad' : 'none') + ',' + getComputedStyle(document.querySelector('.tern-test-ad')).display") as? String
+        }
+        func loaded(_ action: () -> Void) async {
+            let before = tab.loadsEnded
+            action()
+            await wait { tab.loadsEnded > before && !tab.isLoading }
+        }
+        let unblocked = await probe()
+        check(unblocked == "ad,block", "a local dev server loads everything (got \(unblocked ?? "nil"))")
+        await loaded { CommandRouter.perform(.toggleSiteBlocking, in: browser) }
+        let blocked = await probe()
+        check(blocker.isEnabled(for: page) && blocked == "none,none", "Toggle Ad Blocking blocks the script and hides the element (got \(blocked ?? "nil"))")
+        await loaded { tab.load(URL(string: "\(base)/one.html?utm_source=smoke&keep=1")!) }
+        await wait { tab.pageTitle == "Page One" && !tab.isLoading }
+        check(tab.currentURL?.query == "keep=1", "tracking parameters removed before the page loads (got \(tab.currentURL?.query ?? "nil"))")
+        blocker.toggle(for: page)
+        await loaded { tab.load(URL(string: "\(base)/one.html?utm_source=dev")!) }
+        check(tab.currentURL?.query == "utm_source=dev", "with blocking off, links keep their parameters")
+        browser.close(tab)
     }
 
     /// ⌘D bookmarks, the star, the start page tiles, and the History/Bookmarks window.
