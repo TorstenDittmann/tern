@@ -121,7 +121,8 @@ final class Tab: NSObject {
 
     private func attach(_ wv: WKWebView) {
         wv.isInspectable = true
-        wv.allowsBackForwardNavigationGestures = true
+        // Swipes go back and forward at once, without Safari's page slide.
+        SwipeNavigator.configure(wv)
         wv.allowsMagnification = true
         wv.navigationDelegate = self
         wv.uiDelegate = self
@@ -169,9 +170,11 @@ final class Tab: NSObject {
     }
 }
 
-/// Tells its tab when the user clicks into it, so split-view focus follows the mouse.
+/// Tells its tab when the user clicks into it, so split-view focus follows the mouse, and turns
+/// two-finger swipes into instant back/forward.
 final class TernWebView: WKWebView {
     var onFocus: (() -> Void)?
+    lazy var swipe = SwipeNavigator(webView: self)
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -182,6 +185,11 @@ final class TernWebView: WKWebView {
     override func mouseDown(with event: NSEvent) {
         onFocus?()
         super.mouseDown(with: event)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        swipe.scrollWheel(event)
+        super.scrollWheel(with: event)
     }
 }
 
