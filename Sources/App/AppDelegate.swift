@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Keymap.shared.load()
         NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: self)
         installKeyMonitor()
+        ContentBlocker.shared.start()
         ExtensionManager.shared.start()
         AgentServer.shared.startIfEnabled()
 

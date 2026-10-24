@@ -26,6 +26,9 @@ final class Tab: NSObject {
     var isPinned = false
 
     private var pendingState: Any?
+    /// Where tracking parameters were last removed on the way to, until that load finishes, so a
+    /// redirect back to the tracked URL can't loop.
+    private var lastStripped: URL?
     private var observations: [NSKeyValueObservation] = []
 
     var isSuspended: Bool { webView == nil }
@@ -187,28 +190,45 @@ final class TernWebView: WKWebView {
 extension Tab: WKNavigationDelegate {
     private static let inAppSchemes: Set<String> = ["http", "https", "about", "file", "data", "blob", "javascript", "webkit-extension"]
 
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = action.request.url else { return decisionHandler(.allow) }
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, preferences: WKWebpagePreferences,
+                 decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+        let decide = { (policy: WKNavigationActionPolicy) in decisionHandler(policy, preferences) }
+        guard let url = action.request.url else { return decide(.allow) }
 
         // mailto:, vscode://, zoommtg:// … go to the system.
         if let scheme = url.scheme?.lowercased(), !Self.inAppSchemes.contains(scheme) {
             NSWorkspace.shared.open(url)
-            return decisionHandler(.cancel)
+            return decide(.cancel)
         }
         // ⌥-click peeks at a link without leaving the page (Safari would download it).
         if action.navigationType == .linkActivated, owner != nil,
            action.modifierFlags.intersection([.command, .shift, .option, .control]) == .option,
            HistoryStore.isRecordable(url), let browser = owner {
             browser.content.peek(url, from: self)
-            return decisionHandler(.cancel)
+            return decide(.cancel)
         }
         // ⌘-click / middle-click opens a background tab (⇧ to bring it to front).
         if action.navigationType == .linkActivated,
            action.modifierFlags.contains(.command) || action.buttonNumber == 4 {
             owner?.newTab(url: url, activate: action.modifierFlags.contains(.shift), after: self)
-            return decisionHandler(.cancel)
+            return decide(.cancel)
         }
-        decisionHandler(action.shouldPerformDownload ? .download : .allow)
+        if action.targetFrame?.isMainFrame == true {
+            let blocking = ContentBlocker.shared.isEnabled(for: url)
+            ContentBlocker.apply(blocking, to: preferences)
+            // Links and typed addresses lose their click IDs before they load. Back/forward and
+            // form posts are left as they are.
+            if blocking, action.navigationType == .linkActivated || action.navigationType == .other,
+               action.request.httpMethod ?? "GET" == "GET", action.request.httpBody == nil,
+               let clean = TrackingParameters.strip(url), clean != lastStripped {
+                // A server that redirects back to the tracked URL gets it on the second round, not a loop.
+                lastStripped = clean
+                decide(.cancel)
+                webView.load(URLRequest(url: clean))
+                return
+            }
+        }
+        decide(action.shouldPerformDownload ? .download : .allow)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
@@ -225,6 +245,7 @@ extension Tab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadsEnded += 1
+        lastStripped = nil
         Metrics.markPageLoaded()
         if let url = webView.url { HistoryStore.shared.recordVisit(url, title: webView.title) }
         FaviconLoader.load(for: webView) { [weak self] image in
@@ -235,10 +256,20 @@ extension Tab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         loadsEnded += 1
+        clearStrippedUnlessCancelled(error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         loadsEnded += 1
+        clearStrippedUnlessCancelled(error)
+    }
+
+    /// A load that really failed (offline, bad host) ends the redirect guard; the cancel that
+    /// strips the tracked URL, or a new load taking over, doesn't.
+    private func clearStrippedUnlessCancelled(_ error: Error) {
+        let e = error as NSError
+        let cancelled = (e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled) || (e.domain == "WebKitErrorDomain" && e.code == 102)
+        if !cancelled { lastStripped = nil }
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
