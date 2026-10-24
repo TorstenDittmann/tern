@@ -51,7 +51,9 @@ final class SwipeNavigator {
             inGesture = true
             gesture += 1
             let p = webView.convert(event.locationInWindow, from: nil)
-            point = CGPoint(x: p.x, y: webView.isFlipped ? p.y : webView.bounds.height - p.y)
+            // In CSS pixels, for elementFromPoint.
+            let scale = webView.pageZoom * webView.magnification
+            point = CGPoint(x: p.x / scale, y: (webView.isFlipped ? p.y : webView.bounds.height - p.y) / scale)
         }
         guard inGesture else { return }
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
@@ -78,6 +80,9 @@ final class SwipeNavigator {
         case .checking, .scrolls: arrow.hide(animated: false)
         case .free:
             let progress = min(abs(fingers) / Self.threshold, 1)
+            // The page answered after the fingers lifted: a quick flick past the threshold still counts,
+            // anything shorter leaves no arrow behind.
+            guard inGesture || progress >= 1 else { return arrow.hide(animated: false) }
             arrow.show(back: back, progress: progress, in: webView)
             if progress >= 1 {
                 fired = true
