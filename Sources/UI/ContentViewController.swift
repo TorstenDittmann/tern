@@ -108,8 +108,9 @@ final class ContentViewController: NSViewController {
 
     private(set) var linkPeek: LinkPeek?
 
-    /// Opens `url` in a floating preview over the panes (⌥-click, or ⌥ on a link hint).
-    func peek(_ url: URL, from tab: Tab) {
+    /// Opens `url` in a floating preview over the panes (⌥-click, or ⌥ on a link hint). The card grows out
+    /// of `point` (window coordinates), or out of the mouse pointer, where the ⌥-click was.
+    func peek(_ url: URL, from tab: Tab, at point: NSPoint? = nil) {
         closePeek()
         let peek = LinkPeek(url: url, from: tab)
         peek.onClose = { [weak self] in self?.closePeek() }
@@ -121,32 +122,56 @@ final class ContentViewController: NSViewController {
             peek.leadingAnchor.constraint(equalTo: view.leadingAnchor), peek.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         linkPeek = peek
+        view.layoutSubtreeIfNeeded()
+        let origin = (point ?? view.window?.mouseLocationOutsideOfEventStream)
+            .map { peek.convert($0, from: nil) }.flatMap { peek.bounds.contains($0) ? $0 : nil }
+        peek.animateIn(from: origin ?? NSPoint(x: peek.bounds.midX, y: peek.bounds.midY))
         view.window?.makeFirstResponder(peek.tab.webView)
     }
 
     func closePeek() {
         guard let peek = linkPeek else { return }
         linkPeek = nil
-        peek.takeTab().discard()
-        peek.removeFromSuperview()
         view.window?.makeFirstResponder(focusedWebView)
+        peek.animateOut {
+            peek.takeTab().discard()
+            peek.removeFromSuperview()
+        }
     }
 
     /// Keeps the peeked page: as a tab after the one it came from, or in a split beside it.
     func promotePeek(split: Bool) {
         guard let peek = linkPeek, let browser else { return }
         linkPeek = nil
+        let from = peek.cardFrame(in: view)
         let tab = peek.takeTab()
-        peek.removeFromSuperview()
-        guard let anchor = peek.anchor ?? browser.activeTab, browser.tabs.contains(anchor) else {
-            return browser.insert(tab, after: nil, activate: true)
-        }
-        if split {
-            browser.insert(tab, after: anchor, activate: false)
-            browser.split(anchor, with: tab, focus: tab)
+        peek.animateOut { peek.removeFromSuperview() }
+        if let anchor = peek.anchor ?? browser.activeTab, browser.tabs.contains(anchor) {
+            browser.insert(tab, after: anchor, activate: !split)
+            if split { browser.split(anchor, with: tab, focus: tab) }
         } else {
-            browser.insert(tab, after: anchor, activate: true)
+            browser.insert(tab, after: nil, activate: true)
         }
+        grow(tab, from: from)
+    }
+
+    /// The promoted page's card grows out of where the peek's card was (`rect`, in `view`'s coordinates).
+    /// The scale is uniform, so the page doesn't stretch when the shapes differ (a split's half-width pane).
+    private func grow(_ tab: Tab, from rect: NSRect) {
+        guard !LinkPeek.reduceMotion else { return }
+        view.layoutSubtreeIfNeeded()
+        guard let card = panes.cards.first(where: { tab.webView != nil && tab.webView?.superview === $0.clip }),
+              let superview = card.superview, card.frame.width > 0, card.frame.height > 0 else { return }
+        let from = superview.convert(rect, from: view)
+        let scale = ((from.width / card.frame.width) * (from.height / card.frame.height)).squareRoot()
+        let grow = CASpringAnimation(keyPath: "transform")
+        grow.fromValue = NSValue(caTransform3D: card.layerTransform(
+            scale: scale, moving: NSPoint(x: card.frame.midX, y: card.frame.midY), to: NSPoint(x: from.midX, y: from.midY)))
+        grow.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        grow.stiffness = 300
+        grow.damping = 30
+        grow.duration = grow.settlingDuration
+        card.layer?.add(grow, forKey: "grow")
     }
 
     // MARK: Find

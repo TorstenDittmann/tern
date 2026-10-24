@@ -282,13 +282,18 @@ enum SmokeTest {
         check(peek.tab.loadsEnded > 0 && browser.tabs.count == before && peek.tab.webView?.window != nil,
               "link peek loads the page without adding a tab")
         _ = peek.handle(key("\u{1b}", code: 53))
-        check(browser.content.linkPeek == nil && peek.tab.isSuspended, "esc closes the peek")
+        check(browser.content.linkPeek == nil && peek.hitTest(NSPoint(x: peek.bounds.midX, y: peek.bounds.midY)) == nil,
+              "esc closes the peek, and clicks reach the page while it fades out")
+        await wait { peek.superview == nil && peek.tab.isSuspended }
+        check(peek.superview == nil && peek.tab.isSuspended, "the closed peek's page is discarded once it has faded out")
 
         browser.content.peek(URL(string: "\(base)/form.html?split")!, from: tab)
         let peeked = browser.content.linkPeek?.tab
         browser.content.promotePeek(split: true)
         check(peeked != nil && browser.tabs.count == before + 1 && browser.split?.left === tab && browser.split?.right === peeked
               && peeked?.webView?.window != nil, "a peek promotes to a split beside its page")
+        await wait { browser.content.view.subviews.allSatisfy { !($0 is LinkPeek) } }
+        check(browser.content.view.subviews.allSatisfy { !($0 is LinkPeek) }, "the promoted peek's overlay fades out and is removed")
         browser.unsplit()
         if let peeked { browser.close(peeked) }
         browser.close(tab)
