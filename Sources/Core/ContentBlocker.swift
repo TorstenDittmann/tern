@@ -24,7 +24,7 @@ final class ContentBlocker {
     /// Rules that need no download: third-party pings (`<a ping>`, beacons) never do anything for you.
     static let builtInRules = #"[{"trigger":{"url-filter":".*","resource-type":["ping"],"load-type":["third-party"]},"action":{"type":"block"}}]"#
 
-    private let store = WKContentRuleListStore.default()
+    private let store = WKContentRuleListStore.default()!
     private(set) var installed: [String: WKContentRuleList] = [:]
     private var updating: Task<Void, Never>?
     private var timer: Timer?
