@@ -269,7 +269,7 @@ final class URLBreakdownController: NSViewController, NSTextFieldDelegate {
             ("Scheme", row(scheme)), ("Host", row(host)), ("Port", row(port)), ("Path", row(path)),
         ])
         grid.rowAlignment = .none
-        grid.rows.forEach { $0.yPlacement = .center }
+        grid.yPlacement = .center
 
         let add = HoverButton(symbol: "plus", size: 11, label: "Add Parameter", target: self, action: #selector(addParam))
         let queryHeader = NSStackView(views: [Popover.label("Query"), add])
@@ -304,7 +304,8 @@ final class URLBreakdownController: NSViewController, NSTextFieldDelegate {
         ])
 
         let fragmentGrid = Popover.grid([("Fragment", row(fragment))])
-        fragmentGrid.rows.forEach { $0.yPlacement = .center }
+        fragmentGrid.rowAlignment = .none
+        fragmentGrid.yPlacement = .center
         // Line the fragment's field up with the ones above.
         fragmentGrid.column(at: 0).width = 64
         grid.column(at: 0).width = 64
