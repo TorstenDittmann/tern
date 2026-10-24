@@ -26,6 +26,9 @@ final class Tab: NSObject {
     var isPinned = false
 
     private var pendingState: Any?
+    /// Where tracking parameters were last removed on the way to, until that load finishes, so a
+    /// redirect back to the tracked URL can't loop.
+    private var lastStripped: URL?
     private var observations: [NSKeyValueObservation] = []
 
     var isSuspended: Bool { webView == nil }
@@ -217,7 +220,9 @@ extension Tab: WKNavigationDelegate {
             // form posts are left as they are.
             if blocking, action.navigationType == .linkActivated || action.navigationType == .other,
                action.request.httpMethod ?? "GET" == "GET", action.request.httpBody == nil,
-               let clean = TrackingParameters.strip(url) {
+               let clean = TrackingParameters.strip(url), clean != lastStripped {
+                // A server that redirects back to the tracked URL gets it on the second round, not a loop.
+                lastStripped = clean
                 decide(.cancel)
                 webView.load(URLRequest(url: clean))
                 return
@@ -240,6 +245,7 @@ extension Tab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadsEnded += 1
+        lastStripped = nil
         Metrics.markPageLoaded()
         if let url = webView.url { HistoryStore.shared.recordVisit(url, title: webView.title) }
         FaviconLoader.load(for: webView) { [weak self] image in
