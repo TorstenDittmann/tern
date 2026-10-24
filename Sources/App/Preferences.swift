@@ -47,6 +47,12 @@ enum Preferences {
         set { store(newValue, "searchTemplate") }
     }
 
+    /// Shows the tab list on the right of the window instead of the left.
+    static var sidebarOnRight: Bool {
+        get { value("sidebarOnRight") as? Bool ?? false }
+        set { store(newValue, "sidebarOnRight") }
+    }
+
     /// Light or dark window chrome; pages see it as `prefers-color-scheme` too.
     static var appearance: Appearance {
         get { (value("appearance") as? String).flatMap(Appearance.init) ?? .system }

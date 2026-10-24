@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-/// Hosts the visible tab(s): one floating card, or two to four in split view.
+/// Hosts the top bar and, below it, the visible tab(s): one floating card, or two to four in split view.
 /// Also owns the floating find bar, which acts on the focused pane.
 @MainActor
 final class ContentViewController: NSViewController {
@@ -12,7 +12,11 @@ final class ContentViewController: NSViewController {
     private let dropZone = SplitDropView()
     private var shown: [Tab] = []
     private weak var focusedWebView: WKWebView?
+    let topBar = TopBar()
     private var panesLeading: NSLayoutConstraint!
+    private var panesTrailing: NSLayoutConstraint!
+    private var barTop: NSLayoutConstraint!
+    private var barLeading: NSLayoutConstraint!
 
     override func loadView() {
         let root = NSView()
@@ -29,13 +33,19 @@ final class ContentViewController: NSViewController {
             return browser.drop(tab, at: target)
         }
 
-        for v in [panes, dropZone, findBar] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        for v in [topBar, panes, dropZone, findBar] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         let g = Theme.gutter
         panesLeading = panes.leadingAnchor.constraint(equalTo: root.leadingAnchor)
+        panesTrailing = panes.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -g)
+        barTop = topBar.topAnchor.constraint(equalTo: root.topAnchor, constant: TopBar.defaultContentTop - TopBar.height - g)
+        barLeading = topBar.leadingAnchor.constraint(equalTo: panes.leadingAnchor)
         NSLayoutConstraint.activate([
-            panes.topAnchor.constraint(equalTo: root.topAnchor, constant: g),
+            barTop, barLeading,
+            topBar.trailingAnchor.constraint(equalTo: panes.trailingAnchor),
+            topBar.heightAnchor.constraint(equalToConstant: TopBar.height),
+            panes.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: g),
             panesLeading,
-            panes.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -g),
+            panesTrailing,
             panes.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -g),
             dropZone.topAnchor.constraint(equalTo: panes.topAnchor), dropZone.bottomAnchor.constraint(equalTo: panes.bottomAnchor),
             dropZone.leadingAnchor.constraint(equalTo: panes.leadingAnchor), dropZone.trailingAnchor.constraint(equalTo: panes.trailingAnchor),
@@ -45,8 +55,19 @@ final class ContentViewController: NSViewController {
         view = root
     }
 
-    func sidebarDidToggle(collapsed: Bool) {
-        panesLeading.constant = collapsed ? Theme.gutter : 0
+    /// The cards meet the sidebar with no gap and keep a gutter on the window's edge.
+    func sidebarDidChange(collapsed: Bool, onRight: Bool) {
+        loadViewIfNeeded()
+        panesLeading.constant = collapsed || onRight ? Theme.gutter : 0
+        panesTrailing.constant = !collapsed && onRight ? 0 : -Theme.gutter
+        topBar.setSidebarSide(right: onRight)
+    }
+
+    /// Centers the top bar on the traffic lights, `lightsInset` points from its leading edge to clear them.
+    func setTitlebar(barTop top: CGFloat, lightsInset: CGFloat) {
+        loadViewIfNeeded()
+        barTop.constant = top
+        barLeading.constant = lightsInset
     }
 
     // MARK: Display

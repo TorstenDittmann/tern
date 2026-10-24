@@ -67,7 +67,7 @@ enum MainMenu {
         ]))
 
         main.addItem(menu("View", [
-            item(.toggleSidebar), item(.commandPalette), item(.tabPicker), item(.linkHints), .separator(),
+            item(.toggleSidebar), item(.moveSidebar), item(.commandPalette), item(.tabPicker), item(.linkHints), .separator(),
             item(.reload), item(.hardReload), item(.stopLoading), .separator(),
             item(.zoomIn), item(.zoomOut), item(.zoomReset), .separator(),
             std("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),

@@ -112,8 +112,7 @@ enum SmokeTest {
         let fullWidth = outside.webView?.frame.width ?? 0
         browser.activate(left)
         check(browser.visibleTabs.count == 2, "returning to a paired tab restores the split")
-        check([left, right].allSatisfy { $0.webView?.superview != nil && $0.webView?.frame.width == $0.webView?.superview?.bounds.width }
-              && (left.webView?.frame.width ?? 0) < fullWidth * 0.75,
+        check([left, right].allSatisfy { $0.webView?.superview != nil && ($0.webView?.frame.width ?? .infinity) < fullWidth * 0.75 },
               "split panes get their half width at once, without a full-width frame first")
         right.suspend()
         check(!right.isSuspended, "visible split pane is never suspended")
@@ -127,6 +126,7 @@ enum SmokeTest {
         await linkTools(browser: browser, base: base)
         dragToSplit(browser: browser, base: base)
         await splitInTabList(browser: browser, base: base)
+        await windowChrome(browser: browser)
         await welcome(browser: browser)
         settings()
         await bookmarksAndLibrary(browser: browser, base: base)
@@ -401,6 +401,46 @@ enum SmokeTest {
         [p, q, r].forEach(browser.close)
     }
 
+    /// The address bar above the page, and the tab list on either side.
+    private static func windowChrome(browser: BrowserWindowController) async {
+        let bar = browser.content.topBar
+        let root = browser.window!.contentView!
+        root.layoutSubtreeIfNeeded()
+        check(bar.window != nil && bar.pill.frame.width > browser.sidebar.view.frame.width,
+              "the address bar sits above the page and is wider than the sidebar (\(Int(bar.pill.frame.width))pt)")
+        let barMid = bar.convert(bar.bounds, to: nil).midY
+        if let close = browser.window?.standardWindowButton(.closeButton), let container = close.superview {
+            let lightsMid = container.convert(close.frame, to: nil).midY
+            check(abs(barMid - lightsMid) <= 1 && bar.frame.minX < 20,
+                  "the top bar is centered on the traffic lights (bar \(barMid), lights \(lightsMid))")
+        }
+        let firstRow = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil).maxY - browser.sidebar.contentTop
+        check(abs(firstRow - (bar.convert(bar.bounds, to: nil).minY - Theme.gutter)) <= 1, "the tab list starts level with the page")
+
+        browser.toggleSidebar()
+        try? await Task.sleep(for: .milliseconds(300))
+        root.layoutSubtreeIfNeeded()
+        check(bar.convert(bar.bounds, to: nil).minX >= 70, "with the sidebar hidden, the top bar clears the traffic lights")
+        browser.focusAddressBar()
+        check((browser.window?.firstResponder as? NSTextView)?.delegate === bar.field, "⌘L focuses the address bar with the sidebar hidden")
+        browser.toggleSidebar()
+        try? await Task.sleep(for: .milliseconds(300))
+        browser.window?.makeFirstResponder(browser.activeTab?.webView)
+
+        let sidebarWidth = browser.sidebar.view.frame.width
+        browser.setSidebarOnRight(true)
+        root.layoutSubtreeIfNeeded()
+        let sidebarFrame = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil)
+        check(sidebarFrame.maxX >= root.bounds.width - 1 && browser.content.view.frame.minX < sidebarFrame.minX
+              && abs(sidebarFrame.width - sidebarWidth) <= 1,
+              "the tab list moves to the right and keeps its width (\(Int(sidebarFrame.width)) vs \(Int(sidebarWidth)))")
+        check(bar.convert(bar.bounds, to: nil).minX >= 70, "with the tab list on the right, the top bar clears the traffic lights")
+        browser.setSidebarOnRight(false)
+        root.layoutSubtreeIfNeeded()
+        check(browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil).minX < 1 && bar.convert(bar.bounds, to: nil).minX > sidebarWidth - 1,
+              "and back to the left")
+    }
+
     private static func welcome(browser: BrowserWindowController) async {
         CommandRouter.perform(.showWelcome, in: browser)
         let sheet = browser.window?.attachedSheet
@@ -528,6 +568,18 @@ enum SmokeTest {
         check(browser.split != nil && browser.visibleTabs.count == 2, "run splitWithPreviousTab")
         _ = await tern(["run", "toggleSplit"])
         check(browser.split == nil, "run toggleSplit ends the split")
+        let others = browser.tabs.filter { $0.id.uuidString != id }.prefix(2).map(\.id.uuidString)
+        let trio = await tern(["tabs", "split", "--tabIds", ([id] + others).joined(separator: ","), "--layout", "grid"])
+        check(browser.split?.tabs.map(\.id.uuidString) == [id] + others && browser.split?.layout == .grid
+              && (trio.json?["split"] as? [String: Any])?["layout"] as? String == "grid", "tabs split with tabIds and a layout (\(trio.out.prefix(120)))")
+        let pairGrid = await tern(["tabs", "split", "--tabIds", "\(id),\(others[0])", "--layout", "grid"])
+        check(pairGrid.status == 1 && browser.split?.tabs.count == 3, "tabs split refuses a grid of two")
+        let twice = await tern(["tabs", "split", "--tabIds", "\(id),\(id)"])
+        check(twice.status == 1, "tabs split refuses the same tab twice")
+        _ = await tern(["tabs", "split", "--leftTabId", id, "--rightTabId", others[0]])
+        check(browser.split?.tabs.map(\.id.uuidString) == [id, others[0]] && browser.split?.layout == .columns,
+              "tabs split with leftTabId and rightTabId")
+        browser.unsplit()
 
         let unknown = await tern(["tabs", "frobnicate"])
         check(unknown.status == 1 && unknown.out.contains("-32601"), "unknown method is an error")

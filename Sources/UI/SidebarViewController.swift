@@ -5,25 +5,16 @@ private extension NSPasteboard.PasteboardType {
     static let tabRow = NSPasteboard.PasteboardType("dev.tern.tab-row")
 }
 
-/// Vertical tab strip: nav buttons beside the traffic lights, address pill, tab list,
-/// and a bottom bar with "New Tab" and extension actions.
+/// Vertical tab strip: the tab list and a bottom bar with "New Tab" and extension actions.
+/// The address bar and history buttons live in the top bar above the page.
 /// The tab list is a view-based NSTableView, so only visible rows have views.
 @MainActor
 final class SidebarViewController: NSViewController {
     weak var browser: BrowserWindowController?
 
-    private let addressPill = AddressPill()
-    private var addressField: AddressField { addressPill.field }
-    /// What was typed before the last change, to complete only while typing forward.
-    private var lastTypedAddress = ""
-    private lazy var backButton = HoverButton(symbol: "chevron.backward", label: "Back", target: self, action: #selector(backClicked))
-    private lazy var forwardButton = HoverButton(symbol: "chevron.forward", label: "Forward", target: self, action: #selector(forwardClicked))
-    private lazy var reloadButton = HoverButton(symbol: "arrow.clockwise", label: "Reload", target: self, action: #selector(reloadClicked))
     private let extensionStack = NSStackView()
     private let tableView = TabTableView()
-    private var navTop: NSLayoutConstraint!
-    private var navLeading: NSLayoutConstraint!
-    private var windowObservers: [NSObjectProtocol] = []
+    private var listTop: NSLayoutConstraint!
     private var isSyncingSelection = false
     private var actionButtons: [ObjectIdentifier: ExtensionActionButton] = [:]
     private let agentPill = AgentPill()
@@ -47,20 +38,6 @@ final class SidebarViewController: NSViewController {
 
     override func loadView() {
         let root = NSView()
-
-        // Row 1: leaves room for the traffic lights, then sidebar + history buttons.
-        let nav = NSStackView(views: [NSView(), backButton, forwardButton, reloadButton])
-        nav.spacing = 0
-        nav.translatesAutoresizingMaskIntoConstraints = false
-
-        addressField.delegate = self
-        addressPill.onStar = { [weak self] in
-            guard let tab = self?.browser?.activeTab else { return }
-            BookmarkStore.shared.toggle(tab.currentURL, title: tab.pageTitle)
-        }
-        NotificationCenter.default.addObserver(forName: BookmarkStore.didChange, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateChrome() }
-        }
 
         // Tab list
         tableView.addTableColumn(NSTableColumn(identifier: .init("tab")))
@@ -119,28 +96,17 @@ final class SidebarViewController: NSViewController {
         pinnedView.translatesAutoresizingMaskIntoConstraints = false
 
         filterPill.isHidden = true
-        for v in [nav, addressPill, pinnedView, filterPill, scroll, bottom] as [NSView] { root.addSubview(v) }
+        for v in [pinnedView, filterPill, scroll, bottom] as [NSView] { root.addSubview(v) }
         filterPill.translatesAutoresizingMaskIntoConstraints = false
-        addressPill.translatesAutoresizingMaskIntoConstraints = false
 
         let inset: CGFloat = 10
         filterHeight = filterPill.heightAnchor.constraint(equalToConstant: 0)
         pinnedGap = filterPill.topAnchor.constraint(equalTo: pinnedView.bottomAnchor, constant: 0)
         filterGap = scroll.topAnchor.constraint(equalTo: filterPill.bottomAnchor, constant: 0)
-        navTop = nav.topAnchor.constraint(equalTo: root.topAnchor, constant: 2)
-        navLeading = nav.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 78) // traffic lights
+        // Lines the pinned tiles, or the first tab, up with the top of the page, below the top bar.
+        listTop = pinnedView.topAnchor.constraint(equalTo: root.topAnchor, constant: TopBar.defaultContentTop)
         NSLayoutConstraint.activate([
-            navTop,
-            navLeading,
-            nav.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset + 2),
-            nav.heightAnchor.constraint(equalToConstant: 26),
-
-            addressPill.topAnchor.constraint(equalTo: nav.bottomAnchor, constant: 10),
-            addressPill.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
-            addressPill.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
-            addressPill.heightAnchor.constraint(equalToConstant: 34),
-
-            pinnedView.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 12),
+            listTop,
             pinnedView.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
             pinnedView.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
             pinnedGap,
@@ -161,36 +127,12 @@ final class SidebarViewController: NSViewController {
         view = root
     }
 
-    override func viewDidAppear() {
-        super.viewDidAppear()
-        guard windowObservers.isEmpty, let window = view.window else { return }
-        let names: [Notification.Name] = [NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
-                                          NSWindow.willEnterFullScreenNotification]
-        windowObservers = names.map {
-            NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateTitlebarLayout() }
-            }
-        }
-        updateTitlebarLayout()
-    }
+    /// Distance from the window top to the page cards, so the first tab lines up with them.
+    var contentTop: CGFloat { listTop?.constant ?? 0 }
 
-    /// Lines the nav buttons up with the traffic lights. Runs on appear and fullscreen changes only:
-    /// changing constraints from inside a layout pass loops forever in fullscreen, where the traffic
-    /// lights live in a separate titlebar window and their position keeps changing.
-    private func updateTitlebarLayout() {
-        guard let window = view.window else { return }
-        if window.styleMask.contains(.fullScreen) {
-            navTop.constant = 8
-            navLeading.constant = 10
-            return
-        }
-        navLeading.constant = 78
-        guard let close = window.standardWindowButton(.closeButton), close.window === window,
-              let container = close.superview else { return }
-        view.layoutSubtreeIfNeeded()
-        let midInWindow = container.convert(NSPoint(x: 0, y: close.frame.midY), to: nil).y
-        let midInView = view.convert(NSPoint(x: 0, y: midInWindow), from: nil).y
-        navTop.constant = max(0, view.bounds.height - midInView - 13)
+    func setContentTop(_ top: CGFloat) {
+        loadViewIfNeeded()
+        listTop.constant = top
     }
 
     // MARK: Updates from the window
@@ -226,8 +168,6 @@ final class SidebarViewController: NSViewController {
     }
 
     func reload(_ tab: Tab) {
-        // The address bar follows the active tab even while a filter hides its row.
-        if tab.isActive { updateChrome() }
         if tab.isPinned { pinnedView.refresh(tab) }
         guard let row = rows.firstIndex(of: tab),
               let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TabCellView else { return }
@@ -245,12 +185,7 @@ final class SidebarViewController: NSViewController {
         tableView.splitRuns = splitRuns()
         refreshSplitGlyphs()
         if !isTabListFocused { syncSelection() }
-        updateChrome()
         updateExtensionActions()
-    }
-
-    func focusAddressField() {
-        view.window?.makeFirstResponder(addressField)
     }
 
     private func syncSelection() {
@@ -343,16 +278,6 @@ final class SidebarViewController: NSViewController {
         return true
     }
 
-    private func updateChrome() {
-        let tab = browser?.activeTab
-        addressPill.show(url: tab?.currentURL, bookmarked: BookmarkStore.shared.contains(tab?.currentURL))
-        backButton.isEnabled = tab?.webView?.canGoBack ?? false
-        forwardButton.isEnabled = tab?.webView?.canGoForward ?? false
-        let loading = tab?.isLoading == true
-        reloadButton.image = Theme.symbol(loading ? "xmark" : "arrow.clockwise")
-        reloadButton.toolTip = loading ? "Stop" : "Reload"
-    }
-
     // MARK: Extension actions
 
     func updateExtensionActions() {
@@ -381,12 +306,6 @@ final class SidebarViewController: NSViewController {
 
     // MARK: Actions
 
-    @objc private func backClicked() { browser?.activeTab?.webView?.goBack() }
-    @objc private func forwardClicked() { browser?.activeTab?.webView?.goForward() }
-    @objc private func reloadClicked() {
-        guard let wv = browser?.activeTab?.webView else { return }
-        if wv.isLoading { wv.stopLoading() } else { wv.reload() }
-    }
     @objc private func newTabClicked() { browser?.newTab(url: nil) }
 
     private func closeTab(atRow row: Int) {
@@ -452,7 +371,8 @@ extension SidebarViewController {
         guard let browser, browser.tabs.indices.contains(from) else { return }
         let tab = browser.tabs[from]
         browser.moveTab(from: from, to: to)
-        guard browser.isPaired(tab), let i = browser.tabs.firstIndex(of: tab) else { return }
+        // A drop back in place isn't a drag out, even when the split's rows aren't next to each other.
+        guard browser.isPaired(tab), let i = browser.tabs.firstIndex(of: tab), i != from else { return }
         let neighbors = [i - 1, i + 1].filter(browser.tabs.indices.contains).map { browser.tabs[$0] }
         if !neighbors.contains(where: browser.isPaired) { browser.removeFromSplit(tab) }
     }
@@ -533,138 +453,6 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
         let to = rows.indices.contains(row) ? tabs.firstIndex(of: rows[row]) ?? tabs.count : tabs.count
         moveRow(from: from, to: to > from ? to - 1 : to)
         return true
-    }
-}
-
-// MARK: - Address field
-
-extension SidebarViewController: NSTextFieldDelegate {
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-        switch selector {
-        case #selector(NSResponder.insertNewline(_:)):
-            let newTab = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
-            browser?.open(input: addressField.stringValue, inNewTab: newTab)
-            return true
-        case #selector(NSResponder.cancelOperation(_:)):
-            view.window?.makeFirstResponder(browser?.activeTab?.webView)
-            return true
-        default:
-            return false
-        }
-    }
-
-    func controlTextDidEndEditing(_ obj: Notification) {
-        let url = browser?.activeTab?.currentURL
-        addressPill.show(url: url, bookmarked: BookmarkStore.shared.contains(url))
-    }
-
-    func controlTextDidBeginEditing(_ obj: Notification) { lastTypedAddress = "" }
-
-    /// Inline completion from history, like Safari's: typing "gi" fills in "thub.com/", selected,
-    /// so the next keystroke replaces it and ⌫ removes it.
-    func controlTextDidChange(_ obj: Notification) {
-        guard (obj.object as? NSTextField) === addressField, let editor = addressField.currentEditor() as? NSTextView else { return }
-        let typed = addressField.stringValue
-        let previous = lastTypedAddress
-        lastTypedAddress = typed
-        let length = (typed as NSString).length
-        guard length > (previous as NSString).length, editor.selectedRange() == NSRange(location: length, length: 0),
-              let completion = HistoryStore.shared.completion(for: typed),
-              completion.lowercased().hasPrefix(typed.lowercased()) else { return }
-        let full = typed + completion.dropFirst(typed.count)
-        addressField.stringValue = full
-        editor.setSelectedRange(NSRange(location: length, length: (full as NSString).length - length))
-    }
-}
-
-/// Rounded field that shows just the host ("github.com") and the full URL while editing.
-final class AddressPill: FilledView {
-    let field = AddressField()
-    /// The star at the end of the pill: adds or removes the page as a bookmark (⌘D).
-    var onStar: (() -> Void)?
-    private let icon = NSImageView()
-    private lazy var star = HoverButton(symbol: "star", size: 11, label: "Bookmark This Page (⌘D)", target: self, action: #selector(starClicked))
-    private var url: URL?
-    private var bookmarked = false
-
-    init() {
-        super.init(frame: .zero)
-        fill = Theme.fieldFill
-        border = Theme.hairline
-        radius = 8
-
-        icon.contentTintColor = .tertiaryLabelColor
-        field.isBordered = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.font = Theme.monoFont(12.5)
-        field.placeholderString = "Search or enter URL"
-        field.lineBreakMode = .byTruncatingTail
-        field.cell?.isScrollable = true
-        field.cell?.usesSingleLineMode = true
-        field.onFocusChange = { [weak self] focused in self?.setFocused(focused) }
-
-        for v in [icon, field, star] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
-        NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 14),
-            field.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
-            field.trailingAnchor.constraint(equalTo: star.leadingAnchor, constant: -2),
-            field.centerYAnchor.constraint(equalTo: centerYAnchor),
-            star.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -3),
-            star.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-        show(url: nil, bookmarked: false)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    func show(url: URL?, bookmarked: Bool) {
-        self.url = url
-        self.bookmarked = bookmarked
-        star.image = Theme.symbol(bookmarked ? "star.fill" : "star", size: 11)
-        star.contentTintColor = bookmarked ? .systemYellow : .tertiaryLabelColor
-        star.toolTip = bookmarked ? "Remove Bookmark (⌘D)" : "Bookmark This Page (⌘D)"
-        star.isHidden = field.isEditing || !(url.map(HistoryStore.isRecordable) ?? false)
-        guard !field.isEditing else { return }
-        field.stringValue = Theme.displayString(for: url)
-        field.toolTip = url?.absoluteString
-        let secure = url?.scheme == "https"
-        icon.image = Theme.symbol(url == nil ? "magnifyingglass" : (secure ? "lock.fill" : "globe"), size: 11, weight: .semibold)
-    }
-
-    private func setFocused(_ focused: Bool) {
-        fill = focused ? Theme.fieldFocusedFill : Theme.fieldFill
-        border = focused ? Theme.accent : Theme.hairline
-        if focused {
-            field.stringValue = url?.absoluteString ?? ""
-            icon.image = Theme.symbol("magnifyingglass", size: 11, weight: .semibold)
-        }
-        star.isHidden = focused || !(url.map(HistoryStore.isRecordable) ?? false)
-    }
-
-    @objc private func starClicked() { onStar?() }
-
-    // Clicking anywhere on the pill focuses the field.
-    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
-}
-
-final class AddressField: NSTextField {
-    var onFocusChange: ((Bool) -> Void)?
-    var isEditing: Bool { currentEditor() != nil }
-
-    override func becomeFirstResponder() -> Bool {
-        let ok = super.becomeFirstResponder()
-        if ok {
-            onFocusChange?(true)
-            DispatchQueue.main.async { self.currentEditor()?.selectAll(nil) }
-        }
-        return ok
-    }
-
-    override func textDidEndEditing(_ notification: Notification) {
-        super.textDidEndEditing(notification)
-        onFocusChange?(false)
     }
 }
 
