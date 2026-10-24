@@ -7,14 +7,15 @@ import WebKit
 final class BrowserEngine {
     static let shared = BrowserEngine()
 
-    let dataStore = WKWebsiteDataStore.default()
+    /// The smoke test keeps its cookies and site data in memory, away from your logins.
+    let dataStore: WKWebsiteDataStore = SmokeTest.isRunning ? .nonPersistent() : .default()
     let extensionController: WKWebExtensionController
 
     /// Search used when the address bar input isn't a URL. `%s` is replaced with the query.
     var searchTemplate: String { Preferences.searchTemplate }
 
     private init() {
-        let config = WKWebExtensionController.Configuration.default()
+        let config: WKWebExtensionController.Configuration = SmokeTest.isRunning ? .nonPersistent() : .default()
         config.defaultWebsiteDataStore = dataStore
         extensionController = WKWebExtensionController(configuration: config)
     }

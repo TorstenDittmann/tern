@@ -16,8 +16,8 @@ final class AgentServer {
 
     /// nonisolated so `Command.title` can read it; UserDefaults is thread-safe.
     nonisolated static var isEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: "agentAPI") }
-        set { UserDefaults.standard.set(newValue, forKey: "agentAPI") }
+        get { UserDefaults.tern.bool(forKey: "agentAPI") }
+        set { UserDefaults.tern.set(newValue, forKey: "agentAPI") }
     }
 
     private var acceptSource: DispatchSourceRead?

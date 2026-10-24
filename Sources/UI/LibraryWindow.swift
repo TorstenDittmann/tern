@@ -30,7 +30,7 @@ final class LibraryWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         window.titlebarAppearsTransparent = true
         window.minSize = NSSize(width: 480, height: 300)
         window.isReleasedWhenClosed = false
-        window.setFrameAutosaveName("TernLibrary")
+        window.setFrameAutosaveName(UserDefaults.autosaveName("TernLibrary"))
         super.init(window: window)
         build()
         let center = NotificationCenter.default

@@ -92,7 +92,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Divider positions are saved per side: they're stored by pane order.
-    private static func widthAutosaveName(right: Bool) -> String { right ? "TernSidebarWidthRight" : "TernSidebarWidth" }
+    private static func widthAutosaveName(right: Bool) -> String {
+        UserDefaults.autosaveName(right ? "TernSidebarWidthRight" : "TernSidebarWidth")
+    }
 
     required init?(coder: NSCoder) { fatalError() }
 

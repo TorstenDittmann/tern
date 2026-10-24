@@ -94,3 +94,21 @@ enum Preferences {
         set { store(newValue, "blocklistsUpdated") }
     }
 }
+
+extension UserDefaults {
+    /// Tern's own settings. The smoke test gets a throwaway suite, emptied at launch,
+    /// so a run never changes the settings of the Tern you use.
+    static let tern: UserDefaults = {
+        guard ProcessInfo.processInfo.environment["TERN_SMOKE"] != nil else { return .standard }
+        let name = "dev.tern.browser.smoke"
+        let suite = UserDefaults(suiteName: name)!
+        suite.removePersistentDomain(forName: name)
+        return suite
+    }()
+
+    /// AppKit autosaves (split view widths, window frames) always go to the standard defaults,
+    /// so the smoke test saves them under names the real app never reads.
+    static func autosaveName(_ name: String) -> String {
+        ProcessInfo.processInfo.environment["TERN_SMOKE"] != nil ? "Smoke" + name : name
+    }
+}
