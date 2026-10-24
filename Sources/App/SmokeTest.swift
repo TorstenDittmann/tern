@@ -127,6 +127,7 @@ enum SmokeTest {
         dragToSplit(browser: browser, base: base)
         await splitInTabList(browser: browser, base: base)
         await windowChrome(browser: browser)
+        await addressBar(browser: browser, base: base)
         await welcome(browser: browser)
         settings()
         await privacy(browser: browser, base: base)
@@ -403,6 +404,65 @@ enum SmokeTest {
     }
 
     /// The address bar above the page, and the tab list on either side.
+    /// The full URL in the bar, the URL breakdown, and the lock's connection details.
+    private static func addressBar(browser: BrowserWindowController, base: String) async {
+        let bar = browser.content.topBar
+        let address = "\(base)/one.html?a=1&b=x+y&flag#top"
+        let tab = browser.newTab(url: URL(string: address))
+        await wait { !tab.isLoading && tab.currentURL?.absoluteString == address }
+        browser.window?.makeFirstResponder(tab.webView)
+        bar.updateChrome()
+        check(bar.field.stringValue == address, "the address bar shows the full URL (\(bar.field.stringValue))")
+        let styled = bar.field.attributedStringValue
+        let hostAt = (address as NSString).range(of: "localhost").location
+        check(hostAt != NSNotFound && styled.attribute(.foregroundColor, at: hostAt, effectiveRange: nil) as? NSColor == .labelColor
+              && styled.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor != .labelColor,
+              "the host stands out from the rest of the URL")
+        check(Keymap.shared.command(for: KeyChord(string: "cmd+alt+l")!) == .urlBreakdown, "⌥⌘L bound to the URL breakdown")
+
+        CommandRouter.perform(.urlBreakdown, in: browser)
+        guard let breakdown = bar.popover?.contentViewController as? URLBreakdownController, bar.popover?.isShown == true else {
+            return check(false, "the URL breakdown opens")
+        }
+        _ = breakdown.view
+        check(breakdown.scheme.stringValue == "http" && breakdown.host.stringValue == "localhost" && breakdown.port.stringValue == "8765"
+              && breakdown.path.stringValue == "/one.html" && breakdown.fragment.stringValue == "top",
+              "the breakdown splits scheme, host, port, path and fragment")
+        check(breakdown.parameters.map { "\($0.name)=\($0.value)" } == ["a=1", "b=x+y", "flag="], "the breakdown lists the query parameters (\(breakdown.parameters))")
+        check(breakdown.url?.absoluteString == address, "an untouched breakdown gives back the same URL (\(breakdown.url?.absoluteString ?? "nil"))")
+        breakdown.setParameter(at: 0, value: "2")
+        breakdown.addParam()
+        breakdown.setParameter(at: 3, name: "q", value: "a&b c")
+        let edited = "\(base)/one.html?a=2&b=x+y&flag&q=a%26b%20c#top"
+        check(breakdown.url?.absoluteString == edited, "editing parameters rebuilds the URL and encodes new values (\(breakdown.url?.absoluteString ?? "nil"))")
+        breakdown.onOpen?(breakdown.url!, false)
+        await wait { !tab.isLoading && tab.currentURL?.absoluteString == edited }
+        check(tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true, "Open loads the edited URL and closes the breakdown")
+
+        CommandRouter.perform(.showSiteInfo, in: browser)
+        let site = bar.popover?.contentViewController as? SiteInfoController
+        check(site?.status.title == "Local server" && site?.chain.isEmpty == true, "the lock on a local HTTP page says so (\(site?.status.title ?? "nil"))")
+        bar.popover?.close()
+
+        // TERN_SMOKE_TLS=<https URL> also checks a real certificate chain (needs the network).
+        if let tls = ProcessInfo.processInfo.environment["TERN_SMOKE_TLS"], let url = URL(string: tls) {
+            tab.load(url)
+            await wait(timeout: 20) { !tab.isLoading && tab.currentURL?.host == url.host && tab.webView?.serverTrust != nil }
+            CommandRouter.perform(.showSiteInfo, in: browser)
+            let info = bar.popover?.contentViewController as? SiteInfoController
+            _ = info?.view
+            let leaf = info?.chain.first
+            check(info?.status.title == "Connection is secure" && (info?.chain.count ?? 0) >= 2, "the lock shows a secure connection and its chain (\(info?.chain.count ?? 0) certificates)")
+            check(leaf?.issuer != "Unknown" && leaf?.notAfter != nil && leaf?.names.contains { url.host!.hasSuffix($0.replacingOccurrences(of: "*.", with: "")) } == true,
+                  "the leaf certificate has an issuer, an expiry and the host among its names")
+            print("INFO  \(url.host!): \(leaf?.subject ?? "") issued by \(leaf?.issuer ?? "") until \(leaf?.notAfter.map { "\($0)" } ?? "")")
+            info?.copyPEM()
+            check(NSPasteboard.general.string(forType: .string)?.hasPrefix("-----BEGIN CERTIFICATE-----") == true, "Copy PEM Chain copies PEM")
+            bar.popover?.close()
+        }
+        browser.close(tab)
+    }
+
     private static func windowChrome(browser: BrowserWindowController) async {
         let bar = browser.content.topBar
         let root = browser.window!.contentView!

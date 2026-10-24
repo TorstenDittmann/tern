@@ -84,7 +84,7 @@ enum MainMenu {
             item(.changeSplitLayout), item(.swapPanes), item(.focusLeftPane), item(.focusRightPane), item(.focusPaneAbove), item(.focusPaneBelow), .separator(),
         ] + [Command.selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectLastTab].map(item)))
 
-        main.addItem(menu("Develop", [item(.toggleInspector), item(.showConsole)]))
+        main.addItem(menu("Develop", [item(.toggleInspector), item(.showConsole), .separator(), item(.showSiteInfo), item(.urlBreakdown)]))
 
         let ext = menu("Extensions", [])
         ext.submenu?.delegate = extensionsMenuDelegate

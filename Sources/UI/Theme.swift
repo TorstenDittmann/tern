@@ -56,7 +56,21 @@ enum Theme {
             .withSymbolConfiguration(.init(pointSize: size, weight: weight))
     }
 
-    /// Compact address-bar text: host without `www.`, filename for files.
+    /// The address bar's text: the whole URL, with the host in full color and the rest dimmed, so the
+    /// domain still stands out the way it did when the bar showed only the host.
+    static func addressString(for url: URL?, font: NSFont) -> NSAttributedString {
+        guard let url else { return NSAttributedString() }
+        let text = url.scheme == "about" && url.absoluteString == "about:blank" ? "" : url.absoluteString
+        let string = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor])
+        if let host = url.host, !host.isEmpty, let schemeEnd = text.range(of: "://"),
+           let range = text.range(of: host, options: .caseInsensitive, range: schemeEnd.upperBound..<text.endIndex) {
+            string.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(range, in: text))
+            string.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: NSRange(text.startIndex..<schemeEnd.upperBound, in: text))
+        }
+        return string
+    }
+
+    /// Compact text for a URL where space is short (the palette, link peek): host without `www.`, filename for files.
     static func displayString(for url: URL?) -> String {
         guard let url else { return "" }
         switch url.scheme {
