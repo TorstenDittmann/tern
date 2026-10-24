@@ -10,7 +10,8 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 ## Highlights
 
 - **Native and lightweight.** Plain AppKit around `WKWebView`: no Electron and no bundled Chromium. The release build is under 1 MB.
-- **Vertical tabs.** Drag to reorder, middle-click to close, and right-click for pin, duplicate, suspend, or close others. Pinned tabs stay at the top.
+- **Vertical tabs.** Drag to reorder, middle-click to close, and right-click for pin, duplicate, suspend, or close others. Pinned tabs stay at the top. The tab list can sit on the left or the right (Settings ▸ General, or **Move Tab List to the Right** in ⌘K), and it can be dragged as narrow as 140 points.
+- **Wide address bar.** Back, forward, reload and the address bar sit in one bar across the top of the page, so long URLs have room. It stays there when the sidebar is hidden.
 - **Keyboard tab list (⌘E).** Type to filter the sidebar, ↑↓ to move, ↩ to open, ⌘⌫ to close, esc to go back to the page.
 - **Link hints (⌘J).** Every link, button and field on screen gets a short letter code. Type it to click; hold ⇧ on the last letter to open a link in a background tab, or ⌥ to peek at it.
 - **Link peek.** ⌥-click a link to open it in a floating preview. ⌘↩ keeps it as a tab, ⇧⌘↩ opens it in a split, esc closes it.
@@ -198,7 +199,7 @@ defaults write dev.tern.browser suspendAfter 600                                
 | Path | Contents |
 |---|---|
 | `Sources/Core` | WebKit setup (`BrowserEngine`), the `Tab` model (lazy web view, suspend and restore, downloads), session saving, and tab suspension |
-| `Sources/UI` | Window controller (tabs and split view), sidebar, content panes, command palette, theme, and the new-tab page |
+| `Sources/UI` | Window controller (tabs and split view), sidebar, top bar and address field, content panes, command palette, theme, and the new-tab page |
 | `Sources/Input` | Commands, chord parsing, and the keymap |
 | `Sources/Agent` | The agent API: socket server, JSON-RPC dispatch, and the methods |
 | `Sources/CLI` | The `tern` command-line client and MCP server, embedded at `Tern.app/Contents/Helpers/tern` |

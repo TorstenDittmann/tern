@@ -32,6 +32,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private var extensions: WKWebExtensionController { BrowserEngine.shared.extensionController }
 
     var isSidebarCollapsed: Bool { sidebarItem.isCollapsed }
+    private(set) var isSidebarOnRight = Preferences.sidebarOnRight
 
     init(tabs initial: [Tab], active: Int, frame: NSRect?, sidebarCollapsed: Bool) {
         let window = NSWindow(
@@ -50,19 +51,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
         sidebar.browser = self
         content.browser = self
+        content.topBar.browser = self
         // A plain split item (not `sidebarWithViewController`): no floating glass panel; the whole
         // window shares one material and the page sits on top as a card.
         sidebarItem = NSSplitViewItem(viewController: sidebar)
-        sidebarItem.minimumThickness = 200
+        sidebarItem.minimumThickness = 140
         sidebarItem.maximumThickness = 440
         sidebarItem.canCollapse = true
         sidebarItem.isCollapsed = sidebarCollapsed
         sidebarItem.holdingPriority = .init(260)
         splitController.splitView = InvisibleDividerSplitView()
         splitController.splitView.isVertical = true
-        splitController.addSplitViewItem(sidebarItem)
         splitController.addSplitViewItem(NSSplitViewItem(viewController: content))
-        splitController.splitView.autosaveName = "TernSidebarWidth"
+        splitController.insertSplitViewItem(sidebarItem, at: isSidebarOnRight ? 1 : 0)
+        splitController.splitView.autosaveName = Self.widthAutosaveName(right: isSidebarOnRight)
         window.contentViewController = RootViewController(child: splitController)
         window.isMovableByWindowBackground = true
         window.titlebarSeparatorStyle = .none
@@ -75,9 +77,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let shown = initial.isEmpty ? nil : initial[max(0, min(active, initial.count - 1))]
         tabs = initial.filter(\.isPinned) + initial.filter { !$0.isPinned }
         sidebar.reloadTabs()
-        content.sidebarDidToggle(collapsed: sidebarCollapsed)
+        content.sidebarDidChange(collapsed: sidebarCollapsed, onRight: isSidebarOnRight)
+        updateTitlebarLayout()
         if let shown { activate(shown) } else { newTab(url: nil) }
     }
+
+    /// Divider positions are saved per side: they're stored by pane order.
+    private static func widthAutosaveName(right: Bool) -> String { right ? "TernSidebarWidthRight" : "TernSidebarWidth" }
 
     required init?(coder: NSCoder) { fatalError() }
 
@@ -124,6 +130,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let webView = tab.materialize()
         showVisibleTabs()
         sidebar.activeTabDidChange()
+        content.topBar.updateChrome()
         window?.title = tab.displayTitle
 
         if tab.currentURL == nil { focusAddressBar() } else if window?.firstResponder !== webView { window?.makeFirstResponder(webView) }
@@ -454,13 +461,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Chrome
 
-    func focusAddressBar() {
-        if isSidebarCollapsed {
-            CommandPalette.show(for: self, mode: .everything, initialText: activeTab?.currentURL?.absoluteString ?? "")
-        } else {
-            sidebar.focusAddressField()
-        }
-    }
+    func focusAddressBar() { content.topBar.focusAddressField() }
 
     /// ⌘E: filter and pick tabs from the keyboard in the sidebar, or the tab picker when it's hidden.
     func focusTabList() {
@@ -473,7 +474,47 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             ctx.duration = 0.18
             sidebarItem.animator().isCollapsed = collapse
         }
-        content.sidebarDidToggle(collapsed: collapse)
+        content.sidebarDidChange(collapsed: collapse, onRight: isSidebarOnRight)
+        updateTitlebarLayout()
+    }
+
+    /// Moves the tab list to the other side of the window, keeping its width.
+    func setSidebarOnRight(_ right: Bool) {
+        guard right != isSidebarOnRight else { return }
+        let width = sidebar.view.frame.width
+        isSidebarOnRight = right
+        let splitView = splitController.splitView
+        splitView.autosaveName = nil
+        splitController.removeSplitViewItem(sidebarItem)
+        splitController.insertSplitViewItem(sidebarItem, at: right ? 1 : 0)
+        splitView.layoutSubtreeIfNeeded()
+        if !sidebarItem.isCollapsed {
+            splitView.setPosition(right ? splitView.bounds.width - width - splitView.dividerThickness : width, ofDividerAt: 0)
+        }
+        splitView.autosaveName = Self.widthAutosaveName(right: right)
+        content.sidebarDidChange(collapsed: isSidebarCollapsed, onRight: right)
+        updateTitlebarLayout()
+    }
+
+    /// Lines the top bar up with the traffic lights, and clears them when the page sits under them
+    /// (sidebar hidden or on the right). Runs on setup, fullscreen changes and sidebar changes only:
+    /// changing constraints from inside a layout pass loops forever in fullscreen, where the traffic
+    /// lights live in a separate titlebar window and their position keeps changing.
+    func updateTitlebarLayout() {
+        guard let window else { return }
+        let fullscreen = window.styleMask.contains(.fullScreen)
+        var top = TopBar.defaultContentTop - Theme.gutter - TopBar.height
+        if !fullscreen, let close = window.standardWindowButton(.closeButton), close.window === window,
+           let container = close.superview, let root = window.contentView {
+            let midInWindow = container.convert(NSPoint(x: 0, y: close.frame.midY), to: nil).y
+            let midFromTop = root.bounds.height - root.convert(NSPoint(x: 0, y: midInWindow), from: nil).y
+            top = max(2, (midFromTop - TopBar.height / 2).rounded())
+        } else if fullscreen {
+            top = Theme.gutter
+        }
+        let underLights = !fullscreen && (isSidebarCollapsed || isSidebarOnRight)
+        content.setTitlebar(barTop: top, lightsInset: underLights ? 78 - Theme.gutter : 0)
+        sidebar.setContentTop(top + TopBar.height + Theme.gutter)
     }
 
     /// Navigates the active tab (or a new one) to whatever the user typed.
@@ -490,10 +531,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func tabDidChange(_ tab: Tab) {
         sidebar.reload(tab)
         content.update(for: tab)
+        // The address bar follows the active tab even while a filter hides its row.
+        if tab === activeTab { content.topBar.updateChrome() }
         if tab === activeTab { window?.title = tab.displayTitle }
     }
 
     // MARK: NSWindowDelegate
+
+    func windowWillEnterFullScreen(_ notification: Notification) { updateTitlebarLayout() }
+    func windowDidEnterFullScreen(_ notification: Notification) { updateTitlebarLayout() }
+    func windowDidExitFullScreen(_ notification: Notification) { updateTitlebarLayout() }
 
     func windowDidBecomeKey(_ notification: Notification) {
         if isAnnounced { extensions.didFocusWindow(self) }

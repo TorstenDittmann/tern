@@ -3,7 +3,7 @@ import WebKit
 
 enum Command: String, CaseIterable {
     case newTab, newWindow, closeTab, closeWindow, reopenClosedTab, duplicateTab
-    case focusAddressBar, commandPalette, tabPicker, toggleSidebar
+    case focusAddressBar, commandPalette, tabPicker, toggleSidebar, moveSidebar
     case reload, hardReload, stopLoading, goBack, goForward
     case nextTab, previousTab, moveTabUp, moveTabDown, focusTabList, togglePinTab
     case toggleSplit, splitDown, splitWith, splitWithPreviousTab, addPane, removeFromSplit, changeSplitLayout, swapPanes
@@ -29,6 +29,7 @@ enum Command: String, CaseIterable {
         case .commandPalette: "Command Palette…"
         case .tabPicker: "Switch to Tab…"
         case .toggleSidebar: "Toggle Sidebar"
+        case .moveSidebar: Preferences.sidebarOnRight ? "Move Tab List to the Left" : "Move Tab List to the Right"
         case .reload: "Reload Page"
         case .hardReload: "Reload Ignoring Cache"
         case .stopLoading: "Stop Loading"
@@ -94,6 +95,7 @@ enum Command: String, CaseIterable {
         case .commandPalette: "command"
         case .tabPicker: "rectangle.stack"
         case .toggleSidebar: "sidebar.left"
+        case .moveSidebar: "arrow.left.arrow.right.square"
         case .reload: "arrow.clockwise"
         case .hardReload: "arrow.clockwise.circle"
         case .stopLoading: "xmark.circle"
@@ -165,6 +167,11 @@ enum CommandRouter {
         case .suspendBackgroundTabs: TabSuspender.shared.suspendAllBackgroundTabs(); return
         case .toggleAgentAPI: AgentServer.shared.toggle(); return
         case .clearHistory: HistoryStore.shared.clear(); return
+        case .moveSidebar:
+            Preferences.sidebarOnRight.toggle()
+            app.windows.forEach { $0.setSidebarOnRight(Preferences.sidebarOnRight) }
+            SettingsWindow.shared.general.refresh()
+            return
         case .openSettings: SettingsWindow.shared.show(); return
         case .showHistory: LibraryWindow.shared.show(.history); return
         case .showBookmarks: LibraryWindow.shared.show(.bookmarks); return

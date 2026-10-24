@@ -197,3 +197,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { await ExtensionManager.shared.refresh() }
     }
 }
+
+extension AppDelegate: NSMenuItemValidation {
+    /// Keeps titles that depend on state ("Move Tab List to the Left") current when a menu opens.
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if let raw = item.representedObject as? String, let command = Command(rawValue: raw) { item.title = command.title }
+        return true
+    }
+}

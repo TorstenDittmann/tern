@@ -45,6 +45,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     let customSearch = NSTextField()
     let suspendPopup = NSPopUpButton()
     let agentCheckbox = NSButton(checkboxWithTitle: "Let coding agents control Tern", target: nil, action: nil)
+    let sidebarPopup = NSPopUpButton()
 
     override func loadView() {
         title = "General"
@@ -62,6 +63,10 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         agentCheckbox.target = self
         agentCheckbox.action = #selector(agentChanged)
 
+        sidebarPopup.addItems(withTitles: ["On the Left", "On the Right"])
+        sidebarPopup.target = self
+        sidebarPopup.action = #selector(sidebarSideChanged)
+
         let clear = NSButton(title: "Clear History", target: self, action: #selector(clearHistory))
         clear.bezelStyle = .push
 
@@ -70,6 +75,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
             [NSGridCell.emptyContentView, customSearch],
             [label("Suspend idle tabs:"), suspendPopup],
             [NSGridCell.emptyContentView, note("Background tabs give their memory back and keep their history.")],
+            [label("Tab list:"), sidebarPopup],
             [label("Agent API:"), agentCheckbox],
             [NSGridCell.emptyContentView, note("A local socket for the tern CLI and MCP server. Only your user can connect.")],
             [label("History:"), clear],
@@ -78,10 +84,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
         grid.columnSpacing = 10
-        for row in [1, 3, 5] { grid.row(at: row).topPadding = -4 }
-        grid.row(at: 2).topPadding = 8
-        grid.row(at: 4).topPadding = 8
-        grid.row(at: 6).topPadding = 8
+        for row in [1, 3, 6] { grid.row(at: row).topPadding = -4 }
+        for row in [2, 4, 5, 7] { grid.row(at: row).topPadding = 8 }
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
@@ -115,6 +119,12 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
             suspendPopup.selectItem(at: suspendPopup.numberOfItems - 1)
         }
         agentCheckbox.state = AgentServer.isEnabled ? .on : .off
+        sidebarPopup.selectItem(at: Preferences.sidebarOnRight ? 1 : 0)
+    }
+
+    @objc func sidebarSideChanged() {
+        Preferences.sidebarOnRight = sidebarPopup.indexOfSelectedItem == 1
+        AppDelegate.shared.windows.forEach { $0.setSidebarOnRight(Preferences.sidebarOnRight) }
     }
 
     @objc func searchChanged() {

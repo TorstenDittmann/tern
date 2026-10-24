@@ -36,6 +36,12 @@ enum Preferences {
         set { store(newValue, "searchTemplate") }
     }
 
+    /// Shows the tab list on the right of the window instead of the left.
+    static var sidebarOnRight: Bool {
+        get { value("sidebarOnRight") as? Bool ?? false }
+        set { store(newValue, "sidebarOnRight") }
+    }
+
     /// How long a background tab may stay idle before it gives its memory back; `nil` means never.
     static var suspendAfter: TimeInterval? {
         get {

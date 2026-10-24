@@ -127,6 +127,7 @@ enum SmokeTest {
         await linkTools(browser: browser, base: base)
         dragToSplit(browser: browser, base: base)
         splitInTabList(browser: browser, base: base)
+        await windowChrome(browser: browser)
         await welcome(browser: browser)
         settings()
         await bookmarksAndLibrary(browser: browser, base: base)
@@ -395,6 +396,40 @@ enum SmokeTest {
         check(browser.split == nil && browser.visibleTabs == [p] && browser.sidebar.lastSplitRuns.isEmpty,
               "taking one of two tabs out ends the split")
         [p, q, r].forEach(browser.close)
+    }
+
+    /// The address bar above the page, and the tab list on either side.
+    private static func windowChrome(browser: BrowserWindowController) async {
+        let bar = browser.content.topBar
+        let root = browser.window!.contentView!
+        root.layoutSubtreeIfNeeded()
+        check(bar.window != nil && bar.pill.frame.width > browser.sidebar.view.frame.width,
+              "the address bar sits above the page and is wider than the sidebar (\(Int(bar.pill.frame.width))pt)")
+        let pageTop = browser.content.view.convert(NSPoint(x: 0, y: bar.frame.minY), to: nil).y
+        check(bar.frame.minY > 0 && pageTop > 0 && bar.frame.minX < 20, "the top bar sits next to the traffic lights with the sidebar on the left")
+
+        browser.toggleSidebar()
+        try? await Task.sleep(for: .milliseconds(300))
+        root.layoutSubtreeIfNeeded()
+        check(bar.convert(bar.bounds, to: nil).minX >= 70, "with the sidebar hidden, the top bar clears the traffic lights")
+        browser.focusAddressBar()
+        check((browser.window?.firstResponder as? NSTextView)?.delegate === bar.field, "⌘L focuses the address bar with the sidebar hidden")
+        browser.toggleSidebar()
+        try? await Task.sleep(for: .milliseconds(300))
+        browser.window?.makeFirstResponder(browser.activeTab?.webView)
+
+        let sidebarWidth = browser.sidebar.view.frame.width
+        browser.setSidebarOnRight(true)
+        root.layoutSubtreeIfNeeded()
+        let sidebarFrame = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil)
+        check(sidebarFrame.maxX >= root.bounds.width - 1 && browser.content.view.frame.minX < sidebarFrame.minX
+              && abs(sidebarFrame.width - sidebarWidth) <= 1,
+              "the tab list moves to the right and keeps its width (\(Int(sidebarFrame.width)) vs \(Int(sidebarWidth)))")
+        check(bar.convert(bar.bounds, to: nil).minX >= 70, "with the tab list on the right, the top bar clears the traffic lights")
+        browser.setSidebarOnRight(false)
+        root.layoutSubtreeIfNeeded()
+        check(browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil).minX < 1 && bar.convert(bar.bounds, to: nil).minX > sidebarWidth - 1,
+              "and back to the left")
     }
 
     private static func welcome(browser: BrowserWindowController) async {
