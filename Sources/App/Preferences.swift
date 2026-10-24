@@ -103,6 +103,10 @@ extension UserDefaults {
         let name = "dev.tern.browser.smoke"
         let suite = UserDefaults(suiteName: name)!
         suite.removePersistentDomain(forName: name)
+        // And the last run's autosaves, so every run starts from the default widths.
+        for key in UserDefaults.standard.dictionaryRepresentation().keys where key.contains(" Smoke") {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
         return suite
     }()
 

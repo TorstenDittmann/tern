@@ -3,7 +3,7 @@ import WebKit
 
 /// End-to-end smoke test driven through the real UI objects. Run with
 /// `TERN_SMOKE=<out dir> TERN_SMOKE_BASE=http://localhost:8765 TERN_SMOKE_EXT=<unpacked ext dir> Tern.app/Contents/MacOS/Tern`.
-/// It doesn't touch the saved session, settings, enabled extensions or site data, and exits with 0 on success.
+/// It doesn't touch the saved session, settings or enabled extensions, and exits with 0 on success.
 @MainActor
 enum SmokeTest {
     static var isRunning: Bool { ProcessInfo.processInfo.environment["TERN_SMOKE"] != nil }
