@@ -14,7 +14,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Keyboard tab list (⌘E).** Type to filter the sidebar, ↑↓ to move, ↩ to open, ⌘⌫ to close, esc to go back to the page.
 - **Link hints (⌘J).** Every link, button and field on screen gets a short letter code. Type it to click; hold ⇧ on the last letter to open a link in a background tab, or ⌥ to peek at it.
 - **Link peek.** ⌥-click a link to open it in a floating preview. ⌘↩ keeps it as a tab, ⇧⌘↩ opens it in a split, esc closes it.
-- **Split view.** Two tabs side by side, with a draggable divider. Drag a tab onto the page to split with it. Focus follows the pane you click.
+- **Split view.** Two to four tabs side by side, stacked, or in a grid, with draggable dividers. Drag a tab onto the page to split with it. Focus follows the pane you click.
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
 - **History and bookmarks.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. ⌘D (or the star in the address bar) bookmarks a page. ⌘Y and ⌥⌘B open a window to search, open, rename or delete them. New tabs show your bookmarks and most visited sites.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
@@ -53,9 +53,11 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Move tab down / up | ⌥⇧⌘↓ / ⌥⇧⌘↑ |
 | Go to tab 1–8 / last tab | ⌘1 – ⌘8 / ⌘9 |
 | Split view on / off | ⌘\\ |
+| Split down (new tab below) | ⌃⌘\\ |
 | Split with a tab, page or address | ⌥⌘\\ |
+| Change split layout | ⌃⇧⌘\\ |
 | Swap panes | ⇧⌘\\ |
-| Focus left / right pane | ⌥⌘← / ⌥⌘→ |
+| Focus pane left / right / above / below | ⌥⌘← / ⌥⌘→ / ⌃⌘↑ / ⌃⌘↓ |
 | Filter tabs in the sidebar | ⌘E |
 | Toggle sidebar | ⌘S |
 | Back / forward | ⌘[ / ⌘] |
@@ -90,12 +92,14 @@ Chords combine `cmd`, `shift`, `alt` and `ctrl` with a key. Key names include `t
 
 ![Split view](docs/split.png)
 
-- **⌘\\** opens a new tab next to the current one. Press it again to end the split.
-- **Drag a tab from the sidebar onto the page.** Drop it on the left or right half to open it on that side; in a split, it replaces that pane.
-- **Right-click a tab ▸ Open in Split View** pairs that tab with the current one. **Split with Previous Tab** is available in the palette.
-- Clicking into a pane makes it the active tab: the address bar, history, find, ⌘W, and extensions all follow it.
-- Drag the gap between the panes to resize them, and double-click it to return to 50/50.
-- Switching to another tab shows it on its own. Going back to either half restores the split. The split is saved with your session.
+- **⌘\\** opens a new tab next to the current one. Press it again to end the split. **⌃⌘\\** opens one below instead, and in a split it adds another pane.
+- A split holds up to four tabs. **Side by Side** and **Stacked** put them in a row or a column. **Grid** shows three tabs as one on the left and two stacked on the right, and four as a 2×2 grid. **⌃⇧⌘\\** (Change Split Layout) cycles through the layouts that fit, and a fourth pane switches to the grid.
+- **Drag a tab from the sidebar onto the page.** Over a single page, drop it on the left, right, top or bottom half to open it there. In a split, drop it on a pane to replace that pane, or near the page's outer edge to add a pane on that side.
+- **Split with…** (⌥⌘\\) and **Split with Previous Tab** add to the split you're in while it has room. **Add Pane to Split** opens a new tab in it, and **Remove Tab from Split** takes the current tab out and shows it alone.
+- Clicking into a pane makes it the active tab: the address bar, history, find, ⌘W, and extensions all follow it. ⌥⌘←/→ and ⌃⌘↑/↓ move focus between panes.
+- Drag the gaps between panes to resize them, and double-click a gap to even them out.
+- Closing a pane takes it out of the split; the split ends when one tab is left.
+- Switching to another tab shows it on its own. Going back to any pane restores the split. The split's tabs sit together in the tab list, and the split is saved with your session.
 
 ## Extensions
 
@@ -114,7 +118,7 @@ Coding agents and scripts can drive Tern through a local JSON-RPC API. It's off 
 
 - It listens only on a Unix socket, `~/Library/Application Support/Tern/agent.sock`, created `0600`. Connections from other users are refused, and no network port is opened. `TERN_SOCKET` overrides the path.
 - Messages are JSON-RPC 2.0, one object per line. Calls that load a page take `wait` (`none`, `load` or `idle`) and `timeoutMs`.
-  - **Browser:** `tern.hello`, `tern.metrics`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, `history.search`, `history.clear`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload`, `split` and `pin`.
+  - **Browser:** `tern.hello`, `tern.metrics`, `commands.list`, `commands.run`, `windows.list`, `windows.open`, `history.search`, `history.clear`, and `tabs.list`, `open`, `activate`, `close`, `navigate`, `back`, `forward`, `reload`, `split` (`tabIds` with an optional `layout`: `columns`, `rows` or `grid`) and `pin`.
   - **Page:** `page.snapshot` returns the page as a compact outline, with a ref such as `e12` on every element you can act on. `page.click`, `type`, `press`, `select` and `scroll` act on those refs. `page.text` returns text, Markdown or HTML, `page.eval` runs JavaScript, `page.waitFor` waits for text, a selector or a URL, `page.screenshot` saves a PNG, and `page.audit` runs basic accessibility checks.
   - **Logs:** `console.read` returns what a page logged, including uncaught errors and unhandled rejections. `network.list` returns its fetch and XHR requests with status and timing. Each tab keeps the last 500 of each, and `since` (the `last` of an earlier read) pages through newer entries, oldest first, `limit` at a time. `clear` drops everything up to the last entry a read returned.
   - **Events:** `events.subscribe` streams `tab.updated`, `console.message` and `network.request` to that connection as JSON-RPC notifications.

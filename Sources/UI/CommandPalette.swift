@@ -311,7 +311,12 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             partner = browser.newTab(url: url, activate: false, after: active)
         case .header, .command: return
         }
-        browser.split(active, with: partner, focus: partner)
+        // In a split with room, the pick joins it; otherwise it starts a new pair.
+        if browser.isPaired(active), browser.split!.tabs.count < SplitGroup.maxTabs, !browser.isPaired(partner) {
+            browser.add(partner, toSplitWith: active, focus: partner)
+        } else {
+            browser.split(active, with: partner, focus: partner)
+        }
     }
 
     private func moveSelection(_ delta: Int) {

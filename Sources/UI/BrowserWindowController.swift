@@ -6,25 +6,21 @@ import WebKit
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private struct ClosedTab { let url: URL?; let title: String?; let state: Data?; let index: Int }
 
-    /// Two tabs shown side by side. It's on screen whenever the active tab is one of them;
-    /// picking another tab shows that tab alone and keeps the pair for later.
-    struct SplitPair { var left: Tab; var right: Tab; var fraction: CGFloat = 0.5 }
-
     /// Stable for the window's lifetime; how the agent API names windows.
     let id = UUID()
     private(set) var tabs: [Tab] = []
     private(set) var activeTab: Tab?
-    private(set) var split: SplitPair?
+    private(set) var split: SplitGroup?
     private var closedTabs: [ClosedTab] = []
 
-    /// What the content area shows: the active tab, or both halves of its split.
+    /// What the content area shows: the active tab, or every pane of its split.
     var visibleTabs: [Tab] {
         guard let activeTab else { return [] }
-        if let split, split.left === activeTab || split.right === activeTab { return [split.left, split.right] }
+        if let split, split.contains(activeTab) { return split.tabs }
         return [activeTab]
     }
 
-    func isPaired(_ tab: Tab) -> Bool { split.map { $0.left === tab || $0.right === tab } ?? false }
+    func isPaired(_ tab: Tab) -> Bool { split?.contains(tab) ?? false }
 
     let sidebar = SidebarViewController()
     let content = ContentViewController()
@@ -145,12 +141,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         if closedTabs.count > 50 { closedTabs.removeFirst() }
 
         let wasActive = tab === activeTab
-        // Closing half of a split ends it and hands focus to the other half.
-        var partner: Tab?
-        if let split, isPaired(tab) {
-            partner = split.left === tab ? split.right : split.left
-            self.split = nil
-        }
+        // Closing a pane takes it out of the split and hands focus to a neighbor.
+        let partner = isPaired(tab) ? leaveSplit(tab) : nil
         tabs.remove(at: index)
         if isAnnounced { extensions.didCloseTab(tab, windowIsClosing: false) }
         tab.discard()
@@ -208,33 +200,81 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard let activeTab else { return }
         let visible = visibleTabs
         visible.forEach { $0.materialize() }
-        content.display(visible, focused: activeTab, fraction: split?.fraction ?? 0.5)
+        let group = split.flatMap { $0.contains(activeTab) ? $0 : nil }
+        content.display(visible, focused: activeTab, layout: group?.layout ?? .columns, dividers: group?.dividers ?? [])
     }
 
     /// ⌘\: split the current tab with a new tab on the right, or end the split it's in.
     func toggleSplit() {
         guard let active = activeTab else { return }
         if isPaired(active) { return unsplit() }
+        splitWithNewTab(layout: .columns)
+    }
+
+    /// ⌃⌘\: split the current tab with a new tab below it.
+    func splitDown() {
+        guard let active = activeTab else { return }
+        if isPaired(active) { return addPane() }
+        splitWithNewTab(layout: .rows)
+    }
+
+    private func splitWithNewTab(layout: SplitLayout) {
+        guard let active = activeTab else { return }
         let fresh = Tab(url: nil)
         insert(fresh, after: active, activate: false)
-        split(active, with: fresh, focus: fresh)
+        split(active, with: fresh, focus: fresh, layout: layout)
+    }
+
+    /// Adds a new tab to the split the current tab is in (or starts one), up to four panes.
+    func addPane() {
+        guard let active = activeTab else { return }
+        guard let group = split, group.contains(active) else { return splitWithNewTab(layout: .columns) }
+        guard group.tabs.count < SplitGroup.maxTabs else { NSSound.beep(); return }
+        let fresh = Tab(url: nil)
+        insert(fresh, after: group.tabs.last, activate: false)
+        add(fresh, toSplitWith: active, focus: fresh)
     }
 
     /// Pairs the current tab with the tab used before it.
     func splitWithPreviousTab() {
         guard let active = activeTab,
-              let previous = tabs.filter({ $0 !== active }).max(by: { $0.lastActivated < $1.lastActivated }) else { return }
+              let previous = tabs.filter({ $0 !== active && !(split?.contains(active) == true && split?.contains($0) == true) })
+                .max(by: { $0.lastActivated < $1.lastActivated }) else { return }
+        if isPaired(active), split!.tabs.count < SplitGroup.maxTabs { return add(previous, toSplitWith: active, focus: active) }
         split(active, with: previous, focus: active)
     }
 
-    func split(_ left: Tab, with right: Tab, focus: Tab) {
-        guard left !== right, tabs.contains(left), tabs.contains(right) else { return }
-        split = SplitPair(left: left, right: right, fraction: split?.fraction ?? 0.5)
-        sidebar.reloadTabs()
-        activate(focus)
-        showVisibleTabs()
+    /// Starts a new split of two tabs, replacing any split there was.
+    func split(_ left: Tab, with right: Tab, focus: Tab, layout: SplitLayout = .columns) {
+        split([left, right], layout: layout, focus: focus)
     }
 
+    /// Shows `tabs` (two to four, in reading order) together, replacing any split there was.
+    func split(_ group: [Tab], layout: SplitLayout, focus: Tab) {
+        var seen = Set<ObjectIdentifier>()
+        let group = group.filter { tabs.contains($0) && seen.insert(ObjectIdentifier($0)).inserted }.prefix(SplitGroup.maxTabs)
+        guard group.count > 1, group.contains(focus) else { return }
+        split = SplitGroup(tabs: Array(group), layout: layout)
+        gatherSplitTabs()
+        sidebar.reloadTabs()
+        activate(focus)
+    }
+
+    /// Adds `tab` to the split `anchor` is in, after the anchor's pane; four panes become a grid.
+    /// Without a split, it starts one beside `anchor`.
+    func add(_ tab: Tab, toSplitWith anchor: Tab, focus: Tab) {
+        guard var group = split, group.contains(anchor) else { return split(anchor, with: tab, focus: focus) }
+        guard !group.contains(tab), group.tabs.count < SplitGroup.maxTabs, tabs.contains(tab) else { return }
+        var panes = group.tabs
+        panes.insert(tab, at: (panes.firstIndex { $0 === anchor } ?? panes.count - 1) + 1)
+        group.setTabs(panes, layout: panes.count == SplitGroup.maxTabs && group.layout != .grid ? .grid : nil)
+        split = group
+        gatherSplitTabs()
+        sidebar.reloadTabs()
+        activate(focus)
+    }
+
+    /// Ends the split. The tabs stay open, and the active one is shown alone.
     func unsplit() {
         guard split != nil else { return }
         split = nil
@@ -242,17 +282,127 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         if let activeTab { activate(activeTab) }
     }
 
-    func swapPanes() {
-        guard var pair = split, let activeTab, isPaired(activeTab) else { return }
-        swap(&pair.left, &pair.right)
-        pair.fraction = 1 - pair.fraction
-        split = pair
+    /// Takes `tab` out of its split and shows it alone. With two panes, that ends the split.
+    func removeFromSplit(_ tab: Tab) {
+        guard isPaired(tab) else { return }
+        leaveSplit(tab)
+        sidebar.reloadTabs()
+        if let activeTab { activate(activeTab) }
+    }
+
+    /// Drops `tab` from the split model and returns the pane that should get focus in its place.
+    @discardableResult
+    private func leaveSplit(_ tab: Tab) -> Tab? {
+        guard var group = split, let i = group.tabs.firstIndex(where: { $0 === tab }) else { return nil }
+        var panes = group.tabs
+        panes.remove(at: i)
+        let neighbor = panes[min(i, panes.count - 1)]
+        if panes.count < 2 {
+            split = nil
+        } else {
+            group.setTabs(panes)
+            split = group
+        }
+        return neighbor
+    }
+
+    /// Switches the split the current tab is in to `layout`, or to the next one that fits.
+    func setSplitLayout(_ layout: SplitLayout?) {
+        guard var group = split, let activeTab, group.contains(activeTab) else { return }
+        let fitting = SplitLayout.allCases.filter { $0.fits(group.tabs.count) }
+        let next = layout ?? fitting[((fitting.firstIndex(of: group.layout) ?? 0) + 1) % fitting.count]
+        guard next.fits(group.tabs.count), next != group.layout else { return }
+        group.setTabs(group.tabs, layout: next)
+        split = group
+        sidebar.reloadTabs()
         showVisibleTabs()
     }
 
-    func focusPane(right: Bool) {
-        guard let pair = split, let activeTab, isPaired(activeTab) else { return }
-        activate(right ? pair.right : pair.left)
+    /// Moves every pane one place along; with two panes, they trade places.
+    func swapPanes() {
+        guard var group = split, let activeTab, group.contains(activeTab) else { return }
+        let panes = Array(group.tabs.dropFirst()) + [group.tabs[0]]
+        let dividers = group.tabs.count == 2 && group.layout != .grid ? group.dividers.map { 1 - $0 } : group.dividers
+        group = SplitGroup(tabs: panes, layout: group.layout, dividers: dividers)
+        split = group
+        sidebar.reloadTabs()
+        showVisibleTabs()
+    }
+
+    enum PaneDirection { case left, right, up, down }
+
+    /// Focuses the nearest pane in `direction` from the focused one.
+    func focusPane(_ direction: PaneDirection) {
+        guard let group = split, let activeTab, let from = group.tabs.firstIndex(where: { $0 === activeTab }) else { return }
+        let frames = SplitGeometry.frames(count: group.tabs.count, layout: group.layout, dividers: group.dividers,
+                                          in: NSRect(x: 0, y: 0, width: 1000, height: 1000), gap: 0)
+        let here = NSPoint(x: frames[from].midX, y: frames[from].midY)
+        let candidates = frames.indices.filter { i in
+            let f = frames[i]
+            switch direction {
+            case .left: return f.maxX <= frames[from].minX + 0.5 && f.maxY > frames[from].minY && f.minY < frames[from].maxY
+            case .right: return f.minX >= frames[from].maxX - 0.5 && f.maxY > frames[from].minY && f.minY < frames[from].maxY
+            case .up: return f.minY >= frames[from].maxY - 0.5 && f.maxX > frames[from].minX && f.minX < frames[from].maxX
+            case .down: return f.maxY <= frames[from].minY + 0.5 && f.maxX > frames[from].minX && f.minX < frames[from].maxX
+            }
+        }
+        let distance = { (i: Int) in hypot(frames[i].midX - here.x, frames[i].midY - here.y) }
+        guard let target = candidates.min(by: { distance($0) < distance($1) }) else { return }
+        activate(group.tabs[target])
+    }
+
+    /// Where a tab dropped on the page goes.
+    enum PaneDrop: Equatable {
+        /// A new pane along that edge of the page.
+        case edge(NSRectEdge)
+        /// In place of the pane at that index.
+        case pane(Int)
+    }
+
+    /// Opens `tab` in the split the drop names. Returns false when nothing changed.
+    @discardableResult
+    func drop(_ tab: Tab, at target: PaneDrop) -> Bool {
+        guard let active = activeTab, tabs.contains(tab) else { return false }
+        let group = split.flatMap { $0.contains(active) ? $0 : nil }
+        switch target {
+        case .edge(let edge):
+            let horizontal = edge == .minX || edge == .maxX
+            let first = edge == .minX || edge == .maxY // maxY is the top
+            guard var panes = group?.tabs else {
+                guard tab !== active else { return false }
+                split(first ? [tab, active] : [active, tab], layout: horizontal ? .columns : .rows, focus: tab)
+                return true
+            }
+            panes.removeAll { $0 === tab }
+            guard panes.count < SplitGroup.maxTabs, panes.count > 0 else { return false }
+            if first { panes.insert(tab, at: 0) } else { panes.append(tab) }
+            let current = group!.layout
+            let layout: SplitLayout = panes.count == 2 ? (horizontal ? .columns : .rows)
+                : current == .grid || (current == .columns) == horizontal ? current : .grid
+            split(panes, layout: panes.count == SplitGroup.maxTabs ? .grid : layout, focus: tab)
+            return true
+        case .pane(let index):
+            guard var panes = group?.tabs, panes.indices.contains(index), panes[index] !== tab else { return false }
+            if let from = panes.firstIndex(where: { $0 === tab }) { panes.swapAt(from, index) } else { panes[index] = tab }
+            split(panes, layout: group!.layout, focus: tab)
+            return true
+        }
+    }
+
+    /// Keeps a split's tabs next to each other in the tab list, after its first tab.
+    private func gatherSplitTabs() {
+        guard let group = split else { return }
+        let members = group.tabs.sorted { (tabs.firstIndex(of: $0) ?? 0) < (tabs.firstIndex(of: $1) ?? 0) }
+        guard let anchor = members.first, members.allSatisfy({ $0.isPinned == anchor.isPinned }) else { return }
+        for tab in members.dropFirst() {
+            guard let from = tabs.firstIndex(of: tab), let at = tabs.firstIndex(of: anchor) else { continue }
+            let block = members.prefix { $0 !== tab }.compactMap { tabs.firstIndex(of: $0) }.max() ?? at
+            let to = from > block ? block + 1 : block
+            guard from != to else { continue }
+            tabs.remove(at: from)
+            tabs.insert(tab, at: to)
+            if isAnnounced { extensions.didMoveTab(tab, from: from, in: self) }
+        }
     }
 
     /// A click into a visible web view makes its tab the active one (address bar, extensions, commands).
@@ -261,14 +411,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         activate(tab)
     }
 
-    func restoreSplit(left: Tab, right: Tab, fraction: CGFloat) {
-        split = SplitPair(left: left, right: right, fraction: fraction)
+    func restoreSplit(_ group: [Tab], layout: SplitLayout, dividers: [CGFloat]?) {
+        guard group.count > 1, group.count <= SplitGroup.maxTabs else { return }
+        split = SplitGroup(tabs: group, layout: layout, dividers: dividers)
         sidebar.reloadTabs()
         showVisibleTabs()
     }
 
-    func splitFractionDidChange(_ fraction: CGFloat) {
-        split?.fraction = fraction
+    func splitDividersDidChange(_ dividers: [CGFloat]) {
+        split?.dividers = dividers
     }
 
     // MARK: Selection & ordering

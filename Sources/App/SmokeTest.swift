@@ -287,25 +287,82 @@ enum SmokeTest {
         browser.content.peek(URL(string: "\(base)/form.html?split")!, from: tab)
         let peeked = browser.content.linkPeek?.tab
         browser.content.promotePeek(split: true)
-        check(peeked != nil && browser.tabs.count == before + 1 && browser.split?.left === tab && browser.split?.right === peeked
+        check(peeked != nil && browser.tabs.count == before + 1 && browser.split?.tabs.first === tab && browser.split?.tabs.last === peeked
               && peeked?.webView?.window != nil, "a peek promotes to a split beside its page")
         browser.unsplit()
         if let peeked { browser.close(peeked) }
         browser.close(tab)
     }
 
-    /// Dropping a sidebar tab on the left or right half of the page.
+    /// Dropping a sidebar tab on the page, up/down splits, and splits of three and four tabs.
     private static func dragToSplit(browser: BrowserWindowController, base: String) {
         let a = browser.newTab(url: URL(string: "\(base)/one.html?dropA"))
         let b = browser.newTab(url: URL(string: "\(base)/one.html?dropB"), activate: false)
         let c = browser.newTab(url: URL(string: "\(base)/one.html?dropC"), activate: false)
-        browser.content.dropTab(b, onRight: true)
-        check(browser.visibleTabs == [a, b] && browser.activeTab === b, "dropping a tab on the right half splits with it")
-        browser.content.dropTab(c, onRight: false)
-        check(browser.visibleTabs == [c, b] && browser.activeTab === c, "dropping on the left half of a split replaces the left pane")
-        check(!browser.content.dropTab(c, onRight: true), "dropping a tab beside itself does nothing")
+        let d = browser.newTab(url: URL(string: "\(base)/one.html?dropD"), activate: false)
+        let e = browser.newTab(url: URL(string: "\(base)/one.html?dropE"), activate: false)
+        check(browser.drop(b, at: .edge(.maxX)) && browser.visibleTabs == [a, b] && browser.activeTab === b && browser.split?.layout == .columns,
+              "dropping a tab on the right half splits with it")
         browser.unsplit()
-        [a, b, c].forEach(browser.close)
+        browser.activate(a)
+        check(browser.drop(b, at: .edge(.minY)) && browser.visibleTabs == [a, b] && browser.split?.layout == .rows,
+              "dropping a tab on the bottom half splits up and down")
+        check(a.webView!.frame.width > b.webView!.frame.height && abs(a.webView!.frame.width - b.webView!.frame.width) < 1,
+              "stacked panes share the full width")
+        check(browser.drop(c, at: .pane(0)) && browser.visibleTabs == [c, b] && browser.activeTab === c, "dropping on a pane replaces it")
+        check(!browser.drop(c, at: .pane(0)), "dropping a tab on its own pane does nothing")
+        check(browser.drop(a, at: .edge(.minY)) && browser.visibleTabs == [c, b, a] && browser.split?.layout == .rows,
+              "dropping at the bottom edge of a stacked split adds a third pane")
+        check(browser.drop(d, at: .edge(.maxX)) && browser.visibleTabs == [c, b, a, d] && browser.split?.layout == .grid,
+              "a fourth pane makes a 2×2 grid")
+        check(browser.visibleTabs.allSatisfy { $0.webView?.window != nil }, "all four panes have web views on screen")
+        check(!browser.drop(e, at: .edge(.maxX)), "a full grid takes no fifth pane")
+        let tabIndices = browser.visibleTabs.compactMap { browser.tabs.firstIndex(of: $0) }.sorted()
+        check(tabIndices.last! - tabIndices.first! == 3, "a split's tabs sit together in the tab list")
+
+        CommandRouter.perform(.focusPaneAbove, in: browser)
+        check(browser.activeTab === b, "focusPaneAbove moves to the pane above")
+        CommandRouter.perform(.focusLeftPane, in: browser)
+        check(browser.activeTab === c, "focusLeftPane moves to the pane on the left")
+        browser.setSplitLayout(.columns)
+        check(browser.split?.layout == .columns && browser.visibleTabs.count == 4, "four tabs side by side")
+        CommandRouter.perform(.changeSplitLayout, in: browser)
+        check(browser.split?.layout == .rows, "changeSplitLayout cycles to the next layout")
+        CommandRouter.perform(.removeFromSplit, in: browser)
+        check(browser.visibleTabs == [c] && browser.split?.tabs == [b, a, d] && browser.split?.layout == .rows,
+              "removing a tab from the split shows it alone and keeps the rest")
+        browser.activate(b)
+        browser.close(d)
+        check(browser.split?.tabs == [b, a] && browser.visibleTabs == [b, a], "closing a pane of three leaves a pair")
+        browser.setSplitLayout(.grid)
+        check(browser.split?.layout == .rows, "a pair can't be a grid")
+        CommandRouter.perform(.addPane, in: browser)
+        check(browser.split?.tabs.count == 3 && browser.activeTab?.currentURL == nil, "addPane adds a new tab to the split")
+        browser.setSplitLayout(.grid)
+        check(browser.split?.layout == .grid, "three tabs as a grid")
+        browser.close(browser.activeTab!)
+
+        // Geometry: three-tab grid is one tall pane on the left, two stacked on the right.
+        let box = NSRect(x: 0, y: 0, width: 1010, height: 810)
+        check(SplitGeometry.frames(count: 4, layout: .grid, dividers: [0.5, 0.5], in: box, gap: 10)
+              == [NSRect(x: 0, y: 410, width: 500, height: 400), NSRect(x: 510, y: 410, width: 500, height: 400),
+                  NSRect(x: 0, y: 0, width: 500, height: 400), NSRect(x: 510, y: 0, width: 500, height: 400)], "2×2 grid frames")
+        check(SplitGeometry.frames(count: 3, layout: .grid, dividers: [0.5, 0.5], in: box, gap: 10)
+              == [NSRect(x: 0, y: 0, width: 500, height: 810), NSRect(x: 510, y: 410, width: 500, height: 400),
+                  NSRect(x: 510, y: 0, width: 500, height: 400)], "three-tab grid frames")
+        check(SplitGeometry.frames(count: 3, layout: .rows, dividers: [0.25, 0.5], in: box, gap: 10).map(\.height) == [198, 197, 395],
+              "row frames follow the dividers")
+        let page = NSRect(x: 0, y: 0, width: 1000, height: 800)
+        let halves = [NSRect(x: 0, y: 0, width: 495, height: 800), NSRect(x: 505, y: 0, width: 495, height: 800)]
+        check(SplitDropView.target(at: NSPoint(x: 500, y: 30), frames: [page], in: page, canAddPane: true) == .edge(.minY)
+              && SplitDropView.target(at: NSPoint(x: 30, y: 400), frames: [page], in: page, canAddPane: true) == .edge(.minX),
+              "over a single page, the nearest edge picks the split direction")
+        check(SplitDropView.target(at: NSPoint(x: 700, y: 400), frames: halves, in: page, canAddPane: true) == .pane(1)
+              && SplitDropView.target(at: NSPoint(x: 990, y: 400), frames: halves, in: page, canAddPane: true) == .edge(.maxX)
+              && SplitDropView.target(at: NSPoint(x: 990, y: 400), frames: halves, in: page, canAddPane: false) == .pane(1),
+              "in a split, a pane is replaced, and the outer edge adds a pane while there's room")
+        browser.unsplit()
+        [a, b, c, e].forEach(browser.close)
     }
 
     private static func welcome(browser: BrowserWindowController) async {

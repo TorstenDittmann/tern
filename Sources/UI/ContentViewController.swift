@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-/// Hosts the visible tab(s): one floating card, or two side by side in split view.
+/// Hosts the visible tab(s): one floating card, or two to four in split view.
 /// Also owns the floating find bar, which acts on the focused pane.
 @MainActor
 final class ContentViewController: NSViewController {
@@ -20,12 +20,13 @@ final class ContentViewController: NSViewController {
         findBar.isHidden = true
         findBar.onFind = { [weak self] query, backwards in self?.find(query, backwards: backwards) }
         findBar.onClose = { [weak self] in self?.hideFindBar() }
-        panes.onFractionChange = { [weak self] f in self?.browser?.splitFractionDidChange(f) }
+        panes.onDividersChange = { [weak self] d in self?.browser?.splitDividersDidChange(d) }
 
         dropZone.isHidden = true
-        dropZone.onDrop = { [weak self] id, right in
-            guard let self, let tab = self.browser?.tabs.first(where: { $0.id == id }) else { return false }
-            return self.dropTab(tab, onRight: right)
+        dropZone.paneFrames = { [weak self] in self?.panes.paneFrames ?? [] }
+        dropZone.onDrop = { [weak self] id, target in
+            guard let browser = self?.browser, let tab = browser.tabs.first(where: { $0.id == id }) else { return false }
+            return browser.drop(tab, at: target)
         }
 
         for v in [panes, dropZone, findBar] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
@@ -50,11 +51,10 @@ final class ContentViewController: NSViewController {
 
     // MARK: Display
 
-    /// Shows `tabs` (one, or two for a split) and marks `focused` as the pane with keyboard focus.
-    func display(_ tabs: [Tab], focused: Tab, fraction: CGFloat) {
+    /// Shows `tabs` (one, or two to four for a split) and marks `focused` as the pane with keyboard focus.
+    func display(_ tabs: [Tab], focused: Tab, layout: SplitLayout, dividers: [CGFloat]) {
         shown = tabs
-        panes.count = tabs.count
-        panes.fraction = fraction
+        panes.arrange(count: tabs.count, layout: layout, dividers: dividers)
         // Lay the cards out first, so a web view moving in gets its final size right away. Otherwise it
         // renders once at the card's old size (full width, or the other half of a split), then resizes.
         panes.layoutSubtreeIfNeeded()
@@ -86,22 +86,14 @@ final class ContentViewController: NSViewController {
     // MARK: Drag a tab onto the page
 
     /// The sidebar started dragging a tab: the panes become a drop target.
-    func beginTabDrag() { dropZone.isHidden = false }
+    func beginTabDrag() {
+        dropZone.canAddPane = (browser?.visibleTabs.count ?? 1) < SplitGroup.maxTabs
+        dropZone.isHidden = false
+    }
 
     func endTabDrag() {
         dropZone.isHidden = true
         dropZone.reset()
-    }
-
-    /// Splits the page with `tab` on the given side. In a split, it replaces the pane on that side.
-    @discardableResult
-    func dropTab(_ tab: Tab, onRight right: Bool) -> Bool {
-        guard let browser, let active = browser.activeTab else { return false }
-        let visible = browser.visibleTabs
-        let other = visible.count == 2 ? (right ? visible[0] : visible[1]) : active
-        guard other !== tab else { return false }
-        browser.split(right ? other : tab, with: right ? tab : other, focus: tab)
-        return true
     }
 
     // MARK: Link peek
@@ -179,64 +171,68 @@ final class ContentViewController: NSViewController {
     }
 }
 
-/// Lays out one or two cards by hand; the gap between two is a drag handle (double-click resets to 50/50).
+/// Lays out one to four cards by hand; the gaps between them are drag handles (double-click evens them out).
 final class PanesView: NSView {
-    let cards = [CardView(), CardView()]
-    var onFractionChange: ((CGFloat) -> Void)?
-    var count = 1 {
-        didSet {
-            guard count != oldValue else { return }
-            cards[1].isHidden = count < 2
-            needsLayout = true
-            window?.invalidateCursorRects(for: self)
-        }
-    }
-    var fraction: CGFloat = 0.5 { didSet { if fraction != oldValue { needsLayout = true } } }
+    let cards = (0..<SplitGroup.maxTabs).map { _ in CardView() }
+    var onDividersChange: (([CGFloat]) -> Void)?
+    private(set) var count = 1
+    private(set) var layout = SplitLayout.columns
+    private(set) var dividers: [CGFloat] = []
+    private var handles: [SplitHandle] = []
 
     private let gap = Theme.gutter
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         cards.forEach(addSubview)
-        cards[1].isHidden = true
+        cards.dropFirst().forEach { $0.isHidden = true }
     }
     required init?(coder: NSCoder) { fatalError() }
 
     override var mouseDownCanMoveWindow: Bool { false }
 
+    var paneFrames: [NSRect] { cards.prefix(count).map(\.frame) }
+
+    func arrange(count: Int, layout: SplitLayout, dividers: [CGFloat]) {
+        let count = max(1, min(count, cards.count))
+        guard count != self.count || layout != self.layout || dividers != self.dividers else { return }
+        self.count = count
+        self.layout = layout
+        self.dividers = dividers
+        for (i, card) in cards.enumerated() { card.isHidden = i >= count }
+        needsLayout = true
+    }
+
     override func layout() {
         super.layout()
-        guard count > 1 else { cards[0].frame = bounds; return }
-        let left = ((bounds.width - gap) * fraction).rounded()
-        cards[0].frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
-        cards[1].frame = NSRect(x: left + gap, y: 0, width: bounds.width - left - gap, height: bounds.height)
+        let frames = SplitGeometry.frames(count: count, layout: layout, dividers: dividers, in: bounds, gap: gap)
+        for (card, frame) in zip(cards, frames) { card.frame = frame }
+        handles = SplitGeometry.handles(count: count, layout: layout, frames: frames, in: bounds, gap: gap)
         window?.invalidateCursorRects(for: self)
     }
 
-    private var handleRect: NSRect {
-        NSRect(x: cards[0].frame.maxX - 3, y: 0, width: gap + 6, height: bounds.height)
-    }
-
     override func resetCursorRects() {
-        if count > 1 { addCursorRect(handleRect, cursor: .resizeLeftRight) }
+        for h in handles { addCursorRect(h.rect, cursor: h.vertical ? .resizeLeftRight : .resizeUpDown) }
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard count > 1, handleRect.contains(convert(event.locationInWindow, from: nil)) else {
-            return super.mouseDown(with: event)
-        }
-        if event.clickCount == 2 { setFraction(0.5); return }
+        let start = convert(event.locationInWindow, from: nil)
+        guard let handle = handles.first(where: { $0.rect.contains(start) }) else { return super.mouseDown(with: event) }
+        if event.clickCount == 2 { return setDividers(SplitGroup.evenDividers(count, layout)) }
         window?.trackEvents(matching: [.leftMouseDragged, .leftMouseUp], timeout: .infinity, mode: .eventTracking) { [weak self] e, stop in
             guard let self, let e else { return }
             if e.type == .leftMouseUp { stop.pointee = true; return }
-            let x = self.convert(e.locationInWindow, from: nil).x
-            self.setFraction((x - self.gap / 2) / (self.bounds.width - self.gap))
+            var d = self.dividers
+            d[handle.divider] = SplitGeometry.divider(for: handle, at: self.convert(e.locationInWindow, from: nil), count: self.count,
+                                                      layout: self.layout, dividers: d, in: self.bounds, gap: self.gap)
+            self.setDividers(d)
         }
     }
 
-    private func setFraction(_ f: CGFloat) {
-        fraction = min(0.8, max(0.2, f))
-        onFractionChange?(fraction)
+    private func setDividers(_ d: [CGFloat]) {
+        dividers = d
+        needsLayout = true
+        onDividersChange?(d)
     }
 }
 

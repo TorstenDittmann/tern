@@ -366,7 +366,13 @@ final class SidebarViewController: NSViewController {
     @objc private func ctxPin() { clickedTab.map { browser?.setPinned($0, !$0.isPinned) } }
     @objc private func ctxSplit() {
         guard let browser, let clicked = clickedTab, let active = browser.activeTab else { return }
-        if clicked === active { browser.toggleSplit() } else { browser.split(active, with: clicked, focus: clicked) }
+        if clicked === active { return browser.toggleSplit() }
+        // In a split with room, the tab joins it; otherwise it pairs with the current tab.
+        if browser.isPaired(active), !browser.isPaired(clicked), browser.visibleTabs.count < SplitGroup.maxTabs {
+            browser.add(clicked, toSplitWith: active, focus: clicked)
+        } else {
+            browser.split(active, with: clicked, focus: clicked)
+        }
     }
     @objc private func ctxDuplicate() { clickedTab.map { browser?.duplicate($0) } }
     @objc private func ctxSuspend() { clickedTab?.suspend() }
