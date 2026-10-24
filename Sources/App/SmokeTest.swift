@@ -132,8 +132,15 @@ enum SmokeTest {
         await bookmarksAndLibrary(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
-        if ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"] != nil {
-            CommandRouter.perform(.splitWithPreviousTab, in: browser)
+        // TERN_SMOKE_SPLIT=1 leaves a pair on screen for the snapshots; =columns|rows|grid leaves three or four tabs.
+        if let kind = ProcessInfo.processInfo.environment["TERN_SMOKE_SPLIT"], let active = browser.activeTab {
+            if let layout = SplitLayout(rawValue: kind) {
+                let extra = (0..<(layout == .grid ? 3 : 2)).map { browser.newTab(url: URL(string: "\(base)/two.html?shot\($0)"), activate: false) }
+                browser.split([active] + extra, layout: layout, focus: active)
+                await wait { extra.allSatisfy { !$0.isLoading } }
+            } else {
+                CommandRouter.perform(.splitWithPreviousTab, in: browser)
+            }
         }
 
         // Safari extensions installed on this Mac: can WebKit parse them?
