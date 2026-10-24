@@ -72,6 +72,9 @@ enum SmokeTest {
         browser.activate(one)
         two.suspend()
         check(two.isSuspended && two.webView == nil, "background tab suspended")
+        let memory = browser.sidebar.memoryText
+        check(memory.hasSuffix(" MB") || memory.hasSuffix(" GB"), "the tab list shows Tern's memory use (\(memory))")
+        check(SidebarViewController.memoryString(412.4) == "412 MB" && SidebarViewController.memoryString(1536) == "1.5 GB", "memory formatting")
         browser.activate(two)
         await wait { !two.isLoading && two.webView?.canGoBack == true }
         check(two.webView?.canGoBack == true && two.currentURL?.query == "second", "suspended tab restored with history")
@@ -97,6 +100,11 @@ enum SmokeTest {
         check(left.webView?.window != nil && right.webView?.window != nil, "both panes have web views on screen")
         right.load(URL(string: "\(base)/two.html")!)
         await wait { right.pageTitle == "Page Two" && !right.isLoading }
+        let bar = browser.content.topBar
+        check(bar.splitButton.contentTintColor == Theme.accent, "the split button is lit in split view")
+        check(browser.content.paneHeaderTexts == ["localhost:8765", "localhost:8765"], "each pane has a header with its host (\(browser.content.paneHeaderTexts))")
+        check([left, right].allSatisfy { ($0.webView?.frame.height ?? 0) == ($0.webView?.superview?.bounds.height ?? 0) - PaneHeader.height },
+              "split panes' pages sit below their headers")
         browser.paneDidFocus(left)
         check(browser.activeTab === left && browser.visibleTabs.count == 2, "clicking a pane focuses it, split stays")
         CommandRouter.perform(.focusRightPane, in: browser)
@@ -106,6 +114,8 @@ enum SmokeTest {
         let outside = browser.tabs.first { !browser.isPaired($0) }!
         browser.activate(outside)
         check(browser.visibleTabs == [outside] && browser.split != nil, "other tab shows alone, pair kept")
+        check(browser.content.paneHeaderTexts.isEmpty && outside.webView?.frame.height == outside.webView?.superview?.bounds.height
+              && bar.splitButton.contentTintColor != Theme.accent, "a single page has no header and the split button is off")
         check(outside.webView?.frame.width == outside.webView?.superview?.bounds.width
               && (outside.webView?.frame.width ?? 0) > (left.webView?.frame.width ?? 0) * 1.5,
               "a tab leaving a split gets the full width at once")
@@ -120,6 +130,10 @@ enum SmokeTest {
         check(browser.split == nil && browser.activeTab === right, "closing one pane ends split, focuses the other")
         CommandRouter.perform(.splitWithPreviousTab, in: browser)
         check(browser.visibleTabs.count == 2, "split with previous tab")
+        bar.splitButton.performClick(nil)
+        check(browser.split == nil && browser.visibleTabs.count == 1, "the split button unsplits")
+        bar.splitButton.performClick(nil)
+        check(browser.visibleTabs.count == 2, "the split button splits")
         CommandRouter.perform(.toggleSplit, in: browser)
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
         await tabList(browser: browser, base: base)

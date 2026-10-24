@@ -1,8 +1,8 @@
 import AppKit
 import WebKit
 
-/// The bar above the page: sidebar toggle, back, forward, reload, and an address pill that takes
-/// the rest of the width. It lines up with the traffic lights, and makes room for them when the
+/// The bar above the page: sidebar toggle, back, forward, reload, an address pill that takes
+/// the rest of the width, and a split view button. It lines up with the traffic lights, and makes room for them when the
 /// sidebar is hidden or on the right.
 @MainActor
 final class TopBar: NSView {
@@ -21,6 +21,7 @@ final class TopBar: NSView {
     private lazy var backButton = HoverButton(symbol: "chevron.backward", label: "Back", target: self, action: #selector(backClicked))
     private lazy var forwardButton = HoverButton(symbol: "chevron.forward", label: "Forward", target: self, action: #selector(forwardClicked))
     private lazy var reloadButton = HoverButton(symbol: "arrow.clockwise", label: "Reload", target: self, action: #selector(reloadClicked))
+    private(set) lazy var splitButton = HoverButton(symbol: "rectangle.split.2x1", label: "Split View", target: self, action: #selector(splitClicked))
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -35,10 +36,11 @@ final class TopBar: NSView {
             MainActor.assumeIsolated { self?.updateChrome() }
         }
         pill.translatesAutoresizingMaskIntoConstraints = false
-        let stack = NSStackView(views: [sidebarLeft, backButton, forwardButton, reloadButton, pill, sidebarRight])
+        let stack = NSStackView(views: [sidebarLeft, backButton, forwardButton, reloadButton, pill, splitButton, sidebarRight])
         stack.spacing = 2
         stack.setCustomSpacing(8, after: reloadButton)
         stack.setCustomSpacing(8, after: pill)
+        stack.setCustomSpacing(4, after: splitButton)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -66,6 +68,11 @@ final class TopBar: NSView {
         let loading = tab?.isLoading == true
         reloadButton.image = Theme.symbol(loading ? "xmark" : "arrow.clockwise")
         reloadButton.toolTip = loading ? "Stop" : "Reload"
+        // Lit while the page is split.
+        let split = (browser?.visibleTabs.count ?? 1) > 1
+        splitButton.contentTintColor = split ? Theme.accent : .secondaryLabelColor
+        let keys = Keymap.shared.primaryChord(for: .toggleSplit).map { " (\($0))" } ?? ""
+        splitButton.toolTip = (split ? "End Split View" : "Split View") + keys
     }
 
     /// The lock's popover: whether the connection is encrypted, and the certificate chain.
@@ -98,6 +105,7 @@ final class TopBar: NSView {
     }
 
     @objc private func sidebarClicked() { browser?.toggleSidebar() }
+    @objc private func splitClicked() { browser.map { CommandRouter.perform(.toggleSplit, in: $0) } }
     @objc private func backClicked() { browser?.activeTab?.webView?.goBack() }
     @objc private func forwardClicked() { browser?.activeTab?.webView?.goForward() }
     @objc private func reloadClicked() {

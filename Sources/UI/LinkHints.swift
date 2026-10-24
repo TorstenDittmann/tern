@@ -113,7 +113,15 @@ final class LinkHints {
       const CLICKABLE = 'a[href],button,input:not([type=hidden]),select,textarea,summary,label[for],' +
         '[role=button],[role=link],[role=tab],[role=checkbox],[role=radio],[role=switch],[role=menuitem],' +
         '[role=option],[onclick],[tabindex]:not([tabindex="-1"]),[contenteditable=""],[contenteditable=true]';
-      let host = null, items = [], picked = null;
+      let host = null, status = null, items = [], picked = null;
+
+      // The bar at the bottom left: what's been typed, and the modifiers that change what a hint does.
+      function setStatus(typed) {
+        if (!status) return;
+        status.innerHTML = typed
+          ? `hint <i>${typed}</i>▍ <small>· ⌫ undo · esc</small>`
+          : `type a hint <small>· ⇧ background tab · ⌥ peek · esc</small>`;
+      }
 
       function visibleTargets() {
         const vw = innerWidth, vh = innerHeight, seen = new Set(), out = [];
@@ -158,7 +166,15 @@ final class LinkHints {
             letter-spacing: .5px; transform: translate(-2px, -2px); }
           span[hidden] { display: none; }
           b { color: #a07400; font-weight: 700; }
+          div { position: fixed; left: 12px; bottom: 12px; padding: 5px 9px; border-radius: 7px;
+            font: 500 11.5px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: #c9cdd3;
+            background: rgba(21, 23, 26, .94); box-shadow: 0 0 0 1px #2c3036, 0 6px 20px rgba(0,0,0,.35); }
+          div i { font-style: normal; color: #9be8a6; text-transform: uppercase; }
+          div small { font-size: inherit; color: #8a9099; }
         </style>`;
+        status = document.createElement('div');
+        root.appendChild(status);
+        setStatus('');
         const names = labels(targets.length);
         items = targets.map((t, i) => {
           const tag = document.createElement('span');
@@ -173,6 +189,7 @@ final class LinkHints {
       }
 
       function filter({ typed }) {
+        setStatus(typed);
         let matches = 0, hit = null;
         for (const item of items) {
           const on = item.label.startsWith(typed);
@@ -200,6 +217,7 @@ final class LinkHints {
       function hide() {
         host?.remove();
         host = null;
+        status = null;
         items = [];
       }
 

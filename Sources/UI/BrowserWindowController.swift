@@ -218,6 +218,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         visible.forEach { $0.materialize() }
         let group = split.flatMap { $0.contains(activeTab) ? $0 : nil }
         content.display(visible, focused: activeTab, layout: group?.layout ?? .columns, dividers: group?.dividers ?? [])
+        content.topBar.updateChrome()
     }
 
     /// ⌘\: split the current tab with a new tab on the right, or end the split it's in.

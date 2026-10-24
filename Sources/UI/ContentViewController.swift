@@ -66,6 +66,9 @@ final class ContentViewController: NSViewController {
         topBar.setSidebarSide(right: onRight)
     }
 
+    /// For the smoke test: the hosts the visible pane headers show (none outside split view).
+    var paneHeaderTexts: [String] { panes.cards.prefix(shown.count).filter { !$0.header.isHidden }.map(\.header.text) }
+
     /// The page area (all panes), in window coordinates.
     var pageFrameInWindow: NSRect { panes.convert(panes.bounds, to: nil) }
 
@@ -95,10 +98,13 @@ final class ContentViewController: NSViewController {
                 webView.removeFromSuperview()
                 // Autoresizing instead of constraints: cheaper on every live resize.
                 webView.translatesAutoresizingMaskIntoConstraints = true
-                webView.frame = card.clip.bounds
                 webView.autoresizingMask = [.width, .height]
                 card.clip.addSubview(webView, positioned: .below, relativeTo: card.progress)
             }
+            // In a split each pane gets a header with its host, so you can tell the panes apart.
+            card.showsHeader = tabs.count > 1
+            webView?.frame = card.pageFrame
+            if i < tabs.count { card.header.show(tabs[i].currentURL) }
             card.isFocusedPane = tabs.count > 1 && i < tabs.count && tabs[i] === focused
             card.agentRing.isShown = i < tabs.count && tabs[i].isAgentDriving
             if i < tabs.count { card.progress.set(progress: tabs[i].progress, visible: tabs[i].isLoading) }
@@ -110,6 +116,7 @@ final class ContentViewController: NSViewController {
         guard let i = shown.firstIndex(of: tab) else { return }
         panes.cards[i].progress.set(progress: tab.progress, visible: tab.isLoading)
         panes.cards[i].agentRing.isShown = tab.isAgentDriving
+        panes.cards[i].header.show(tab.currentURL)
     }
 
     // MARK: Drag a tab onto the page
@@ -295,14 +302,32 @@ final class CardView: NSView {
     let clip = FilledView()
     let progress = ProgressLine()
     let agentRing = AgentRingView()
+    let header = PaneHeader()
 
     /// In split view the pane with keyboard focus gets an accent ring with a soft glow.
     var isFocusedPane = false {
         didSet {
             guard isFocusedPane != oldValue else { return }
             clip.border = isFocusedPane ? Theme.accent : Theme.hairline
+            header.isFocused = isFocusedPane
             needsDisplay = true
         }
+    }
+
+    /// The header strip above the page, shown in split view.
+    var showsHeader = false {
+        didSet {
+            guard showsHeader != oldValue else { return }
+            header.isHidden = !showsHeader
+            for case let webView as WKWebView in clip.subviews { webView.frame = pageFrame }
+        }
+    }
+
+    /// Where the web view goes in `clip`: all of it, or below the header.
+    var pageFrame: NSRect {
+        var frame = clip.bounds
+        if showsHeader { frame.size.height -= PaneHeader.height }
+        return frame
     }
 
     override init(frame: NSRect) {
@@ -315,10 +340,17 @@ final class CardView: NSView {
         clip.translatesAutoresizingMaskIntoConstraints = false
         progress.translatesAutoresizingMaskIntoConstraints = false
         agentRing.translatesAutoresizingMaskIntoConstraints = false
+        header.translatesAutoresizingMaskIntoConstraints = false
+        header.isHidden = true
         addSubview(clip)
         addSubview(agentRing)
+        clip.addSubview(header)
         clip.addSubview(progress)
         NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: clip.topAnchor),
+            header.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: PaneHeader.height),
             agentRing.topAnchor.constraint(equalTo: topAnchor), agentRing.bottomAnchor.constraint(equalTo: bottomAnchor),
             agentRing.leadingAnchor.constraint(equalTo: leadingAnchor), agentRing.trailingAnchor.constraint(equalTo: trailingAnchor),
             clip.topAnchor.constraint(equalTo: topAnchor), clip.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -350,6 +382,54 @@ final class CardView: NSView {
             layer?.shadowRadius = 6
             layer?.shadowOffset = CGSize(width: 0, height: -1)
         }
+    }
+}
+
+/// The strip above a pane in split view: a dot (accent on the focused pane) and the page's host.
+final class PaneHeader: FilledView {
+    static let height: CGFloat = 24
+    private let dot = FilledView()
+    private let host = NSTextField(labelWithString: "")
+
+    var isFocused = false { didSet { dot.fill = isFocused ? Theme.accent : .tertiaryLabelColor } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        fill = Theme.ground
+        dot.radius = 3
+        dot.fill = .tertiaryLabelColor
+        host.font = Theme.monoFont(11)
+        host.textColor = .secondaryLabelColor
+        host.lineBreakMode = .byTruncatingTail
+        host.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let rule = FilledView()
+        rule.fill = Theme.hairline
+        for v in [dot, host, rule] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        NSLayoutConstraint.activate([
+            dot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            dot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 6), dot.heightAnchor.constraint(equalToConstant: 6),
+            host.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 7),
+            host.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            host.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rule.leadingAnchor.constraint(equalTo: leadingAnchor), rule.trailingAnchor.constraint(equalTo: trailingAnchor),
+            rule.bottomAnchor.constraint(equalTo: bottomAnchor), rule.heightAnchor.constraint(equalToConstant: 1),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    var text: String { host.stringValue }
+
+    func show(_ url: URL?) {
+        let text = Theme.displayString(for: url)
+        host.stringValue = text.isEmpty ? "New Tab" : text
+    }
+
+    // A click on the header focuses its pane, like a click on the page.
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func mouseDown(with event: NSEvent) {
+        guard let webView = superview?.subviews.first(where: { $0 is WKWebView }) else { return }
+        window?.makeFirstResponder(webView)
     }
 }
 
