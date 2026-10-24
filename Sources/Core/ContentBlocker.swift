@@ -89,7 +89,8 @@ final class ContentBlocker {
         if let updating { return await updating.value }
         let task = Task {
             for source in sources {
-                if installed[source.id] == nil, let list = await lookUp(source.id) { install(list, source.id) }
+                // The smoke test always compiles, so a list left from an earlier run can't pass for this one.
+                if installed[source.id] == nil, !SmokeTest.isRunning, let list = await lookUp(source.id) { install(list, source.id) }
                 let age = Date().timeIntervalSince1970 - (Preferences.blocklistsUpdated[source.id] ?? 0)
                 guard force || installed[source.id] == nil || age > Self.refreshInterval, Preferences.blocksTrackers || force else { continue }
                 do {
