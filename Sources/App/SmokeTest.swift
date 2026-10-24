@@ -435,7 +435,11 @@ enum SmokeTest {
                   "the top bar is centered on the traffic lights (bar \(barMid), lights \(lightsMid))")
         }
         let firstRow = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil).maxY - browser.sidebar.contentTop
-        check(abs(firstRow - (bar.convert(bar.bounds, to: nil).minY - Theme.gutter)) <= 1, "the tab list starts level with the page")
+        let barFrame = bar.convert(bar.bounds, to: nil)
+        let pageTop = browser.content.pageFrameInWindow.maxY
+        check(abs(firstRow - pageTop) <= 1, "the tab list starts level with the page")
+        check(abs((root.bounds.height - barFrame.maxY) - (barFrame.minY - pageTop)) <= 1,
+              "the top bar has the same space above and below it (\(Int(root.bounds.height - barFrame.maxY)) / \(Int(barFrame.minY - pageTop)))")
 
         browser.toggleSidebar()
         try? await Task.sleep(for: .milliseconds(300))

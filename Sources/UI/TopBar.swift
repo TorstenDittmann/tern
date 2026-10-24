@@ -7,8 +7,8 @@ import WebKit
 @MainActor
 final class TopBar: NSView {
     static let height: CGFloat = 26
-    /// Window top to page top before the traffic lights have been measured.
-    static let defaultContentTop: CGFloat = 37
+    /// Window top to page top before the traffic lights have been measured: the same 3pt above and below the bar.
+    static let defaultContentTop: CGFloat = 32
 
     weak var browser: BrowserWindowController?
 

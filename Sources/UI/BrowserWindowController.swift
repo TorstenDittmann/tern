@@ -526,7 +526,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func updateTitlebarLayout() {
         guard let window else { return }
         let fullscreen = window.styleMask.contains(.fullScreen)
-        var top = TopBar.defaultContentTop - Theme.gutter - TopBar.height
+        var top = (TopBar.defaultContentTop - TopBar.height) / 2
         if !fullscreen, let close = window.standardWindowButton(.closeButton), close.window === window,
            let container = close.superview, let root = window.contentView {
             let midInWindow = container.convert(NSPoint(x: 0, y: close.frame.midY), to: nil).y
@@ -539,7 +539,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         content.setTitlebar(barTop: top, lightsInset: underLights ? 78 - Theme.gutter : 0)
         // On the left, the traffic lights take the strip above the list, so the list starts level with the page.
         // On the right nothing sits there, so the list moves up: the first tab's chip starts level with the address pill.
-        sidebar.setContentTop(isSidebarOnRight ? max(0, top - sidebar.rowChipInset) : top + TopBar.height + Theme.gutter)
+        sidebar.setContentTop(isSidebarOnRight ? max(0, top - sidebar.rowChipInset) : top + TopBar.height + top)
     }
 
     /// Navigates the active tab (or a new one) to whatever the user typed.
