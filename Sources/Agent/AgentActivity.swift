@@ -1,6 +1,6 @@
 import AppKit
 
-/// Tracks which tabs an agent is driving, so the UI can ring them and show "Agent connected".
+/// Tracks which tabs an agent is driving, so the UI can ring them.
 /// A tab counts as driven for a few seconds after each agent action on it.
 @MainActor
 final class AgentActivity {

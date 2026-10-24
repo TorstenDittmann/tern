@@ -17,11 +17,9 @@ final class SidebarViewController: NSViewController {
     private var listTop: NSLayoutConstraint!
     private var isSyncingSelection = false
     private var actionButtons: [ObjectIdentifier: ExtensionActionButton] = [:]
-    private let agentPill = AgentPill()
     private lazy var newTab = NewTabButton(target: self, action: #selector(newTabClicked))
-    /// Below this width the bottom bar drops its labels: "New Tab" becomes a +, "Agent connected" a dot.
+    /// Below this width the bottom bar drops its label: "New Tab" becomes a +.
     private static let compactWidth: CGFloat = 170
-    private var agentObserver: NSObjectProtocol?
     private let filterPill = FilterPill()
     private let pinnedView = PinnedTabsView()
     private var pinnedGap: NSLayoutConstraint!
@@ -79,11 +77,7 @@ final class SidebarViewController: NSViewController {
         // Bottom bar
         extensionStack.orientation = .horizontal
         extensionStack.spacing = 2
-        agentPill.isHidden = !AgentActivity.shared.isActive
-        agentObserver = NotificationCenter.default.addObserver(forName: AgentActivity.changed, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.agentPill.isHidden = !AgentActivity.shared.isActive }
-        }
-        let bottom = NSStackView(views: [newTab, agentPill, NSView(), extensionStack])
+        let bottom = NSStackView(views: [newTab, NSView(), extensionStack])
         bottom.spacing = 4
         // Nothing in the bottom bar may hold the sidebar wider than the user drags it: it compacts, then clips.
         bottom.setClippingResistancePriority(.defaultLow, for: .horizontal)
@@ -141,18 +135,11 @@ final class SidebarViewController: NSViewController {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        let compact = view.bounds.width < Self.compactWidth
-        newTab.isCompact = compact
-        agentPill.isCompact = compact
+        newTab.isCompact = view.bounds.width < Self.compactWidth
     }
 
     /// For the smoke test: whether the bottom bar shows just its icons, and the New Tab button's width.
-    var bottomBarCompact: (isCompact: Bool, newTabWidth: CGFloat) { (newTab.isCompact && agentPill.isCompact, newTab.frame.width) }
-
-    /// For the smoke test: the bottom bar at its widest, as while an agent is connected.
-    func showAgentPillForTesting(_ show: Bool) {
-        agentPill.isHidden = show ? false : !AgentActivity.shared.isActive
-    }
+    var bottomBarCompact: (isCompact: Bool, newTabWidth: CGFloat) { (newTab.isCompact, newTab.frame.width) }
 
     /// Space between a row's edge and its chip (half the gap between rows).
     var rowChipInset: CGFloat { tableView.intercellSpacing.height / 2 }
@@ -816,39 +803,6 @@ final class FilterPill: FilledView {
 }
 
 // MARK: - Bottom bar
-
-/// "Agent connected": shown while an agent drives a tab or listens for events.
-final class AgentPill: FilledView {
-    private let label = NSTextField(labelWithString: "Agent connected")
-    /// Just the dot, in a narrow sidebar.
-    var isCompact = false { didSet { label.isHidden = isCompact } }
-
-    init() {
-        super.init(frame: .zero)
-        fill = AgentRingView.color.withAlphaComponent(0.15)
-        radius = 10
-        toolTip = "A coding agent is using Tern through the agent API"
-        let dot = FilledView()
-        dot.fill = AgentRingView.color
-        dot.radius = 3
-        label.font = .systemFont(ofSize: 11, weight: .medium)
-        label.textColor = AgentRingView.color
-        label.lineBreakMode = .byTruncatingTail
-        label.setContentCompressionResistancePriority(.init(200), for: .horizontal)
-        let stack = NSStackView(views: [dot, label])
-        stack.spacing = 5
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 9)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            dot.widthAnchor.constraint(equalToConstant: 6), dot.heightAnchor.constraint(equalToConstant: 6),
-            stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            heightAnchor.constraint(equalToConstant: 20),
-        ])
-    }
-    required init?(coder: NSCoder) { fatalError() }
-}
 
 final class NewTabButton: NSButton {
     private var hovering = false { didSet { needsDisplay = true } }

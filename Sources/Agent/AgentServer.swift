@@ -99,7 +99,7 @@ final class AgentServer {
         broadcast("tab.updated", AgentMethods.describe(tab))
     }
 
-    /// Long-lived clients that asked for events, which the sidebar shows as "Agent connected".
+    /// Long-lived clients that asked for events.
     var hasSubscribers: Bool { connections.values.contains { !$0.subscriptions.isEmpty } }
 
     /// Starts the server when the setting (or the smoke test) asks for it. Failure is logged, not fatal.

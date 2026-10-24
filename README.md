@@ -126,7 +126,7 @@ Coding agents and scripts can drive Tern through a local JSON-RPC API. It's off 
   - **Logs:** `console.read` returns what a page logged, including uncaught errors and unhandled rejections. `network.list` returns its fetch and XHR requests with status and timing. Each tab keeps the last 500 of each, and `since` (the `last` of an earlier read) pages through newer entries, oldest first, `limit` at a time. `clear` drops everything up to the last entry a read returned.
   - **Events:** `events.subscribe` streams `tab.updated`, `console.message` and `network.request` to that connection as JSON-RPC notifications.
 - Clicks and key presses are real macOS events when the tab is on screen, so pages see trusted input. Background tabs fall back to DOM events. The page-side code runs in a private script world that pages can't see.
-- A tab an agent is acting on gets a purple ring and an "Agent is driving" tag, and the sidebar shows "Agent connected" while an agent is active.
+- A tab an agent is acting on gets a purple ring and an "Agent is driving" tag.
 - Console and network capture wrap the page's own `console`, `fetch` and `XMLHttpRequest`, and run only while the API is on. Pages opened before you turn it on are captured after their next load.
 - Agents can act on any tab by default. `defaults write dev.tern.browser agentOwnTabsOnly -bool true` limits them to the tabs they opened, and leaves other tabs read-only.
 

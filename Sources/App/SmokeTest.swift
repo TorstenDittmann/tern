@@ -466,22 +466,19 @@ enum SmokeTest {
         browser.setSidebarOnRight(true)
         root.layoutSubtreeIfNeeded()
 
-        // Dragged to its narrowest, with the bottom bar at its widest (an agent connected), the tab list
-        // goes down to the minimum: nothing inside it holds it wider.
-        browser.sidebar.showAgentPillForTesting(true)
+        // Dragged to its narrowest, the tab list goes down to the minimum: nothing inside it holds it wider.
         let before = browser.sidebar.view.frame.width
         browser.setSidebarWidth(100)
         root.layoutSubtreeIfNeeded()
         let narrowest = browser.sidebar.view.frame.width
         check(narrowest <= 101 && !browser.isSidebarCollapsed,
-              "the tab list drags down to 100pt, agent pill and all (\(Int(narrowest))pt)")
+              "the tab list drags down to 100pt (\(Int(narrowest))pt)")
         let compact = browser.sidebar.bottomBarCompact
         check(compact.isCompact && compact.newTabWidth < 40,
-              "a narrow tab list shows just the + and the agent dot (New Tab \(Int(compact.newTabWidth))pt)")
+              "a narrow tab list shows just the + for New Tab (New Tab \(Int(compact.newTabWidth))pt)")
         browser.setSidebarWidth(before)
-        browser.sidebar.showAgentPillForTesting(false)
         root.layoutSubtreeIfNeeded()
-        if before >= 170 { check(!browser.sidebar.bottomBarCompact.isCompact, "and its labels come back when it widens again") }
+        if before >= 170 { check(!browser.sidebar.bottomBarCompact.isCompact, "and its label comes back when it widens again") }
     }
 
     private static func welcome(browser: BrowserWindowController) async {
