@@ -138,6 +138,7 @@ enum SmokeTest {
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
         await tabList(browser: browser, base: base)
         await linkTools(browser: browser, base: base)
+        await swipes(browser: browser, base: base)
         dragToSplit(browser: browser, base: base)
         await splitInTabList(browser: browser, base: base)
         await windowChrome(browser: browser)
@@ -283,6 +284,64 @@ enum SmokeTest {
 
     /// Drives the agent API through the embedded `tern` CLI, the way an agent would.
     /// ⌘J link hints and ⌥-click link peek.
+    /// Two-finger swipes, sent as trackpad scroll events: they go back and forward at once, without
+    /// WebKit's page slide, but never instead of a vertical scroll or a page that can still scroll sideways.
+    private static func swipes(browser: BrowserWindowController, base: String) async {
+        guard SwipeNavigator.isEnabled else { return print("INFO  swipe between pages is off in System Settings; swipes not tested") }
+        let tab = browser.newTab(url: URL(string: "\(base)/one.html?swipe"))
+        await wait { tab.pageTitle == "Page One" && !tab.isLoading }
+        tab.load(URL(string: "\(base)/two.html?swipe")!)
+        await wait { tab.pageTitle == "Page Two" && !tab.isLoading }
+        guard let wv = tab.webView else { return check(false, "swipe tab has a web view") }
+        check(!wv.allowsBackForwardNavigationGestures, "WebKit's sliding swipe is off")
+
+        /// One gesture: began, `steps` changes of (dx, dy) points each, ended. Positive dx is fingers moving right.
+        func swipe(dx: CGFloat, dy: CGFloat = 0, steps: Int = 12) async {
+            func send(_ phase: NSEvent.Phase, _ dx: CGFloat, _ dy: CGFloat) async {
+                guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                       wheel1: Int32(dy), wheel2: Int32(-dx), wheel3: 0) else { return }
+                cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+                // kCGScrollWheelEventScrollPhase takes CGScrollPhase values, not NSEvent.Phase ones.
+                let cgPhase: Int64 = phase == .began ? 1 : phase == .changed ? 2 : 4
+                cg.setIntegerValueField(CGEventField(rawValue: 99)!, value: cgPhase)
+                if let window = wv.window, let screen = window.screen {
+                    let p = window.convertPoint(toScreen: wv.convert(NSPoint(x: wv.bounds.midX, y: wv.bounds.midY), to: nil))
+                    cg.location = CGPoint(x: p.x, y: screen.frame.maxY - p.y)
+                }
+                if let event = NSEvent(cgEvent: cg) { wv.scrollWheel(with: event) }
+                try? await Task.sleep(for: .milliseconds(12))
+            }
+            await send(.began, 0, 0)
+            for _ in 0..<steps { await send(.changed, dx, dy) }
+            await send(.ended, 0, 0)
+        }
+
+        let started = Date()
+        await swipe(dx: 8)
+        await wait(timeout: 3) { tab.pageTitle == "Page One" && !tab.isLoading }
+        check(tab.pageTitle == "Page One", "swiping right goes back (\(Int(Date().timeIntervalSince(started) * 1000)) ms for the whole gesture)")
+        await swipe(dx: -8)
+        await wait(timeout: 3) { tab.pageTitle == "Page Two" && !tab.isLoading }
+        check(tab.pageTitle == "Page Two", "swiping left goes forward")
+        await swipe(dx: 3, dy: 12)
+        try? await Task.sleep(for: .milliseconds(400))
+        check(tab.pageTitle == "Page Two", "a mostly vertical scroll doesn't go back")
+
+        tab.load(URL(string: "\(base)/wide.html")!)
+        await wait { tab.pageTitle == "Wide Page" && !tab.isLoading }
+        _ = try? await wv.evaluateJavaScript("window.scrollTo(1500, 0); 1")
+        try? await Task.sleep(for: .milliseconds(200))
+        await swipe(dx: 8)
+        try? await Task.sleep(for: .milliseconds(400))
+        check(tab.pageTitle == "Wide Page", "a page that can still scroll sideways doesn't go back")
+        _ = try? await wv.evaluateJavaScript("window.scrollTo(0, 0); 1")
+        try? await Task.sleep(for: .milliseconds(200))
+        await swipe(dx: 8)
+        await wait(timeout: 3) { tab.pageTitle == "Page Two" && !tab.isLoading }
+        check(tab.pageTitle == "Page Two", "at its left edge, the same page goes back")
+        browser.close(tab)
+    }
+
     private static func linkTools(browser: BrowserWindowController, base: String) async {
         let tab = browser.newTab(url: URL(string: "\(base)/one.html?hints"))
         await wait { tab.pageTitle == "Page One" && !tab.isLoading }
