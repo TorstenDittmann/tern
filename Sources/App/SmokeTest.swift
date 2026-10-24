@@ -473,6 +473,8 @@ enum SmokeTest {
 
         // The default: the tab list on the right, its first row level with the top bar, no empty band above it.
         let rightFrame = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil)
+        check(abs(rightFrame.width - BrowserWindowController.defaultSidebarWidth) <= 1,
+              "with no saved width, the tab list starts \(Int(BrowserWindowController.defaultSidebarWidth))pt wide (\(Int(rightFrame.width))pt)")
         check(browser.isSidebarOnRight && rightFrame.maxX >= root.bounds.width - 1, "the tab list starts on the right")
         if let first = browser.sidebar.firstRowFrame {
             let (row, block, visible) = first

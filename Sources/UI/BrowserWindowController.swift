@@ -80,6 +80,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         // Assigning contentViewController resizes the window to fit, so set the frame afterwards.
         if let frame { window.setFrame(frame, display: false) }
         else { window.setContentSize(NSSize(width: 1280, height: 820)); window.center() }
+        // Nothing saved for this side yet (first launch): without this the split view squeezes the tab list to its minimum.
+        let savedWidth = "NSSplitView Subview Frames \(Self.widthAutosaveName(right: isSidebarOnRight))"
+        if !sidebarCollapsed, UserDefaults.standard.object(forKey: savedWidth) == nil {
+            splitController.splitView.layoutSubtreeIfNeeded()
+            setSidebarWidth(Self.defaultSidebarWidth)
+        }
 
         initial.forEach { $0.owner = self }
         let shown = initial.isEmpty ? nil : initial[max(0, min(active, initial.count - 1))]
@@ -90,6 +96,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         updateTitlebarLayout()
         if let shown { activate(shown) } else { newTab(url: nil) }
     }
+
+    static let defaultSidebarWidth: CGFloat = 240
 
     /// Divider positions are saved per side: they're stored by pane order.
     private static func widthAutosaveName(right: Bool) -> String {
