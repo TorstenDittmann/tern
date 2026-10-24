@@ -99,7 +99,8 @@ Chords combine `cmd`, `shift`, `alt` and `ctrl` with a key. Key names include `t
 - Clicking into a pane makes it the active tab: the address bar, history, find, ⌘W, and extensions all follow it. ⌥⌘←/→ and ⌃⌘↑/↓ move focus between panes.
 - Drag the gaps between panes to resize them, and double-click a gap to even them out.
 - Closing a pane takes it out of the split; the split ends when one tab is left.
-- Switching to another tab shows it on its own. Going back to any pane restores the split. The split's tabs sit together in the tab list, and the split is saved with your session.
+- **In the tab list**, a split's tabs sit together in one tinted block (brighter while it's on screen). Each row shows a small map of the panes with its own pane filled in. Click the map to take that tab out of the split, drag the tab out of the block, or right-click ▸ **Remove from Split** or **Unsplit**.
+- Switching to another tab shows it on its own. Going back to any pane restores the split. The split is saved with your session.
 
 ## Extensions
 

@@ -199,6 +199,7 @@ final class SidebarViewController: NSViewController {
         let highlighted = tableView.selectedRow
         updatePinned()
         refreshRows()
+        tableView.splitRuns = splitRuns()
         tableView.reloadData()
         if isTabListFocused { highlight(row: min(max(highlighted, 0), rows.count - 1)) } else { syncSelection() }
     }
@@ -209,6 +210,19 @@ final class SidebarViewController: NSViewController {
             CommandPalette.score(filter, tab.displayTitle) != nil
                 || CommandPalette.score(filter, HistoryStore.bare(tab.currentURL?.absoluteString ?? "")) != nil
         }
+    }
+
+    /// Runs of neighboring rows whose tabs are in the split, drawn as one block in the list.
+    private(set) var lastSplitRuns: [ClosedRange<Int>] = []
+    private func splitRuns() -> [TabTableView.SplitRun] {
+        guard let browser, let group = browser.split else { lastSplitRuns = []; return [] }
+        var runs: [ClosedRange<Int>] = []
+        for (i, tab) in rows.enumerated() where group.contains(tab) {
+            if let last = runs.last, last.upperBound == i - 1 { runs[runs.count - 1] = last.lowerBound...i } else { runs.append(i...i) }
+        }
+        lastSplitRuns = runs
+        let onScreen = browser.activeTab.map(group.contains) ?? false
+        return runs.map { TabTableView.SplitRun(rows: $0, onScreen: onScreen) }
     }
 
     func reload(_ tab: Tab) {
@@ -228,6 +242,8 @@ final class SidebarViewController: NSViewController {
 
     func activeTabDidChange() {
         updatePinned()
+        tableView.splitRuns = splitRuns()
+        refreshSplitGlyphs()
         if !isTabListFocused { syncSelection() }
         updateChrome()
         updateExtensionActions()
@@ -286,6 +302,7 @@ final class SidebarViewController: NSViewController {
         filter = text
         filterPill.text = text
         refreshRows()
+        tableView.splitRuns = splitRuns()
         tableView.reloadData()
         let activeRow = browser?.activeTab.flatMap { rows.firstIndex(of: $0) }
         highlight(row: text.isEmpty ? (activeRow ?? 0) : 0)
@@ -383,6 +400,8 @@ final class SidebarViewController: NSViewController {
         let menu = NSMenu()
         let items: [(String, Selector)?] = [
             ("Open in Split View", #selector(ctxSplit)),
+            ("Remove from Split", #selector(ctxRemoveFromSplit)),
+            ("Unsplit", #selector(ctxUnsplit)),
             nil,
             ("Pin Tab", #selector(ctxPin)),
             ("Duplicate", #selector(ctxDuplicate)), ("Copy URL", #selector(ctxCopyURL)), ("Suspend", #selector(ctxSuspend)),
@@ -411,6 +430,8 @@ final class SidebarViewController: NSViewController {
             browser.split(active, with: clicked, focus: clicked)
         }
     }
+    @objc private func ctxRemoveFromSplit() { clickedTab.map { browser?.removeFromSplit($0) } }
+    @objc private func ctxUnsplit() { browser?.unsplit() }
     @objc private func ctxDuplicate() { clickedTab.map { browser?.duplicate($0) } }
     @objc private func ctxSuspend() { clickedTab?.suspend() }
     @objc private func ctxClose() { clickedTab.map { browser?.close($0) } }
@@ -425,6 +446,18 @@ final class SidebarViewController: NSViewController {
 
 // MARK: - Table
 
+extension SidebarViewController {
+    /// Moves a tab in the list. Dragging a split's tab away from the others takes it out of the split.
+    func moveRow(from: Int, to: Int) {
+        guard let browser, browser.tabs.indices.contains(from) else { return }
+        let tab = browser.tabs[from]
+        browser.moveTab(from: from, to: to)
+        guard browser.isPaired(tab), let i = browser.tabs.firstIndex(of: tab) else { return }
+        let neighbors = [i - 1, i + 1].filter(browser.tabs.indices.contains).map { browser.tabs[$0] }
+        if !neighbors.contains(where: browser.isPaired) { browser.removeFromSplit(tab) }
+    }
+}
+
 extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
@@ -437,12 +470,29 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
         let tab = rows[row]
         cell.configure(with: tab)
         cell.isSelected = isTabListFocused ? row == tableView.selectedRow : tab.isActive
-        cell.isPaired = browser?.isPaired(tab) ?? false
+        cell.splitPane = splitPane(for: tab)
+        cell.onUnsplit = { [weak self, weak cell] in
+            guard let self, let cell else { return }
+            let row = self.tableView.row(for: cell)
+            if self.rows.indices.contains(row) { self.browser?.removeFromSplit(self.rows[row]) }
+        }
         cell.onClose = { [weak self, weak cell] in
             guard let self, let cell else { return }
             self.closeTab(atRow: self.tableView.row(for: cell))
         }
         return cell
+    }
+
+    private func splitPane(for tab: Tab) -> TabCellView.SplitPane? {
+        guard let browser, let group = browser.split, let index = group.tabs.firstIndex(where: { $0 === tab }) else { return nil }
+        return .init(count: group.tabs.count, layout: group.layout, index: index,
+                     onScreen: browser.activeTab.map(group.contains) ?? false)
+    }
+
+    private func refreshSplitGlyphs() {
+        for r in 0..<tableView.numberOfRows where rows.indices.contains(r) {
+            (tableView.view(atColumn: 0, row: r, makeIfNecessary: false) as? TabCellView)?.splitPane = splitPane(for: rows[r])
+        }
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -481,7 +531,7 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
         guard let s = info.draggingPasteboard.string(forType: .tabRow), let fromRow = Int(s), rows.indices.contains(fromRow),
               let from = tabs.firstIndex(of: rows[fromRow]) else { return false }
         let to = rows.indices.contains(row) ? tabs.firstIndex(of: rows[row]) ?? tabs.count : tabs.count
-        browser?.moveTab(from: from, to: to > from ? to - 1 : to)
+        moveRow(from: from, to: to > from ? to - 1 : to)
         return true
     }
 }
@@ -619,6 +669,24 @@ final class AddressField: NSTextField {
 }
 
 final class TabTableView: NSTableView {
+    /// Rows of the split's tabs, drawn behind them as one block so the group reads as a unit.
+    struct SplitRun: Equatable { var rows: ClosedRange<Int>; var onScreen: Bool }
+    var splitRuns: [SplitRun] = [] { didSet { if splitRuns != oldValue { needsDisplay = true } } }
+
+    override func drawBackground(inClipRect clipRect: NSRect) {
+        super.drawBackground(inClipRect: clipRect)
+        for run in splitRuns where run.rows.upperBound < numberOfRows {
+            let rect = rect(ofRow: run.rows.lowerBound).union(rect(ofRow: run.rows.upperBound)).insetBy(dx: 0, dy: -1)
+            guard rect.intersects(clipRect) else { continue }
+            let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: Theme.rowRadius + 2, yRadius: Theme.rowRadius + 2)
+            Theme.accent.withAlphaComponent(run.onScreen ? 0.12 : 0.06).setFill()
+            path.fill()
+            Theme.accent.withAlphaComponent(run.onScreen ? 0.35 : 0.18).setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        }
+    }
+
     var onMiddleClick: ((Int) -> Void)?
     /// Keys while the list has keyboard focus (⌘E); return false to pass a key on.
     var onKey: ((NSEvent) -> Bool)?
@@ -705,11 +773,16 @@ final class TabCellView: NSTableCellView {
     var onClose: (() -> Void)?
     var isSelected = false { didSet { updateState() } }
     var isHovering = false { didSet { updateState() } }
-    var isPaired = false { didSet { updateState() } }
+    /// Where the tab sits in the split, drawn as a small map of the panes.
+    struct SplitPane: Equatable { var count: Int; var layout: SplitLayout; var index: Int; var onScreen: Bool }
+    var splitPane: SplitPane? { didSet { if splitPane != oldValue { glyph.pane = splitPane; updateState() } } }
+    var onUnsplit: (() -> Void)?
     private var isAgentDriving = false
 
     private let icon = NSImageView()
-    private let pairIcon = NSImageView(image: Theme.symbol("rectangle.split.2x1", size: 11, weight: .medium)!)
+    private let glyph = PaneGlyph()
+    private var titleToClose: NSLayoutConstraint!
+    private var titleToGlyph: NSLayoutConstraint!
     private let agentIcon = NSImageView(image: Theme.symbol("cursorarrow.rays", size: 11, weight: .semibold)!)
     private let pinIcon = NSImageView(image: Theme.symbol("pin.fill", size: 10, weight: .medium)!)
     private var isPinned = false
@@ -739,13 +812,12 @@ final class TabCellView: NSTableCellView {
         closeButton.action = #selector(closeClicked)
         closeButton.toolTip = "Close Tab"
 
-        pairIcon.contentTintColor = .tertiaryLabelColor
-        pairIcon.toolTip = "In split view"
+        glyph.onClick = { [weak self] in self?.onUnsplit?() }
         agentIcon.contentTintColor = AgentRingView.color
         agentIcon.toolTip = "An agent is driving this tab"
         pinIcon.contentTintColor = .tertiaryLabelColor
         pinIcon.toolTip = "Pinned"
-        for v in [icon, spinner, title, closeButton, pairIcon, agentIcon, pinIcon] as [NSView] {
+        for v in [icon, spinner, title, closeButton, glyph, agentIcon, pinIcon] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -762,18 +834,22 @@ final class TabCellView: NSTableCellView {
             spinner.heightAnchor.constraint(equalToConstant: 14),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
             title.centerYAnchor.constraint(equalTo: centerYAnchor),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -6),
             closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 18),
             closeButton.heightAnchor.constraint(equalToConstant: 18),
-            pairIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
-            pairIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            glyph.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
+            glyph.centerYAnchor.constraint(equalTo: centerYAnchor),
+            glyph.widthAnchor.constraint(equalToConstant: 20),
+            glyph.heightAnchor.constraint(equalToConstant: 16),
             agentIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
             agentIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
             pinIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
             pinIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        titleToClose = title.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -6)
+        titleToGlyph = title.trailingAnchor.constraint(lessThanOrEqualTo: glyph.leadingAnchor, constant: -4)
+        titleToClose.isActive = true
         updateState()
     }
 
@@ -797,8 +873,10 @@ final class TabCellView: NSTableCellView {
     private func updateState() {
         closeButton.isHidden = !(isHovering || isSelected)
         agentIcon.isHidden = !isAgentDriving || !closeButton.isHidden
-        pairIcon.isHidden = !isPaired || !closeButton.isHidden || !agentIcon.isHidden
-        pinIcon.isHidden = !isPinned || !closeButton.isHidden || !agentIcon.isHidden || !pairIcon.isHidden
+        glyph.isHidden = splitPane == nil
+        titleToClose.isActive = glyph.isHidden
+        titleToGlyph.isActive = !glyph.isHidden
+        pinIcon.isHidden = !isPinned || !closeButton.isHidden || !agentIcon.isHidden
         title.font = .systemFont(ofSize: 13, weight: isSelected ? .medium : .regular)
         title.textColor = isSelected ? .labelColor : (suspended ? .tertiaryLabelColor : .secondaryLabelColor)
         // Suspended tabs are dimmed: they cost no memory until opened.
@@ -808,9 +886,75 @@ final class TabCellView: NSTableCellView {
     @objc private func closeClicked() { onClose?() }
 }
 
+/// A tiny map of the split's panes with this tab's pane filled in. Hovering it turns it into a button
+/// that takes the tab out of the split.
+final class PaneGlyph: NSView {
+    var pane: TabCellView.SplitPane? { didSet { needsDisplay = true } }
+    var onClick: (() -> Void)?
+    private var pointerInside = false {
+        didSet { removeIcon.isHidden = !pointerInside; needsDisplay = true }
+    }
+    private let removeIcon = NSImageView(image: (Theme.symbol("rectangle.badge.minus", size: 12, weight: .medium)
+        ?? Theme.symbol("minus.circle", size: 12, weight: .medium))!)
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        toolTip = "In a split. Click to take this tab out."
+        removeIcon.contentTintColor = .secondaryLabelColor
+        removeIcon.isHidden = true
+        removeIcon.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(removeIcon)
+        NSLayoutConstraint.activate([
+            removeIcon.centerXAnchor.constraint(equalTo: centerXAnchor), removeIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func mouseEntered(with event: NSEvent) { pointerInside = true }
+    override func mouseExited(with event: NSEvent) { pointerInside = false }
+    // Swallow the press so the row doesn't select; act on release inside.
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+    }
+    override func hitTest(_ point: NSPoint) -> NSView? { isHidden || !frame.contains(point) ? nil : self }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let pane else { return }
+        if pointerInside {
+            NSColor.labelColor.withAlphaComponent(0.08).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+            return
+        }
+        let box = NSRect(x: 2, y: 3, width: bounds.width - 4, height: bounds.height - 6)
+        let frames = SplitGeometry.frames(count: pane.count, layout: pane.layout,
+                                          dividers: SplitGroup.evenDividers(pane.count, pane.layout), in: box, gap: 1.5)
+        let color = pane.onScreen ? Theme.accent : NSColor.secondaryLabelColor
+        for (i, f) in frames.enumerated() {
+            if i == pane.index {
+                color.setFill()
+                NSBezierPath(roundedRect: f, xRadius: 1.5, yRadius: 1.5).fill()
+            } else {
+                color.withAlphaComponent(0.55).setStroke()
+                let path = NSBezierPath(roundedRect: f.insetBy(dx: 0.5, dy: 0.5), xRadius: 1.5, yRadius: 1.5)
+                path.lineWidth = 1
+                path.stroke()
+            }
+        }
+    }
+}
+
 extension SidebarViewController: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(ctxPin) { item.title = clickedTab?.isPinned == true ? "Unpin Tab" : "Pin Tab" }
+        let paired = clickedTab.map { browser?.isPaired($0) ?? false } ?? false
+        if item.action == #selector(ctxRemoveFromSplit) || item.action == #selector(ctxUnsplit) { item.isHidden = !paired }
+        if item.action == #selector(ctxSplit), let browser, let active = browser.activeTab, let clicked = clickedTab {
+            item.isHidden = paired && browser.isPaired(active)
+            item.title = browser.isPaired(active) && clicked !== active && browser.visibleTabs.count < SplitGroup.maxTabs
+                ? "Add to Split" : "Open in Split View"
+        }
         return true
     }
 }
