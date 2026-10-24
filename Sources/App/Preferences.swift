@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// User settings shown in the Settings window. The smoke test keeps them in memory, so it never
 /// changes your real preferences.
@@ -20,6 +20,17 @@ enum Preferences {
         ("After 1 hour", 60 * 60), ("After 4 hours", 4 * 60 * 60), ("Never", -1),
     ]
 
+    enum Appearance: String, CaseIterable {
+        case system, dark, light
+        var title: String {
+            switch self {
+            case .system: "Match System"
+            case .dark: "Dark"
+            case .light: "Light"
+            }
+        }
+    }
+
     private static var memory: [String: Any] = [:]
 
     private static func value(_ key: String) -> Any? {
@@ -34,6 +45,20 @@ enum Preferences {
     static var searchTemplate: String {
         get { value("searchTemplate") as? String ?? searchEngines[0].template }
         set { store(newValue, "searchTemplate") }
+    }
+
+    /// Light or dark window chrome; pages see it as `prefers-color-scheme` too.
+    static var appearance: Appearance {
+        get { (value("appearance") as? String).flatMap(Appearance.init) ?? .system }
+        set { store(newValue.rawValue, "appearance"); applyAppearance() }
+    }
+
+    static func applyAppearance() {
+        switch appearance {
+        case .system: NSApp.appearance = nil
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        }
     }
 
     /// How long a background tab may stay idle before it gives its memory back; `nil` means never.

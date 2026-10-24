@@ -78,7 +78,7 @@ final class Welcome: NSViewController {
     private func row(_ lesson: (Command, String, String), tag: Int) -> NSView {
         let (command, name, detail) = lesson
         let icon = NSImageView(image: Theme.symbol(command.symbol, size: 18) ?? NSImage())
-        icon.contentTintColor = .controlAccentColor
+        icon.contentTintColor = Theme.accent
         icon.widthAnchor.constraint(equalToConstant: 28).isActive = true
 
         let nameLabel = NSTextField(labelWithString: name)

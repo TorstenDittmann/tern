@@ -60,6 +60,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
     private static let rowHeight: CGFloat = 40
     private static let fieldHeight: CGFloat = 56
     private static let maxListHeight: CGFloat = 420
+    private static let footerHeight: CGFloat = 32
 
     override var canBecomeKey: Bool { true }
 
@@ -74,21 +75,13 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         isOpaque = false
         delegate = self
 
-        let bg = NSVisualEffectView()
-        bg.material = .menu
-        bg.state = .active
+        // A solid Graphite surface rather than a material, so it reads the same over any page.
+        let bg = FilledView()
+        bg.fill = Theme.surface
+        bg.border = Theme.hairline
+        bg.radius = 14
         bg.wantsLayer = true
-        bg.layer?.cornerRadius = 14
-        bg.layer?.cornerCurve = .continuous
         bg.layer?.masksToBounds = true
-        bg.layer?.borderWidth = 1
-        bg.layer?.borderColor = Theme.hairline.cgColor
-
-        let tint = FilledView()
-        tint.fill = Theme.paletteTint
-        tint.frame = bg.bounds
-        tint.autoresizingMask = [.width, .height]
-        bg.addSubview(tint)
 
         let symbol = switch mode {
         case .tabs: "rectangle.stack"
@@ -96,7 +89,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         case .everything: "magnifyingglass"
         }
         let glass = NSImageView(image: Theme.symbol(symbol, size: 16, weight: .medium)!)
-        glass.contentTintColor = .tertiaryLabelColor
+        glass.contentTintColor = .secondaryLabelColor
 
         field.placeholderString = switch mode {
         case .tabs: "Switch to tab…"
@@ -130,7 +123,17 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         let divider = FilledView()
         divider.fill = Theme.hairline
 
-        for v in [glass, field, divider, scroll] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; bg.addSubview(v) }
+        // Footer: how to drive the list from the keyboard.
+        let footer = FilledView()
+        footer.fill = Theme.recessedFill
+        let footerRule = FilledView()
+        footerRule.fill = Theme.hairline
+        let hints = NSTextField(labelWithString: "↑↓ move    ↩ open    esc close")
+        hints.font = Theme.monoFont(11)
+        hints.textColor = .secondaryLabelColor
+        for v in [footerRule, hints] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; footer.addSubview(v) }
+
+        for v in [glass, field, divider, scroll, footer] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; bg.addSubview(v) }
         NSLayoutConstraint.activate([
             glass.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 18),
             glass.centerYAnchor.constraint(equalTo: bg.topAnchor, constant: Self.fieldHeight / 2),
@@ -144,7 +147,17 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             scroll.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 6),
             scroll.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 8),
             scroll.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -8),
-            scroll.bottomAnchor.constraint(equalTo: bg.bottomAnchor, constant: -6),
+            scroll.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -6),
+            footer.leadingAnchor.constraint(equalTo: bg.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: bg.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: bg.bottomAnchor),
+            footer.heightAnchor.constraint(equalToConstant: Self.footerHeight),
+            footerRule.topAnchor.constraint(equalTo: footer.topAnchor),
+            footerRule.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
+            footerRule.trailingAnchor.constraint(equalTo: footer.trailingAnchor),
+            footerRule.heightAnchor.constraint(equalToConstant: 1),
+            hints.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 18),
+            hints.centerYAnchor.constraint(equalTo: footer.centerYAnchor, constant: 0.5),
         ])
         contentView = bg
     }
@@ -245,7 +258,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
     private func resizeToFit() {
         let list = items.reduce(CGFloat(0)) { $0 + ($1.isHeader ? Self.headerHeight : Self.rowHeight) }
         let empty: CGFloat = items.isEmpty ? 0 : 12
-        let height = Self.fieldHeight + 1 + min(list, Self.maxListHeight) + empty
+        let height = Self.fieldHeight + 1 + min(list, Self.maxListHeight) + empty + Self.footerHeight
         var frame = self.frame
         frame.size = NSSize(width: Self.width, height: height)
         frame.origin.y = anchorTop - height
@@ -362,9 +375,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         switch items[row] {
         case .header(let title):
-            let label = NSTextField(labelWithString: title)
-            label.font = .systemFont(ofSize: 11, weight: .semibold)
-            label.textColor = .tertiaryLabelColor
+            let label = NSTextField(labelWithAttributedString: Theme.sectionTitle(title))
             let v = NSView()
             label.translatesAutoresizingMaskIntoConstraints = false
             v.addSubview(label)
@@ -418,8 +429,8 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
 
     private static func tag(_ text: String) -> NSView {
         let l = NSTextField(labelWithString: text)
-        l.font = .systemFont(ofSize: 11, weight: .medium)
-        l.textColor = .tertiaryLabelColor
+        l.font = Theme.monoFont(11)
+        l.textColor = .secondaryLabelColor
         return l
     }
 }
@@ -448,8 +459,8 @@ private final class PaletteCell: NSTableCellView {
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let sub = NSTextField(labelWithString: subtitle)
-        sub.font = .systemFont(ofSize: 12)
-        sub.textColor = .tertiaryLabelColor
+        sub.font = Theme.monoFont(11)
+        sub.textColor = .secondaryLabelColor
         sub.lineBreakMode = .byTruncatingTail
         sub.setContentCompressionResistancePriority(.init(200), for: .horizontal)
 
