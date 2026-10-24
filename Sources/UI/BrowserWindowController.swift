@@ -577,17 +577,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 }
 
-/// Window background: one behind-window material under both sidebar and card.
+/// Window background: one solid Graphite ground under both sidebar and cards.
 final class RootViewController: NSViewController {
     private let child: NSViewController
     init(child: NSViewController) { self.child = child; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let bg = NSVisualEffectView()
-        bg.material = .sidebar
-        bg.blendingMode = .behindWindow
-        bg.state = .followsWindowActiveState
+        let bg = FilledView()
+        bg.fill = Theme.ground
         addChild(child)
         child.view.translatesAutoresizingMaskIntoConstraints = false
         bg.addSubview(child.view)

@@ -5,23 +5,51 @@ import AppKit
 enum Theme {
     static let gutter: CGFloat = 8
     static let cardRadius: CGFloat = 10
-    static let rowRadius: CGFloat = 8
-    static let rowHeight: CGFloat = 34
+    static let rowRadius: CGFloat = 7
+    static let rowHeight: CGFloat = 30
 
     private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
         NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
     }
 
-    /// Selected tab: a raised "chip", like Arc.
-    static let selectedFill = dynamic(light: NSColor.white.withAlphaComponent(0.92), dark: NSColor.white.withAlphaComponent(0.12))
-    static let hoverFill = dynamic(light: NSColor.black.withAlphaComponent(0.05), dark: NSColor.white.withAlphaComponent(0.06))
-    static let fieldFill = dynamic(light: NSColor.black.withAlphaComponent(0.055), dark: NSColor.white.withAlphaComponent(0.075))
-    static let fieldFocusedFill = dynamic(light: NSColor.white.withAlphaComponent(0.95), dark: NSColor.white.withAlphaComponent(0.13))
-    static let hairline = dynamic(light: NSColor.black.withAlphaComponent(0.10), dark: NSColor.white.withAlphaComponent(0.10))
-    static let keycapFill = dynamic(light: NSColor.black.withAlphaComponent(0.06), dark: NSColor.white.withAlphaComponent(0.09))
-    /// Laid over the palette's material so it reads as a solid surface over bright pages.
-    static let paletteTint = dynamic(light: NSColor.white.withAlphaComponent(0.55), dark: NSColor(white: 0.12, alpha: 0.6))
-    static let paletteSelection = dynamic(light: NSColor.black.withAlphaComponent(0.07), dark: NSColor.white.withAlphaComponent(0.10))
+    private static func hex(_ rgb: UInt32, _ alpha: CGFloat = 1) -> NSColor {
+        NSColor(srgbRed: CGFloat(rgb >> 16 & 0xFF) / 255, green: CGFloat(rgb >> 8 & 0xFF) / 255,
+                blue: CGFloat(rgb & 0xFF) / 255, alpha: alpha)
+    }
+
+    // Graphite: a near-black (or cool light gray) ground, slightly raised surfaces, hairlines, and
+    // one accent for focus, progress and the active split pane.
+
+    /// Window background behind the sidebar and the pages.
+    static let ground = dynamic(light: hex(0xECEDEF), dark: hex(0x0B0C0E))
+    /// Panels that sit on the ground: the palette, pinned tab tiles.
+    static let surface = dynamic(light: hex(0xFFFFFF), dark: hex(0x15171A))
+    /// A strip set into a surface, like the palette's footer.
+    static let recessedFill = dynamic(light: hex(0xF5F6F7), dark: hex(0x121417))
+    /// The one accent: lime in dark mode, a deeper green that reads on light backgrounds.
+    static let accent = dynamic(light: hex(0x2E8B4A), dark: hex(0x9BE8A6))
+    static let accentWash = dynamic(light: hex(0x2E8B4A, 0.12), dark: hex(0x9BE8A6, 0.12))
+
+    /// Selected tab: a raised chip.
+    static let selectedFill = dynamic(light: hex(0xFFFFFF), dark: hex(0x1E2126))
+    static let hoverFill = dynamic(light: NSColor.black.withAlphaComponent(0.045), dark: NSColor.white.withAlphaComponent(0.045))
+    static let fieldFill = dynamic(light: hex(0xFFFFFF, 0.75), dark: hex(0x15171A))
+    static let fieldFocusedFill = dynamic(light: hex(0xFFFFFF), dark: hex(0x1A1D21))
+    static let hairline = dynamic(light: NSColor.black.withAlphaComponent(0.09), dark: hex(0x24272C))
+    static let keycapFill = dynamic(light: NSColor.black.withAlphaComponent(0.06), dark: NSColor.white.withAlphaComponent(0.07))
+    static let paletteSelection = dynamic(light: NSColor.black.withAlphaComponent(0.06), dark: hex(0x22262C))
+
+    /// URLs, shortcuts and section labels.
+    static func monoFont(_ size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        .monospacedSystemFont(ofSize: size, weight: weight)
+    }
+
+    /// Small uppercase section label ("TABS", "COMMANDS"), tracked out a little.
+    static func sectionTitle(_ text: String) -> NSAttributedString {
+        NSAttributedString(string: text.uppercased(), attributes: [
+            .font: monoFont(10.5, weight: .medium), .kern: 0.6, .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+    }
 
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .medium) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: nil)?
@@ -85,7 +113,7 @@ final class KeycapView: NSStackView {
         spacing = 3
         for g in glyphs {
             let label = NSTextField(labelWithString: g)
-            label.font = .systemFont(ofSize: 11, weight: .medium)
+            label.font = Theme.monoFont(11, weight: .medium)
             label.textColor = .secondaryLabelColor
             label.alignment = .center
             let cap = KeycapBox()

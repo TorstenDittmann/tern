@@ -20,6 +20,10 @@ final class SidebarViewController: NSViewController {
     private let agentPill = AgentPill()
     private var agentObserver: NSObjectProtocol?
     private let filterPill = FilterPill()
+    private let pinnedView = PinnedTabsView()
+    private var pinnedGap: NSLayoutConstraint!
+    /// The tab a context menu was opened on when it isn't a row (a pinned tile).
+    private var contextTab: Tab?
     private var filterHeight: NSLayoutConstraint!
     private var filterGap: NSLayoutConstraint!
 
@@ -30,6 +34,7 @@ final class SidebarViewController: NSViewController {
     /// ⌘E: the tab list has keyboard focus. Typing filters, ↑↓ move, ↩ opens, ⌘⌫ closes, esc leaves.
     private(set) var isTabListFocused = false
     var visibleRowCount: Int { rows.count }
+    var pinnedTileCount: Int { pinnedView.tileCount }
 
     override func loadView() {
         let root = NSView()
@@ -57,6 +62,7 @@ final class SidebarViewController: NSViewController {
             }
         }
         tableView.menu = makeContextMenu()
+        tableView.onMenu = { [weak self] in self?.contextTab = nil }
 
         let scroll = NSScrollView()
         scroll.documentView = tableView
@@ -79,17 +85,32 @@ final class SidebarViewController: NSViewController {
         bottom.spacing = 4
         bottom.translatesAutoresizingMaskIntoConstraints = false
 
+        // Pinned tabs: favicon tiles above the list.
+        pinnedView.onSelect = { [weak self] tab in self?.leaveTabList(focusPage: false); self?.browser?.activate(tab) }
+        pinnedView.onClose = { [weak self] tab in self?.browser?.close(tab) }
+        pinnedView.menuForTab = { [weak self] tab in
+            guard let self else { return nil }
+            self.contextTab = tab
+            return self.tableView.menu
+        }
+        pinnedView.translatesAutoresizingMaskIntoConstraints = false
+
         filterPill.isHidden = true
-        for v in [filterPill, scroll, bottom] as [NSView] { root.addSubview(v) }
+        for v in [pinnedView, filterPill, scroll, bottom] as [NSView] { root.addSubview(v) }
         filterPill.translatesAutoresizingMaskIntoConstraints = false
 
         let inset: CGFloat = 10
         filterHeight = filterPill.heightAnchor.constraint(equalToConstant: 0)
+        pinnedGap = filterPill.topAnchor.constraint(equalTo: pinnedView.bottomAnchor, constant: 0)
         filterGap = scroll.topAnchor.constraint(equalTo: filterPill.bottomAnchor, constant: 0)
-        // Lines the list up with the top of the page, below the traffic lights and the top bar.
-        listTop = filterPill.topAnchor.constraint(equalTo: root.topAnchor, constant: TopBar.defaultContentTop)
+        // Lines the pinned tiles, or the first tab, up with the top of the page, below the top bar.
+        listTop = pinnedView.topAnchor.constraint(equalTo: root.topAnchor, constant: TopBar.defaultContentTop)
         NSLayoutConstraint.activate([
             listTop,
+            pinnedView.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
+            pinnedView.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
+            pinnedGap,
+
             filterPill.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
             filterPill.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
             filterHeight,
@@ -118,14 +139,16 @@ final class SidebarViewController: NSViewController {
 
     func reloadTabs() {
         let highlighted = tableView.selectedRow
+        updatePinned()
         refreshRows()
         tableView.splitRuns = splitRuns()
         tableView.reloadData()
         if isTabListFocused { highlight(row: min(max(highlighted, 0), rows.count - 1)) } else { syncSelection() }
     }
 
+    /// Pinned tabs show as tiles, so the list leaves them out, except while filtering (⌘E), where every tab can match.
     private func refreshRows() {
-        rows = filter.isEmpty ? tabs : tabs.filter { tab in
+        rows = filter.isEmpty ? tabs.filter { !$0.isPinned } : tabs.filter { tab in
             CommandPalette.score(filter, tab.displayTitle) != nil
                 || CommandPalette.score(filter, HistoryStore.bare(tab.currentURL?.absoluteString ?? "")) != nil
         }
@@ -145,12 +168,20 @@ final class SidebarViewController: NSViewController {
     }
 
     func reload(_ tab: Tab) {
+        if tab.isPinned { pinnedView.refresh(tab) }
         guard let row = rows.firstIndex(of: tab),
               let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TabCellView else { return }
         cell.configure(with: tab)
     }
 
+    private func updatePinned() {
+        let pinned = tabs.filter(\.isPinned)
+        pinnedView.show(pinned, active: browser?.activeTab)
+        pinnedGap?.constant = pinned.isEmpty ? 0 : 10
+    }
+
     func activeTabDidChange() {
+        updatePinned()
         tableView.splitRuns = splitRuns()
         refreshSplitGlyphs()
         if !isTabListFocused { syncSelection() }
@@ -158,16 +189,19 @@ final class SidebarViewController: NSViewController {
     }
 
     private func syncSelection() {
-        guard let active = browser?.activeTab, let row = rows.firstIndex(of: active) else { return }
-        highlight(row: row)
+        // A pinned active tab has no row: nothing in the list is selected.
+        highlight(row: browser?.activeTab.flatMap { rows.firstIndex(of: $0) } ?? -1)
     }
 
     /// Selects a row without activating its tab.
     private func highlight(row: Int) {
-        guard rows.indices.contains(row) else { return tableView.deselectAll(nil) }
         isSyncingSelection = true
-        tableView.selectRowIndexes([row], byExtendingSelection: false)
-        tableView.scrollRowToVisible(row)
+        if rows.indices.contains(row) {
+            tableView.selectRowIndexes([row], byExtendingSelection: false)
+            tableView.scrollRowToVisible(row)
+        } else {
+            tableView.deselectAll(nil)
+        }
         isSyncingSelection = false
         for r in 0..<tableView.numberOfRows {
             (tableView.view(atColumn: 0, row: r, makeIfNecessary: false) as? TabCellView)?.isSelected = (r == row)
@@ -300,7 +334,10 @@ final class SidebarViewController: NSViewController {
         return menu
     }
 
-    private var clickedTab: Tab? { rows.indices.contains(tableView.clickedRow) ? rows[tableView.clickedRow] : nil }
+    private var clickedTab: Tab? {
+        if let contextTab { return contextTab }
+        return rows.indices.contains(tableView.clickedRow) ? rows[tableView.clickedRow] : nil
+    }
     @objc private func ctxPin() { clickedTab.map { browser?.setPinned($0, !$0.isPinned) } }
     @objc private func ctxSplit() {
         guard let browser, let clicked = clickedTab, let active = browser.activeTab else { return }
@@ -410,8 +447,11 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
                    dropOperation: NSTableView.DropOperation) -> Bool {
-        guard let s = info.draggingPasteboard.string(forType: .tabRow), let from = Int(s) else { return false }
-        moveRow(from: from, to: row > from ? row - 1 : row)
+        // Rows leave out pinned tabs, so map them back to positions in the window's tab list.
+        guard let s = info.draggingPasteboard.string(forType: .tabRow), let fromRow = Int(s), rows.indices.contains(fromRow),
+              let from = tabs.firstIndex(of: rows[fromRow]) else { return false }
+        let to = rows.indices.contains(row) ? tabs.firstIndex(of: rows[row]) ?? tabs.count : tabs.count
+        moveRow(from: from, to: to > from ? to - 1 : to)
         return true
     }
 }
@@ -427,9 +467,9 @@ final class TabTableView: NSTableView {
             let rect = rect(ofRow: run.rows.lowerBound).union(rect(ofRow: run.rows.upperBound)).insetBy(dx: 0, dy: -1)
             guard rect.intersects(clipRect) else { continue }
             let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: Theme.rowRadius + 2, yRadius: Theme.rowRadius + 2)
-            NSColor.controlAccentColor.withAlphaComponent(run.onScreen ? 0.12 : 0.06).setFill()
+            Theme.accent.withAlphaComponent(run.onScreen ? 0.12 : 0.06).setFill()
             path.fill()
-            NSColor.controlAccentColor.withAlphaComponent(run.onScreen ? 0.35 : 0.18).setStroke()
+            Theme.accent.withAlphaComponent(run.onScreen ? 0.35 : 0.18).setStroke()
             path.lineWidth = 1
             path.stroke()
         }
@@ -439,6 +479,7 @@ final class TabTableView: NSTableView {
     /// Keys while the list has keyboard focus (⌘E); return false to pass a key on.
     var onKey: ((NSEvent) -> Bool)?
     var onResign: (() -> Void)?
+    var onMenu: (() -> Void)?
     /// Off except in keyboard mode, so clicking a tab leaves focus on the page.
     var acceptsKeys = false
 
@@ -451,6 +492,11 @@ final class TabTableView: NSTableView {
         let ok = super.resignFirstResponder()
         if ok { onResign?() }
         return ok
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        onMenu?()
+        return super.menu(for: event)
     }
 
     override func otherMouseUp(with event: NSEvent) {
@@ -491,11 +537,14 @@ final class TabRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: Theme.rowRadius, yRadius: Theme.rowRadius)
         NSGraphicsContext.saveGraphicsState()
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(effectiveAppearance.isDark ? 0.25 : 0.08)
-        shadow.shadowBlurRadius = 3
-        shadow.shadowOffset = NSSize(width: 0, height: -1)
-        shadow.set()
+        // Dark: a flat lifted chip. Light: a white chip with a whisper of shadow.
+        if !effectiveAppearance.isDark {
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.08)
+            shadow.shadowBlurRadius = 2
+            shadow.shadowOffset = NSSize(width: 0, height: -1)
+            shadow.set()
+        }
         Theme.selectedFill.setFill()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
@@ -669,7 +718,7 @@ final class PaneGlyph: NSView {
         let box = NSRect(x: 2, y: 3, width: bounds.width - 4, height: bounds.height - 6)
         let frames = SplitGeometry.frames(count: pane.count, layout: pane.layout,
                                           dividers: SplitGroup.evenDividers(pane.count, pane.layout), in: box, gap: 1.5)
-        let color = pane.onScreen ? NSColor.controlAccentColor : NSColor.secondaryLabelColor
+        let color = pane.onScreen ? Theme.accent : NSColor.secondaryLabelColor
         for (i, f) in frames.enumerated() {
             if i == pane.index {
                 color.setFill()

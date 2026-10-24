@@ -288,9 +288,13 @@ final class CardView: NSView {
     let progress = ProgressLine()
     let agentRing = AgentRingView()
 
-    /// In split view the pane with keyboard focus gets an accent ring.
+    /// In split view the pane with keyboard focus gets an accent ring with a soft glow.
     var isFocusedPane = false {
-        didSet { clip.border = isFocusedPane ? NSColor.controlAccentColor.withAlphaComponent(0.55) : Theme.hairline }
+        didSet {
+            guard isFocusedPane != oldValue else { return }
+            clip.border = isFocusedPane ? Theme.accent : Theme.hairline
+            needsDisplay = true
+        }
     }
 
     override init(frame: NSRect) {
@@ -327,10 +331,17 @@ final class CardView: NSView {
 
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = effectiveAppearance.isDark ? 0.35 : 0.10
-        layer?.shadowRadius = 6
-        layer?.shadowOffset = CGSize(width: 0, height: -1)
+        if isFocusedPane {
+            layer?.shadowColor = Theme.accent.cgColor
+            layer?.shadowOpacity = effectiveAppearance.isDark ? 0.35 : 0.25
+            layer?.shadowRadius = 4
+            layer?.shadowOffset = .zero
+        } else {
+            layer?.shadowColor = NSColor.black.cgColor
+            layer?.shadowOpacity = effectiveAppearance.isDark ? 0.35 : 0.08
+            layer?.shadowRadius = 6
+            layer?.shadowOffset = CGSize(width: 0, height: -1)
+        }
     }
 }
 
@@ -403,7 +414,7 @@ final class ProgressLine: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var wantsUpdateLayer: Bool { true }
-    override func updateLayer() { bar.backgroundColor = NSColor.controlAccentColor.cgColor }
+    override func updateLayer() { bar.backgroundColor = Theme.accent.cgColor }
 
     func set(progress: Double, visible: Bool) {
         CATransaction.begin()

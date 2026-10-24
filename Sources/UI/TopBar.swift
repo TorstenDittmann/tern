@@ -128,13 +128,14 @@ final class AddressPill: FilledView {
     init() {
         super.init(frame: .zero)
         fill = Theme.fieldFill
-        radius = 9
+        border = Theme.hairline
+        radius = 8
 
         icon.contentTintColor = .tertiaryLabelColor
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 13, weight: .medium)
+        field.font = Theme.monoFont(12.5)
         field.placeholderString = "Search or enter URL"
         field.lineBreakMode = .byTruncatingTail
         field.cell?.isScrollable = true
@@ -172,7 +173,7 @@ final class AddressPill: FilledView {
 
     private func setFocused(_ focused: Bool) {
         fill = focused ? Theme.fieldFocusedFill : Theme.fieldFill
-        border = focused ? NSColor.controlAccentColor.withAlphaComponent(0.6) : nil
+        border = focused ? Theme.accent : Theme.hairline
         if focused {
             field.stringValue = url?.absoluteString ?? ""
             icon.image = Theme.symbol("magnifyingglass", size: 11, weight: .semibold)

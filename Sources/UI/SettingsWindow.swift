@@ -41,6 +41,7 @@ final class SettingsWindow: NSWindowController {
 
 @MainActor
 final class GeneralSettings: NSViewController, NSTextFieldDelegate {
+    let appearancePopup = NSPopUpButton()
     let searchPopup = NSPopUpButton()
     let customSearch = NSTextField()
     let suspendPopup = NSPopUpButton()
@@ -49,6 +50,9 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
 
     override func loadView() {
         title = "General"
+        appearancePopup.addItems(withTitles: Preferences.Appearance.allCases.map(\.title))
+        appearancePopup.target = self
+        appearancePopup.action = #selector(appearanceChanged)
         searchPopup.addItems(withTitles: Preferences.searchEngines.map(\.name) + ["Custom…"])
         searchPopup.target = self
         searchPopup.action = #selector(searchChanged)
@@ -71,6 +75,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         clear.bezelStyle = .push
 
         let grid = NSGridView(views: [
+            [label("Appearance:"), appearancePopup],
             [label("Search engine:"), searchPopup],
             [NSGridCell.emptyContentView, customSearch],
             [label("Suspend idle tabs:"), suspendPopup],
@@ -84,8 +89,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
         grid.columnSpacing = 10
-        for row in [1, 3, 6] { grid.row(at: row).topPadding = -4 }
-        for row in [2, 4, 5, 7] { grid.row(at: row).topPadding = 8 }
+        for row in [2, 4, 7] { grid.row(at: row).topPadding = -4 }
+        for row in [1, 3, 5, 6, 8] { grid.row(at: row).topPadding = 8 }
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
@@ -103,6 +108,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
 
     func refresh() {
         guard isViewLoaded else { return }
+        appearancePopup.selectItem(at: Preferences.Appearance.allCases.firstIndex(of: Preferences.appearance) ?? 0)
         let template = Preferences.searchTemplate
         let index = Preferences.searchEngines.firstIndex { $0.template == template }
         searchPopup.selectItem(at: index ?? Preferences.searchEngines.count)
@@ -125,6 +131,10 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     @objc func sidebarSideChanged() {
         Preferences.sidebarOnRight = sidebarPopup.indexOfSelectedItem == 1
         AppDelegate.shared.windows.forEach { $0.setSidebarOnRight(Preferences.sidebarOnRight) }
+    }
+
+    @objc func appearanceChanged() {
+        Preferences.appearance = Preferences.Appearance.allCases[appearancePopup.indexOfSelectedItem]
     }
 
     @objc func searchChanged() {
