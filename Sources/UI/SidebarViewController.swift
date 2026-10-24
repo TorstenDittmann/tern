@@ -18,6 +18,9 @@ final class SidebarViewController: NSViewController {
     private var isSyncingSelection = false
     private var actionButtons: [ObjectIdentifier: ExtensionActionButton] = [:]
     private lazy var newTab = NewTabButton(target: self, action: #selector(newTabClicked))
+    /// Tern's memory use, with its pages', at the right of the bottom bar.
+    private let memoryLabel = NSTextField(labelWithString: "")
+    private var memoryTimer: Timer?
     /// Below this width the bottom bar drops its label: "New Tab" becomes a +.
     private static let compactWidth: CGFloat = 170
     private let filterPill = FilterPill()
@@ -77,7 +80,11 @@ final class SidebarViewController: NSViewController {
         // Bottom bar
         extensionStack.orientation = .horizontal
         extensionStack.spacing = 2
-        let bottom = NSStackView(views: [newTab, NSView(), extensionStack])
+        memoryLabel.font = Theme.monoFont(11)
+        memoryLabel.textColor = .tertiaryLabelColor
+        memoryLabel.toolTip = "Memory used by Tern and its pages"
+        memoryLabel.setContentCompressionResistancePriority(.init(150), for: .horizontal)
+        let bottom = NSStackView(views: [newTab, NSView(), extensionStack, memoryLabel])
         bottom.spacing = 4
         // Nothing in the bottom bar may hold the sidebar wider than the user drags it: it compacts, then clips.
         bottom.setClippingResistancePriority(.defaultLow, for: .horizontal)
@@ -136,7 +143,35 @@ final class SidebarViewController: NSViewController {
     override func viewDidLayout() {
         super.viewDidLayout()
         newTab.isCompact = view.bounds.width < Self.compactWidth
+        memoryLabel.isHidden = newTab.isCompact
     }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        updateMemory()
+        memoryTimer?.invalidate()
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateMemory() }
+        }
+        memoryTimer?.tolerance = 1
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        memoryTimer?.invalidate()
+        memoryTimer = nil
+    }
+
+    private func updateMemory() {
+        memoryLabel.stringValue = Self.memoryString(Metrics.totalMemoryMB())
+    }
+
+    /// "412 MB", or "1.2 GB" from a gigabyte up.
+    static func memoryString(_ mb: Double) -> String {
+        mb >= 1024 ? String(format: "%.1f GB", mb / 1024) : "\(Int(mb.rounded())) MB"
+    }
+
+    var memoryText: String { memoryLabel.stringValue }
 
     /// For the smoke test: whether the bottom bar shows just its icons, and the New Tab button's width.
     var bottomBarCompact: (isCompact: Bool, newTabWidth: CGFloat) { (newTab.isCompact, newTab.frame.width) }
@@ -608,6 +643,7 @@ final class TabCellView: NSTableCellView {
     private var titleToGlyph: NSLayoutConstraint!
     private let agentIcon = NSImageView(image: Theme.symbol("cursorarrow.rays", size: 11, weight: .semibold)!)
     private let pinIcon = NSImageView(image: Theme.symbol("pin.fill", size: 10, weight: .medium)!)
+    private let sleepIcon = NSImageView(image: Theme.symbol("moon.zzz", size: 10, weight: .medium)!)
     private var isPinned = false
     private let title = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
@@ -640,7 +676,9 @@ final class TabCellView: NSTableCellView {
         agentIcon.toolTip = "An agent is driving this tab"
         pinIcon.contentTintColor = .tertiaryLabelColor
         pinIcon.toolTip = "Pinned"
-        for v in [icon, spinner, title, closeButton, glyph, agentIcon, pinIcon] as [NSView] {
+        sleepIcon.contentTintColor = .tertiaryLabelColor
+        sleepIcon.toolTip = "Suspended: uses no memory until you open it"
+        for v in [icon, spinner, title, closeButton, glyph, agentIcon, pinIcon, sleepIcon] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -669,6 +707,8 @@ final class TabCellView: NSTableCellView {
             agentIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
             pinIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
             pinIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            sleepIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
+            sleepIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         titleToClose = title.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -6)
         titleToGlyph = title.trailingAnchor.constraint(lessThanOrEqualTo: glyph.leadingAnchor, constant: -4)
@@ -700,6 +740,7 @@ final class TabCellView: NSTableCellView {
         titleToClose.isActive = glyph.isHidden
         titleToGlyph.isActive = !glyph.isHidden
         pinIcon.isHidden = !isPinned || !closeButton.isHidden || !agentIcon.isHidden
+        sleepIcon.isHidden = !suspended || !closeButton.isHidden || !agentIcon.isHidden || !pinIcon.isHidden || !glyph.isHidden
         title.font = .systemFont(ofSize: 13, weight: isSelected ? .medium : .regular)
         title.textColor = isSelected ? .labelColor : (suspended ? .tertiaryLabelColor : .secondaryLabelColor)
         // Suspended tabs are dimmed: they cost no memory until opened.

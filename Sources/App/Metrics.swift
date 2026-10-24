@@ -39,6 +39,9 @@ enum Metrics {
         return ["appMB": app, "webContentMB": round(webTotal), "totalMB": round(app + webTotal), "webProcesses": web]
     }
 
+    /// Tern and its WebContent processes together, in MB: what the tab list's bottom bar shows.
+    static func totalMemoryMB() -> Double { memory()["totalMB"] as? Double ?? 0 }
+
     private static var processStart: Date? {
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride

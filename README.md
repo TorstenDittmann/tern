@@ -13,9 +13,9 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Vertical tabs.** Drag to reorder, middle-click to close, and right-click for pin, duplicate, suspend, or close others. Pinned tabs stay at the top. The tab list sits on the right by default, level with the address bar, and can move to the left (Settings ▸ General, or **Move Tab List to the Left** in ⌘K). It can be dragged as narrow as 100 points; below 170 the bottom bar shows just its icons.
 - **Wide address bar.** Back, forward, reload and the address bar sit in one bar across the top of the page, so long URLs have room. It stays there when the sidebar is hidden.
 - **Keyboard tab list (⌘E).** Type to filter the sidebar, ↑↓ to move, ↩ to open, ⌘⌫ to close, esc to go back to the page.
-- **Link hints (⌘J).** Every link, button and field on screen gets a short letter code. Type it to click; hold ⇧ on the last letter to open a link in a background tab, or ⌥ to peek at it.
+- **Link hints (⌘J).** Every link, button and field on screen gets a short letter code. Type it to click; hold ⇧ on the last letter to open a link in a background tab, or ⌥ to peek at it. A bar in the corner shows what you've typed.
 - **Link peek.** ⌥-click a link to open it in a floating preview. ⌘↩ keeps it as a tab, ⇧⌘↩ opens it in a split, esc closes it.
-- **Split view.** Two to four tabs side by side, stacked, or in a grid, with draggable dividers. Drag a tab onto the page to split with it. Focus follows the pane you click.
+- **Split view.** Two to four tabs side by side, stacked, or in a grid, with draggable dividers. Drag a tab onto the page to split with it, or use the split button at the end of the top bar. Each pane has a small header with its host, and focus follows the pane you click.
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
 - **History and bookmarks.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. ⌘D (or the star in the address bar) bookmarks a page. ⌘Y and ⌥⌘B open a window to search, open, rename or delete them. New tabs show your bookmarks and most visited sites.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
@@ -24,7 +24,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
 - **Safari Web Extensions.** Tern finds Safari extensions installed with your apps and also loads unpacked or `.zip` extensions in place.
 - **Private by default.** Ads and trackers are blocked with EasyList and EasyPrivacy, compiled to native WebKit content rules, so blocking costs the page almost nothing. Links lose tracking parameters like `utm_source` and `fbclid` before they load, and third-party pings are dropped. Local dev servers (`localhost`, `*.test`, `*.local`) are left alone. **Toggle Ad Blocking for This Site** in ⌘K turns it off for a site, or on for a dev server, and Settings turns it off everywhere.
-- **Memory-friendly tabs.** Background tabs give their memory back after 15 minutes idle, or when macOS runs low on memory, and keep their history.
+- **Memory-friendly tabs.** Background tabs give their memory back after 15 minutes idle, or when macOS runs low on memory, and keep their history. Suspended tabs show a moon in the tab list, and the bottom bar shows how much memory Tern and its pages use.
 
 ## Build and run
 
@@ -94,7 +94,7 @@ Chords combine `cmd`, `shift`, `alt` and `ctrl` with a key. Key names include `t
 
 ![Split view](docs/split.png)
 
-- **⌘\\** opens a new tab next to the current one. Press it again to end the split. **⌃⌘\\** opens one below instead, and in a split it adds another pane.
+- **⌘\\** (or the split button in the top bar) opens a new tab next to the current one. Press it again to end the split. **⌃⌘\\** opens one below instead, and in a split it adds another pane.
 - A split holds up to four tabs. **Side by Side** and **Stacked** put them in a row or a column. **Grid** shows three tabs as one on the left and two stacked on the right, and four as a 2×2 grid. **⌃⇧⌘\\** (Change Split Layout) cycles through the layouts that fit, and a fourth pane switches to the grid.
 - **Drag a tab from the sidebar onto the page.** Over a single page, drop it on the left, right, top or bottom half to open it there. In a split, drop it on a pane to replace that pane, or near the page's outer edge to add a pane on that side.
 - **Split with…** (⌥⌘\\) and **Split with Previous Tab** add to the split you're in while it has room. **Add Pane to Split** opens a new tab in it, and **Remove Tab from Split** takes the current tab out and shows it alone.
