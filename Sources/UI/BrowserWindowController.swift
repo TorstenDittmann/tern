@@ -510,11 +510,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         splitView.autosaveName = nil
         splitController.removeSplitViewItem(sidebarItem)
         splitController.insertSplitViewItem(sidebarItem, at: right ? 1 : 0)
+        // The autosave name goes on first: the split view restores that side's saved width when it lays out
+        // with the name set, which would otherwise undo the width carried over below. Setting the divider
+        // afterwards also saves it under the new side's name.
+        splitView.autosaveName = Self.widthAutosaveName(right: right)
         splitView.layoutSubtreeIfNeeded()
         if !sidebarItem.isCollapsed {
             splitView.setPosition(right ? splitView.bounds.width - width - splitView.dividerThickness : width, ofDividerAt: 0)
+            splitView.layoutSubtreeIfNeeded()
         }
-        splitView.autosaveName = Self.widthAutosaveName(right: right)
         content.sidebarDidChange(collapsed: isSidebarCollapsed, onRight: right)
         updateTitlebarLayout()
     }

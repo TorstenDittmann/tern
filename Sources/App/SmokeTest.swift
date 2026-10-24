@@ -473,6 +473,10 @@ enum SmokeTest {
         check(browser.isSidebarOnRight && rightFrame.maxX >= root.bounds.width - 1, "the tab list starts on the right")
         if let first = browser.sidebar.firstRowFrame {
             let (row, block, visible) = first
+            // That row sits in the titlebar strip: pressing it must start a tab drag, not move the window.
+            let hit = root.superview.flatMap { root.hitTest($0.convert(NSPoint(x: row.midX, y: row.midY), from: nil)) }
+            check(hit != nil && hit?.mouseDownCanMoveWindow == false,
+                  "pressing the first tab doesn't move the window (\(hit.map { String(describing: type(of: $0)) } ?? "nothing"))")
             // Measured from the real row, not from the constants that placed it.
             let chipTop = row.maxY - browser.sidebar.rowChipInset, barTop = bar.convert(bar.bounds, to: nil).maxY
             check(abs(chipTop - barTop) <= 1, "on the right, the first tab starts level with the address bar (tab \(chipTop), bar \(barTop))")
