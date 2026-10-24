@@ -531,7 +531,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         let underLights = !fullscreen && (isSidebarCollapsed || isSidebarOnRight)
         content.setTitlebar(barTop: top, lightsInset: underLights ? 78 - Theme.gutter : 0)
-        sidebar.setContentTop(top + TopBar.height + Theme.gutter)
+        // On the left, the traffic lights take the strip above the list, so the list starts level with the page.
+        // On the right nothing sits there, so the first row moves up level with the top bar.
+        sidebar.setContentTop(isSidebarOnRight ? max(0, top + (TopBar.height - Theme.rowHeight) / 2) : top + TopBar.height + Theme.gutter)
     }
 
     /// Navigates the active tab (or a new one) to whatever the user typed.

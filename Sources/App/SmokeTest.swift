@@ -407,6 +407,18 @@ enum SmokeTest {
         let bar = browser.content.topBar
         let root = browser.window!.contentView!
         root.layoutSubtreeIfNeeded()
+
+        // The default: the tab list on the right, its first row level with the top bar, no empty band above it.
+        let rightFrame = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil)
+        let rowMid = rightFrame.maxY - browser.sidebar.contentTop - Theme.rowHeight / 2
+        check(browser.isSidebarOnRight && rightFrame.maxX >= root.bounds.width - 1, "the tab list starts on the right")
+        check(abs(rowMid - bar.convert(bar.bounds, to: nil).midY) <= 1,
+              "on the right, the first tab row sits level with the top bar (row \(rowMid), bar \(bar.convert(bar.bounds, to: nil).midY))")
+        check(bar.convert(bar.bounds, to: nil).minX >= 70, "with the tab list on the right, the top bar clears the traffic lights")
+
+        // The rest checks the left side, then switches back.
+        browser.setSidebarOnRight(false)
+        root.layoutSubtreeIfNeeded()
         check(bar.window != nil && bar.pill.frame.width > browser.sidebar.view.frame.width,
               "the address bar sits above the page and is wider than the sidebar (\(Int(bar.pill.frame.width))pt)")
         let barMid = bar.convert(bar.bounds, to: nil).midY
@@ -440,6 +452,8 @@ enum SmokeTest {
         root.layoutSubtreeIfNeeded()
         check(browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil).minX < 1 && bar.convert(bar.bounds, to: nil).minX > sidebarWidth - 1,
               "and back to the left")
+        browser.setSidebarOnRight(true)
+        root.layoutSubtreeIfNeeded()
     }
 
     private static func welcome(browser: BrowserWindowController) async {

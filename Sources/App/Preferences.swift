@@ -47,9 +47,9 @@ enum Preferences {
         set { store(newValue, "searchTemplate") }
     }
 
-    /// Shows the tab list on the right of the window instead of the left.
+    /// Shows the tab list on the right of the window (the default) or on the left.
     static var sidebarOnRight: Bool {
-        get { value("sidebarOnRight") as? Bool ?? false }
+        get { value("sidebarOnRight") as? Bool ?? true }
         set { store(newValue, "sidebarOnRight") }
     }
 
