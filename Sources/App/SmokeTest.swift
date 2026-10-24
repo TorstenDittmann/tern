@@ -437,7 +437,9 @@ enum SmokeTest {
         check(breakdown.url?.absoluteString == edited, "editing parameters rebuilds the URL and encodes new values (\(breakdown.url?.absoluteString ?? "nil"))")
         breakdown.onOpen?(breakdown.url!, false)
         await wait { !tab.isLoading && tab.currentURL?.absoluteString == edited }
-        check(tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true, "Open loads the edited URL and closes the breakdown")
+        check(tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true,
+              "Open loads the edited URL and closes the breakdown (got \(tab.currentURL?.absoluteString ?? "nil"), loading \(tab.isLoading), "
+              + "popover shown \(bar.popover?.isShown == true), active tab \(browser.activeTab === tab))")
 
         CommandRouter.perform(.showSiteInfo, in: browser)
         let site = bar.popover?.contentViewController as? SiteInfoController
