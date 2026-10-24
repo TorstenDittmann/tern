@@ -29,6 +29,8 @@ final class TopBar: NSView {
             guard let tab = self?.browser?.activeTab else { return }
             BookmarkStore.shared.toggle(tab.currentURL, title: tab.pageTitle)
         }
+        pill.onSite = { [weak self] in self?.showSiteInfo() }
+        pill.onBreakdown = { [weak self] in self?.showURLBreakdown() }
         NotificationCenter.default.addObserver(forName: BookmarkStore.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateChrome() }
         }
@@ -64,6 +66,35 @@ final class TopBar: NSView {
         let loading = tab?.isLoading == true
         reloadButton.image = Theme.symbol(loading ? "xmark" : "arrow.clockwise")
         reloadButton.toolTip = loading ? "Stop" : "Reload"
+    }
+
+    /// The lock's popover: whether the connection is encrypted, and the certificate chain.
+    func showSiteInfo() {
+        guard let tab = browser?.activeTab, let url = tab.currentURL else { return }
+        let info = SiteInfoController(url: url, trust: tab.webView?.serverTrust, secureContentOnly: tab.webView?.hasOnlySecureContent ?? false)
+        present(info, from: pill.siteButton)
+    }
+
+    /// The URL breakdown: scheme, host, port, path, query parameters and fragment, editable.
+    func showURLBreakdown() {
+        guard let tab = browser?.activeTab, let url = tab.currentURL else { return }
+        let breakdown = URLBreakdownController(url: url)
+        breakdown.onOpen = { [weak self] url, newTab in
+            self?.popover?.close()
+            self?.browser?.open(input: url.absoluteString, inNewTab: newTab)
+        }
+        present(breakdown, from: pill.breakdownButton.isHidden ? pill : pill.breakdownButton)
+    }
+
+    private(set) var popover: NSPopover?
+
+    private func present(_ controller: NSViewController, from view: NSView) {
+        popover?.close()
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = controller
+        popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+        self.popover = popover
     }
 
     @objc private func sidebarClicked() { browser?.toggleSidebar() }
@@ -115,12 +146,17 @@ extension TopBar: NSTextFieldDelegate {
 }
 
 
-/// Rounded field that shows just the host ("github.com") and the full URL while editing.
+/// Rounded field with the full URL, a site button (the lock) on the left that opens the connection
+/// and certificate details, and a URL breakdown and bookmark star on the right.
 final class AddressPill: FilledView {
     let field = AddressField()
     /// The star at the end of the pill: adds or removes the page as a bookmark (⌘D).
     var onStar: (() -> Void)?
-    private let icon = NSImageView()
+    /// The lock (or globe) at the start of the pill.
+    var onSite: (() -> Void)?
+    var onBreakdown: (() -> Void)?
+    private(set) lazy var siteButton = HoverButton(symbol: "lock.fill", size: 11, label: "Connection and Certificate", target: self, action: #selector(siteClicked))
+    private(set) lazy var breakdownButton = HoverButton(symbol: "chevron.down", size: 10, label: "URL Breakdown (⌥⌘L)", target: self, action: #selector(breakdownClicked))
     private lazy var star = HoverButton(symbol: "star", size: 11, label: "Bookmark This Page (⌘D)", target: self, action: #selector(starClicked))
     private var url: URL?
     private var bookmarked = false
@@ -131,27 +167,30 @@ final class AddressPill: FilledView {
         border = Theme.hairline
         radius = 8
 
-        icon.contentTintColor = .tertiaryLabelColor
+        siteButton.contentTintColor = .tertiaryLabelColor
+        breakdownButton.contentTintColor = .tertiaryLabelColor
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = Theme.monoFont(12.5)
         field.placeholderString = "Search or enter URL"
         field.lineBreakMode = .byTruncatingTail
-        field.cell?.isScrollable = true
+        field.cell?.isScrollable = false
         field.cell?.usesSingleLineMode = true
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         field.onFocusChange = { [weak self] focused in self?.setFocused(focused) }
 
-        for v in [icon, field, star] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        let trailing = NSStackView(views: [breakdownButton, star])
+        trailing.spacing = 0
+        for v in [siteButton, field, trailing] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 14),
-            field.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
-            field.trailingAnchor.constraint(equalTo: star.leadingAnchor, constant: -2),
+            siteButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            siteButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            field.leadingAnchor.constraint(equalTo: siteButton.trailingAnchor),
+            field.trailingAnchor.constraint(equalTo: trailing.leadingAnchor, constant: -2),
             field.centerYAnchor.constraint(equalTo: centerYAnchor),
-            star.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -3),
-            star.centerYAnchor.constraint(equalTo: centerYAnchor),
+            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -3),
+            trailing.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         show(url: nil, bookmarked: false)
     }
@@ -163,12 +202,18 @@ final class AddressPill: FilledView {
         star.image = Theme.symbol(bookmarked ? "star.fill" : "star", size: 11)
         star.contentTintColor = bookmarked ? .systemYellow : .tertiaryLabelColor
         star.toolTip = bookmarked ? "Remove Bookmark (⌘D)" : "Bookmark This Page (⌘D)"
-        star.isHidden = field.isEditing || !(url.map(HistoryStore.isRecordable) ?? false)
+        updateButtons(editing: field.isEditing)
         guard !field.isEditing else { return }
-        field.stringValue = Theme.displayString(for: url)
+        field.attributedStringValue = Theme.addressString(for: url, font: field.font ?? Theme.monoFont(12.5))
         field.toolTip = url?.absoluteString
         let secure = url?.scheme == "https"
-        icon.image = Theme.symbol(url == nil ? "magnifyingglass" : (secure ? "lock.fill" : "globe"), size: 11, weight: .semibold)
+        siteButton.image = Theme.symbol(url == nil ? "magnifyingglass" : (secure ? "lock.fill" : "globe"), size: 11, weight: .semibold)
+        siteButton.toolTip = secure ? "Connection and Certificate" : (url == nil ? nil : "Connection Details")
+    }
+
+    private func updateButtons(editing: Bool) {
+        star.isHidden = editing || !(url.map(HistoryStore.isRecordable) ?? false)
+        breakdownButton.isHidden = editing || url?.host == nil
     }
 
     private func setFocused(_ focused: Bool) {
@@ -176,12 +221,14 @@ final class AddressPill: FilledView {
         border = focused ? Theme.accent : Theme.hairline
         if focused {
             field.stringValue = url?.absoluteString ?? ""
-            icon.image = Theme.symbol("magnifyingglass", size: 11, weight: .semibold)
+            siteButton.image = Theme.symbol("magnifyingglass", size: 11, weight: .semibold)
         }
-        star.isHidden = focused || !(url.map(HistoryStore.isRecordable) ?? false)
+        updateButtons(editing: focused)
     }
 
     @objc private func starClicked() { onStar?() }
+    @objc private func siteClicked() { if !field.isEditing { onSite?() } }
+    @objc private func breakdownClicked() { onBreakdown?() }
 
     // Clicking anywhere on the pill focuses the field.
     override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
@@ -192,6 +239,8 @@ final class AddressField: NSTextField {
     var isEditing: Bool { currentEditor() != nil }
 
     override func becomeFirstResponder() -> Bool {
+        // Scroll while editing; truncate with an ellipsis otherwise.
+        cell?.isScrollable = true
         let ok = super.becomeFirstResponder()
         if ok {
             onFocusChange?(true)
@@ -202,6 +251,7 @@ final class AddressField: NSTextField {
 
     override func textDidEndEditing(_ notification: Notification) {
         super.textDidEndEditing(notification)
+        cell?.isScrollable = false
         onFocusChange?(false)
     }
 }

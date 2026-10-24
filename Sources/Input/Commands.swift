@@ -11,7 +11,7 @@ enum Command: String, CaseIterable {
     case selectTab1, selectTab2, selectTab3, selectTab4, selectTab5, selectTab6, selectTab7, selectTab8, selectLastTab
     case find, findNext, findPrevious, linkHints
     case zoomIn, zoomOut, zoomReset
-    case toggleInspector, showConsole, copyURL, copyMarkdownLink
+    case toggleInspector, showConsole, copyURL, copyMarkdownLink, showSiteInfo, urlBreakdown
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
     case loadUnpackedExtension, revealExtensionsFolder
     case toggleAgentAPI, clearHistory, showWelcome, openSettings
@@ -68,6 +68,8 @@ enum Command: String, CaseIterable {
         case .showConsole: "JavaScript Console"
         case .copyURL: "Copy URL"
         case .copyMarkdownLink: "Copy Markdown Link"
+        case .showSiteInfo: "Connection and Certificate"
+        case .urlBreakdown: "URL Breakdown"
         case .suspendBackgroundTabs: "Suspend Background Tabs"
         case .openKeymapFile: "Edit Key Bindings…"
         case .reloadKeymap: "Reload Key Bindings"
@@ -133,6 +135,8 @@ enum Command: String, CaseIterable {
         case .showConsole: "terminal"
         case .copyURL: "doc.on.doc"
         case .copyMarkdownLink: "text.badge.plus"
+        case .showSiteInfo: "lock"
+        case .urlBreakdown: "list.bullet.indent"
         case .suspendBackgroundTabs: "moon.zzz"
         case .openKeymapFile: "keyboard"
         case .reloadKeymap: "arrow.triangle.2.circlepath"
@@ -238,6 +242,8 @@ enum CommandRouter {
         case .zoomReset: webView?.pageZoom = 1
         case .toggleInspector: webView.map { Inspector.toggle($0) }
         case .showConsole: webView.map { Inspector.showConsole($0) }
+        case .showSiteInfo: browser.content.topBar.showSiteInfo()
+        case .urlBreakdown: browser.content.topBar.showURLBreakdown()
         case .toggleSiteBlocking:
             ContentBlocker.shared.toggle(for: tab?.currentURL)
             webView?.reload()

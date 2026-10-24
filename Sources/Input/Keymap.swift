@@ -118,7 +118,7 @@ final class Keymap {
         ("cmd+f", .find), ("cmd+g", .findNext), ("cmd+shift+g", .findPrevious), ("cmd+j", .linkHints),
         ("cmd+=", .zoomIn), ("cmd+-", .zoomOut), ("cmd+0", .zoomReset),
         ("cmd+alt+i", .toggleInspector), ("cmd+alt+c", .showConsole),
-        ("cmd+shift+c", .copyURL), ("cmd+alt+shift+c", .copyMarkdownLink),
+        ("cmd+shift+c", .copyURL), ("cmd+alt+shift+c", .copyMarkdownLink), ("cmd+alt+l", .urlBreakdown),
         ("cmd+,", .openSettings), ("cmd+d", .toggleBookmark), ("cmd+y", .showHistory), ("cmd+alt+b", .showBookmarks), ("cmd+alt+,", .openKeymapFile),
     ]
 
