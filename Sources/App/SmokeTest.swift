@@ -404,8 +404,14 @@ enum SmokeTest {
         root.layoutSubtreeIfNeeded()
         check(bar.window != nil && bar.pill.frame.width > browser.sidebar.view.frame.width,
               "the address bar sits above the page and is wider than the sidebar (\(Int(bar.pill.frame.width))pt)")
-        let pageTop = browser.content.view.convert(NSPoint(x: 0, y: bar.frame.minY), to: nil).y
-        check(bar.frame.minY > 0 && pageTop > 0 && bar.frame.minX < 20, "the top bar sits next to the traffic lights with the sidebar on the left")
+        let barMid = bar.convert(bar.bounds, to: nil).midY
+        if let close = browser.window?.standardWindowButton(.closeButton), let container = close.superview {
+            let lightsMid = container.convert(close.frame, to: nil).midY
+            check(abs(barMid - lightsMid) <= 1 && bar.frame.minX < 20,
+                  "the top bar is centered on the traffic lights (bar \(barMid), lights \(lightsMid))")
+        }
+        let firstRow = browser.sidebar.view.convert(browser.sidebar.view.bounds, to: nil).maxY - browser.sidebar.contentTop
+        check(abs(firstRow - (bar.convert(bar.bounds, to: nil).minY - Theme.gutter)) <= 1, "the tab list starts level with the page")
 
         browser.toggleSidebar()
         try? await Task.sleep(for: .milliseconds(300))

@@ -107,6 +107,8 @@ final class SidebarViewController: NSViewController {
     }
 
     /// Distance from the window top to the page cards, so the first tab lines up with them.
+    var contentTop: CGFloat { listTop?.constant ?? 0 }
+
     func setContentTop(_ top: CGFloat) {
         loadViewIfNeeded()
         listTop.constant = top

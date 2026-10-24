@@ -33,6 +33,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     var isSidebarCollapsed: Bool { sidebarItem.isCollapsed }
     private(set) var isSidebarOnRight = Preferences.sidebarOnRight
+    /// The collapsed state the content and top bar were last laid out for.
+    private var laidOutCollapsed = false
 
     init(tabs initial: [Tab], active: Int, frame: NSRect?, sidebarCollapsed: Bool) {
         let window = NSWindow(
@@ -65,6 +67,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         splitController.addSplitViewItem(NSSplitViewItem(viewController: content))
         splitController.insertSplitViewItem(sidebarItem, at: isSidebarOnRight ? 1 : 0)
         splitController.splitView.autosaveName = Self.widthAutosaveName(right: isSidebarOnRight)
+        // Dragging the divider shut (or open) collapses the sidebar without toggleSidebar().
+        // Deferred: this runs inside a layout pass, where changing constraints can loop.
+        splitController.onResize = { [weak self] in
+            guard let self, self.sidebarItem.isCollapsed != self.laidOutCollapsed else { return }
+            DispatchQueue.main.async { self.sidebarCollapseDidChange() }
+        }
         window.contentViewController = RootViewController(child: splitController)
         window.isMovableByWindowBackground = true
         window.titlebarSeparatorStyle = .none
@@ -77,6 +85,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let shown = initial.isEmpty ? nil : initial[max(0, min(active, initial.count - 1))]
         tabs = initial.filter(\.isPinned) + initial.filter { !$0.isPinned }
         sidebar.reloadTabs()
+        laidOutCollapsed = sidebarCollapsed
         content.sidebarDidChange(collapsed: sidebarCollapsed, onRight: isSidebarOnRight)
         updateTitlebarLayout()
         if let shown { activate(shown) } else { newTab(url: nil) }
@@ -474,7 +483,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             ctx.duration = 0.18
             sidebarItem.animator().isCollapsed = collapse
         }
+        laidOutCollapsed = collapse
         content.sidebarDidChange(collapsed: collapse, onRight: isSidebarOnRight)
+        updateTitlebarLayout()
+    }
+
+    private func sidebarCollapseDidChange() {
+        guard sidebarItem.isCollapsed != laidOutCollapsed else { return }
+        laidOutCollapsed = sidebarItem.isCollapsed
+        content.sidebarDidChange(collapsed: laidOutCollapsed, onRight: isSidebarOnRight)
         updateTitlebarLayout()
     }
 
@@ -591,6 +608,14 @@ final class InvisibleDividerSplitView: NSSplitView {
 }
 
 final class TernSplitViewController: NSSplitViewController {
+    /// After every resize, including the sidebar collapsing because its divider was dragged shut.
+    var onResize: (() -> Void)?
+
+    override func splitViewDidResizeSubviews(_ notification: Notification) {
+        super.splitViewDidResizeSubviews(notification)
+        onResize?()
+    }
+
     override func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect,
                             forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
         drawnRect.insetBy(dx: -4, dy: 0)
