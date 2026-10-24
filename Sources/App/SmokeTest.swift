@@ -475,9 +475,13 @@ enum SmokeTest {
         let narrowest = browser.sidebar.view.frame.width
         check(narrowest <= 101 && !browser.isSidebarCollapsed,
               "the tab list drags down to 100pt, agent pill and all (\(Int(narrowest))pt)")
+        let compact = browser.sidebar.bottomBarCompact
+        check(compact.isCompact && compact.newTabWidth < 40,
+              "a narrow tab list shows just the + and the agent dot (New Tab \(Int(compact.newTabWidth))pt)")
         browser.setSidebarWidth(before)
         browser.sidebar.showAgentPillForTesting(false)
         root.layoutSubtreeIfNeeded()
+        if before >= 170 { check(!browser.sidebar.bottomBarCompact.isCompact, "and its labels come back when it widens again") }
     }
 
     private static func welcome(browser: BrowserWindowController) async {

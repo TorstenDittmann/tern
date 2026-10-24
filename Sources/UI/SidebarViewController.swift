@@ -146,6 +146,9 @@ final class SidebarViewController: NSViewController {
         agentPill.isCompact = compact
     }
 
+    /// For the smoke test: whether the bottom bar shows just its icons, and the New Tab button's width.
+    var bottomBarCompact: (isCompact: Bool, newTabWidth: CGFloat) { (newTab.isCompact && agentPill.isCompact, newTab.frame.width) }
+
     /// For the smoke test: the bottom bar at its widest, as while an agent is connected.
     func showAgentPillForTesting(_ show: Bool) {
         agentPill.isHidden = show ? false : !AgentActivity.shared.isActive
