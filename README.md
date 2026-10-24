@@ -10,7 +10,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 ## Highlights
 
 - **Native and lightweight.** Plain AppKit around `WKWebView`: no Electron and no bundled Chromium. The release build is under 1 MB.
-- **Vertical tabs.** Drag to reorder, middle-click to close, and right-click for pin, duplicate, suspend, or close others. Pinned tabs stay at the top. The tab list sits on the right by default, level with the address bar, and can move to the left (Settings ▸ General, or **Move Tab List to the Left** in ⌘K). It can be dragged as narrow as 140 points.
+- **Vertical tabs.** Drag to reorder, middle-click to close, and right-click for pin, duplicate, suspend, or close others. Pinned tabs stay at the top. The tab list sits on the right by default, level with the address bar, and can move to the left (Settings ▸ General, or **Move Tab List to the Left** in ⌘K). It can be dragged as narrow as 100 points; below 170 the bottom bar shows just its icons.
 - **Wide address bar.** Back, forward, reload and the address bar sit in one bar across the top of the page, so long URLs have room. It stays there when the sidebar is hidden.
 - **Keyboard tab list (⌘E).** Type to filter the sidebar, ↑↓ to move, ↩ to open, ⌘⌫ to close, esc to go back to the page.
 - **Link hints (⌘J).** Every link, button and field on screen gets a short letter code. Type it to click; hold ⇧ on the last letter to open a link in a background tab, or ⌥ to peek at it.

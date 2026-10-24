@@ -57,7 +57,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         // A plain split item (not `sidebarWithViewController`): no floating glass panel; the whole
         // window shares one material and the page sits on top as a card.
         sidebarItem = NSSplitViewItem(viewController: sidebar)
-        sidebarItem.minimumThickness = 140
+        sidebarItem.minimumThickness = 100
         sidebarItem.maximumThickness = 440
         sidebarItem.canCollapse = true
         sidebarItem.isCollapsed = sidebarCollapsed
@@ -493,6 +493,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         laidOutCollapsed = sidebarItem.isCollapsed
         content.sidebarDidChange(collapsed: laidOutCollapsed, onRight: isSidebarOnRight)
         updateTitlebarLayout()
+    }
+
+    /// Moves the divider so the tab list is `width` wide, within its limits.
+    func setSidebarWidth(_ width: CGFloat) {
+        let splitView = splitController.splitView
+        splitView.setPosition(isSidebarOnRight ? splitView.bounds.width - width - splitView.dividerThickness : width, ofDividerAt: 0)
     }
 
     /// Moves the tab list to the other side of the window, keeping its width.

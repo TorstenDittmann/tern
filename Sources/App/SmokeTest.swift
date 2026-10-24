@@ -461,6 +461,19 @@ enum SmokeTest {
               "and back to the left")
         browser.setSidebarOnRight(true)
         root.layoutSubtreeIfNeeded()
+
+        // Dragged to its narrowest, with the bottom bar at its widest (an agent connected), the tab list
+        // goes down to the minimum: nothing inside it holds it wider.
+        browser.sidebar.showAgentPillForTesting(true)
+        let before = browser.sidebar.view.frame.width
+        browser.setSidebarWidth(100)
+        root.layoutSubtreeIfNeeded()
+        let narrowest = browser.sidebar.view.frame.width
+        check(narrowest <= 101 && !browser.isSidebarCollapsed,
+              "the tab list drags down to 100pt, agent pill and all (\(Int(narrowest))pt)")
+        browser.setSidebarWidth(before)
+        browser.sidebar.showAgentPillForTesting(false)
+        root.layoutSubtreeIfNeeded()
     }
 
     private static func welcome(browser: BrowserWindowController) async {

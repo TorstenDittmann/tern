@@ -18,6 +18,9 @@ final class SidebarViewController: NSViewController {
     private var isSyncingSelection = false
     private var actionButtons: [ObjectIdentifier: ExtensionActionButton] = [:]
     private let agentPill = AgentPill()
+    private lazy var newTab = NewTabButton(target: self, action: #selector(newTabClicked))
+    /// Below this width the bottom bar drops its labels: "New Tab" becomes a +, "Agent connected" a dot.
+    private static let compactWidth: CGFloat = 170
     private var agentObserver: NSObjectProtocol?
     private let filterPill = FilterPill()
     private let pinnedView = PinnedTabsView()
@@ -74,7 +77,6 @@ final class SidebarViewController: NSViewController {
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
         // Bottom bar
-        let newTab = NewTabButton(target: self, action: #selector(newTabClicked))
         extensionStack.orientation = .horizontal
         extensionStack.spacing = 2
         agentPill.isHidden = !AgentActivity.shared.isActive
@@ -83,6 +85,8 @@ final class SidebarViewController: NSViewController {
         }
         let bottom = NSStackView(views: [newTab, agentPill, NSView(), extensionStack])
         bottom.spacing = 4
+        // Nothing in the bottom bar may hold the sidebar wider than the user drags it: it compacts, then clips.
+        bottom.setClippingResistancePriority(.defaultLow, for: .horizontal)
         bottom.translatesAutoresizingMaskIntoConstraints = false
 
         // Pinned tabs: favicon tiles above the list.
@@ -133,6 +137,18 @@ final class SidebarViewController: NSViewController {
     func setContentTop(_ top: CGFloat) {
         loadViewIfNeeded()
         listTop.constant = top
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let compact = view.bounds.width < Self.compactWidth
+        newTab.isCompact = compact
+        agentPill.isCompact = compact
+    }
+
+    /// For the smoke test: the bottom bar at its widest, as while an agent is connected.
+    func showAgentPillForTesting(_ show: Bool) {
+        agentPill.isHidden = show ? false : !AgentActivity.shared.isActive
     }
 
     /// Space between a row's edge and its chip (half the gap between rows).
@@ -777,6 +793,7 @@ final class FilterPill: FilledView {
         icon.contentTintColor = .tertiaryLabelColor
         label.font = .systemFont(ofSize: 12)
         label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         for v in [icon, label] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
@@ -799,6 +816,10 @@ final class FilterPill: FilledView {
 
 /// "Agent connected": shown while an agent drives a tab or listens for events.
 final class AgentPill: FilledView {
+    private let label = NSTextField(labelWithString: "Agent connected")
+    /// Just the dot, in a narrow sidebar.
+    var isCompact = false { didSet { label.isHidden = isCompact } }
+
     init() {
         super.init(frame: .zero)
         fill = AgentRingView.color.withAlphaComponent(0.15)
@@ -807,9 +828,10 @@ final class AgentPill: FilledView {
         let dot = FilledView()
         dot.fill = AgentRingView.color
         dot.radius = 3
-        let label = NSTextField(labelWithString: "Agent connected")
         label.font = .systemFont(ofSize: 11, weight: .medium)
         label.textColor = AgentRingView.color
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         let stack = NSStackView(views: [dot, label])
         stack.spacing = 5
         stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 9)
@@ -845,11 +867,22 @@ final class NewTabButton: NSButton {
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
         translatesAutoresizingMaskIntoConstraints = false
         heightAnchor.constraint(equalToConstant: 28).isActive = true
+        toolTip = "New Tab (⌘T)"
+        setContentCompressionResistancePriority(.init(200), for: .horizontal)
+    }
+
+    /// Just the +, in a narrow sidebar.
+    var isCompact = false {
+        didSet {
+            guard isCompact != oldValue else { return }
+            imagePosition = isCompact ? .imageOnly : .imageLeading
+            invalidateIntrinsicContentSize()
+        }
     }
 
     override var intrinsicContentSize: NSSize {
         var s = super.intrinsicContentSize
-        s.width += 20
+        s.width += isCompact ? 14 : 20
         return s
     }
     override func mouseEntered(with event: NSEvent) { hovering = true }
