@@ -207,6 +207,7 @@ defaults write dev.tern.browser suspendAfter 600                                
 | `Sources/Extensions` | Extension discovery and loading, and the bridges WebKit uses to see tabs and windows |
 | `Sources/App` | App delegate, menus, the smoke test, and launch and memory metrics |
 | `Scripts` | `bench.py`, which `make bench` runs |
+| `site` | The landing page: one static `index.html`, no build step |
 | `Tests/Smoke` | Local test pages and a small MV3 extension used by `make smoke` |
 
 ## Testing

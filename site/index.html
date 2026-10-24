@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Tern is a fast, keyboard-first macOS browser built on WebKit, with a CLI and MCP server so coding agents can drive real tabs.">
+<title>Tern Browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: one 1120px column; the app itself is the hero, then feature bands that each show the real UI piece they describe. */
+:root {
+  color-scheme: dark;
+  /* page, dark-first (Graphite) */
+  --bg: #0B0C0E;
+  --surface: #15171A;
+  --recessed: #121417;
+  --raised: #1E2126;
+  --line: #24272C;
+  --fg: #E6E8EB;
+  --fg-2: #C9CDD3;
+  --muted: #8A9099;
+  --accent: #9BE8A6;
+  --accent-wash: rgba(155, 232, 166, 0.12);
+  --on-accent: #0B0C0E;
+  --agent: #BF5AF2;
+  --agent-wash: rgba(191, 90, 242, 0.16);
+  /* the app mock always shows Graphite, whatever the page theme */
+  --g-bg: #0B0C0E; --g-surface: #15171A; --g-recessed: #121417; --g-raised: #1E2126;
+  --g-line: #24272C; --g-line-2: #1C1F23; --g-fg: #E6E8EB; --g-fg-2: #C9CDD3; --g-muted: #8A9099;
+  --g-accent: #9BE8A6; --g-sel: #22262C;
+  --font: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ECEDEF; --surface: #FFFFFF; --recessed: #F5F6F7; --raised: #FFFFFF; --line: rgba(0, 0, 0, 0.10);
+    --fg: #16181B; --fg-2: #3A3E45; --muted: #5E636B; --accent: #2E8B4A; --accent-wash: rgba(46, 139, 74, 0.12);
+    --on-accent: #FFFFFF; --agent: #9233C9; --agent-wash: rgba(146, 51, 201, 0.12);
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ECEDEF; --surface: #FFFFFF; --recessed: #F5F6F7; --raised: #FFFFFF; --line: rgba(0, 0, 0, 0.10);
+  --fg: #16181B; --fg-2: #3A3E45; --muted: #5E636B; --accent: #2E8B4A; --accent-wash: rgba(46, 139, 74, 0.12);
+  --on-accent: #FFFFFF; --agent: #9233C9; --agent-wash: rgba(146, 51, 201, 0.12);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 16px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.wrap {
+  max-width: 1120px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.mono { font-family: var(--mono); }
+.kbd {
+  font-family: var(--mono); font-size: 0.8em; color: var(--fg-2); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap;
+}
+h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -0.025em; }
+p { margin: 0; }
+
+/* nav */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.nav {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9;
+  background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid transparent;
+}
+.nav .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; text-decoration: none; letter-spacing: -0.01em; }
+.brand svg { color: var(--accent); }
+.nav-links { display: flex; gap: 22px; margin-left: auto; font-size: 14px; color: var(--muted); }
+.nav-links a { text-decoration: none; }
+.nav-links a:hover { color: var(--fg); }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 9px;
+  font: 500 14px var(--font); text-decoration: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--line)); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.small { height: 34px; padding: 0 12px; font-size: 13px; }
+
+/* hero */
+.hero { padding-block: 72px 40px; display: grid; gap: 22px; justify-items: start; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 10px; }
+.eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-wash); }
+.hero h1 { font-size: clamp(40px, 6.4vw, 76px); line-height: 1.02; font-weight: 600; letter-spacing: -0.045em; max-width: 15ch; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero .lede { font-size: clamp(17px, 1.6vw, 19px); color: var(--fg-2); max-width: 60ch; }
+.hero .ctas { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.hero .note { font-size: 13px; color: var(--muted); }
+
+/* the app mock, drawn at 1180×720 and scaled to fit */
+.stage { padding-block: 8px 24px; }
+.frame { position: relative; width: 100%; aspect-ratio: 1180 / 720; max-width: 100%; }
+.frame > .app { position: absolute; top: 0; left: 0; transform-origin: 0 0; transform: scale(var(--s, 0.94)); }
+.app {
+  width: 1180px; height: 720px; background: var(--g-bg); color: var(--g-fg); border-radius: 12px; overflow: hidden;
+  display: flex; font-size: 13px; line-height: 1.3; font-family: var(--font);
+  box-shadow: inset 0 0 0 1px var(--g-line), 0 40px 120px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.app .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar { height: 46px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 16px; }
+.lights { display: flex; gap: 8px; margin-right: 12px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.ib { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--g-fg-2); flex-shrink: 0; }
+.ib.dim { color: #4A4F57; }
+.ib.on { background: rgba(155, 232, 166, 0.12); color: var(--g-accent); }
+.addr {
+  flex: 1; height: 30px; margin: 0 10px; background: var(--g-surface); border: 1px solid var(--g-line); border-radius: 8px;
+  display: flex; align-items: center; gap: 8px; padding: 0 10px; font-family: var(--mono); font-size: 12.5px; min-width: 0;
+}
+.addr .scheme { color: #5A5F68; }
+.addr .path { color: var(--g-muted); }
+.addr span + span { margin-left: -8px; }
+.panes { flex: 1; min-height: 0; display: flex; gap: 6px; padding: 0 0 8px 8px; }
+.pane { flex: 1; min-width: 0; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; background: #101215; box-shadow: 0 0 0 1px var(--g-line); position: relative; }
+.pane-head { height: 26px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; font: 11px var(--mono); color: var(--g-muted); border-bottom: 1px solid var(--g-line-2); background: var(--g-bg); }
+.pane.agent { box-shadow: 0 0 0 2px #BF5AF2, 0 0 0 6px rgba(191, 90, 242, 0.18); }
+.agent-tag {
+  position: absolute; left: 50%; top: 8px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; background: #BF5AF2; color: #fff;
+  font-size: 11px; font-weight: 600; height: 18px; padding: 0 8px; border-radius: 9px; white-space: nowrap;
+}
+.agent-tag i { width: 6px; height: 6px; border-radius: 50%; background: #fff; display: block; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.page-dark { flex: 1; padding: 30px 34px; display: flex; flex-direction: column; gap: 16px; }
+.crumbs { display: flex; gap: 10px; font-size: 12px; color: var(--g-muted); }
+.ph1 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+.fld { height: 42px; border-radius: 8px; background: #181B1F; border: 1px solid #262A30; display: flex; align-items: center; padding: 0 12px; color: var(--g-fg-2); font-size: 13px; }
+.fld.label-only { color: #5A5F68; }
+.fld.typing { border-color: #BF5AF2; }
+.fld.typing::after { content: ""; width: 1.5px; height: 16px; background: #BF5AF2; margin-left: 2px; animation: pulse 1s steps(1) infinite; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pbtn { height: 42px; width: 170px; border-radius: 8px; background: var(--g-fg); color: #0B0C0E; font-weight: 600; display: flex; align-items: center; justify-content: center; position: relative; }
+.cursor { position: absolute; right: -14px; bottom: -16px; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+.page-light { flex: 1; padding: 30px 34px; display: flex; flex-direction: column; gap: 12px; background: #fff; color: #1A1C1F; }
+.bar { height: 9px; border-radius: 4px; background: #E7E9EC; }
+.codeblk { margin-top: 6px; border-radius: 8px; background: #F3F4F6; padding: 14px; font: 12px/1.6 var(--mono); color: #3B3F45; white-space: pre; }
+
+/* tab list, right side */
+.tablist { width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 3px; padding: 8px 8px 0 8px; }
+.pins { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.pin { height: 36px; border-radius: 8px; background: var(--g-surface); display: flex; align-items: center; justify-content: center; }
+.fav { width: 16px; height: 16px; border-radius: 4px; color: #fff; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tl-label { font: 10.5px var(--mono); letter-spacing: 0.06em; color: var(--g-muted); padding: 0 8px 4px; }
+.row { height: 28px; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--g-fg-2); white-space: nowrap; }
+.row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.row.sel { background: var(--g-raised); color: var(--g-fg); }
+.row.sleep { color: var(--g-muted); }
+.row .moon { color: var(--g-muted); flex-shrink: 0; }
+.split-block { border: 1px solid #2A2E34; border-radius: 9px; padding: 3px; display: flex; flex-direction: column; gap: 2px; background: var(--g-recessed); }
+.split-block .row { padding: 0 7px; }
+.minimap { width: 14px; height: 10px; border: 1px solid var(--g-muted); border-radius: 2px; display: flex; gap: 1px; padding: 1px; flex-shrink: 0; }
+.minimap b { flex: 1; border-radius: 1px; }
+.minimap b.me { background: var(--g-muted); }
+.split-block.on .minimap { border-color: var(--g-accent); }
+.split-block.on .minimap b.me { background: var(--g-accent); }
+.tl-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 10px; border-top: 1px solid var(--g-line-2); font-size: 12px; color: var(--g-muted); }
+
+/* sections */
+section.band { padding-block: 88px; border-top: 1px solid var(--line); }
+.band-head { display: grid; gap: 14px; margin-bottom: 40px; max-width: 720px; }
+.band-head h2 { font-size: clamp(30px, 3.8vw, 44px); line-height: 1.08; font-weight: 600; }
+.band-head p { color: var(--fg-2); font-size: 17px; max-width: 62ch; }
+.split2 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+.facts { display: grid; gap: 18px; list-style: none; margin: 0; padding: 0; }
+.facts li { display: grid; gap: 4px; }
+.facts b { font-weight: 600; font-size: 15.5px; }
+.facts span { color: var(--fg-2); font-size: 15px; }
+
+/* terminal */
+.term { background: #0E0F12; color: #E6E8EB; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; min-width: 0; }
+:root[data-theme="light"] .term { border-color: #24272C; }
+.term-head { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid #1C1F23; font: 11.5px var(--mono); color: #8A9099; }
+.term-head .lights i { width: 10px; height: 10px; }
+.term-head .lights { margin-right: 6px; gap: 6px; }
+.term pre { margin: 0; padding: 16px 18px 18px; font: 13px/1.7 var(--mono); overflow-x: auto; }
+.term .p { color: #9BE8A6; }
+.term .c { color: #6B717A; }
+.term .o { color: #A9AEB6; }
+.term .r { color: #D7B4F5; }
+.mcp { margin-top: 14px; }
+
+/* keyboard trio */
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.card .shot { height: 250px; background: var(--g-bg); color: var(--g-fg); position: relative; overflow: hidden; font-size: 13px; line-height: 1.3; border-bottom: 1px solid var(--line); }
+.card .txt { padding: 20px 22px 24px; display: grid; gap: 8px; }
+.card h3 { font-size: 19px; font-weight: 600; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card p { color: var(--fg-2); font-size: 15px; }
+
+/* palette mini */
+.pal { position: absolute; left: 18px; right: 18px; top: 22px; background: var(--g-surface); border: 1px solid #2C3036; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.55); overflow: hidden; }
+.pal-in { height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 14px; border-bottom: 1px solid #22252A; font-size: 14.5px; }
+.pal-in .caret { width: 1.5px; height: 16px; background: var(--g-accent); margin-left: -7px; animation: pulse 1s steps(1) infinite; }
+.pal-list { padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+.pal-sec { font: 10px var(--mono); letter-spacing: 0.06em; color: var(--g-muted); padding: 6px 9px 4px; }
+.pal-row { height: 32px; border-radius: 7px; display: flex; align-items: center; gap: 9px; padding: 0 9px; color: var(--g-fg-2); white-space: nowrap; }
+.pal-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pal-row.sel { background: var(--g-sel); color: var(--g-fg); }
+.pal-row .k { font: 11px var(--mono); color: var(--g-muted); }
+.pal-row.sel .k { color: var(--g-fg-2); }
+
+/* hints mini */
+.hpage { position: absolute; inset: 0; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; background: #fff; color: #1A1C1F; }
+.hnav { display: flex; gap: 16px; font-size: 13px; color: #3B3F45; align-items: center; }
+.hnav .logo { font-weight: 700; color: #1A1C1F; margin-right: auto; }
+.hl { position: relative; }
+.hint { position: absolute; top: -9px; left: -8px; font: 700 10.5px var(--mono); color: #1B1B1B; background: #FFD54A; border-radius: 4px; padding: 2px 4px; line-height: 1; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.25); }
+.hint[hidden] { display: none; }
+.hint .done { color: #A07400; }
+.hbig { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px; }
+.hbtns { display: flex; gap: 10px; margin-top: 4px; }
+.hbtn { height: 32px; padding: 0 14px; border-radius: 7px; background: #1A1C1F; color: #fff; font-size: 12.5px; font-weight: 500; display: flex; align-items: center; }
+.hbtn.ghost { background: #EEF0F2; color: #1A1C1F; }
+.hstatus { position: absolute; left: 12px; bottom: 12px; font: 500 11.5px/1.2 var(--mono); background: rgba(21, 23, 26, .94); color: #C9CDD3; box-shadow: 0 0 0 1px #2C3036, 0 6px 20px rgba(0,0,0,.35); padding: 5px 9px; border-radius: 7px; white-space: nowrap; }
+.hstatus b { color: var(--g-accent); font-weight: 500; }
+.hstatus small { font-size: inherit; color: #8A9099; }
+
+/* peek mini */
+.peek-under { position: absolute; inset: 0; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; }
+.peek-under .bar { background: #1E2126; }
+.peek-under .lnk { color: var(--g-accent); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; }
+.peek-scrim { position: absolute; inset: 0; background: rgba(5, 6, 8, 0.5); }
+.peek-bar { position: absolute; left: 22px; right: 22px; top: 18px; height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 10px; background: var(--g-surface); border: 1px solid var(--g-line); border-radius: 9px; color: var(--g-muted); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+.peek-bar .sp { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.peek-bar .pb { color: var(--g-fg-2); background: #22262C; border-radius: 5px; padding: 3px 7px; font-size: 11px; }
+.peek-bar .pb i { font-style: normal; color: var(--g-muted); margin-left: 4px; }
+.peek { position: absolute; left: 22px; right: 22px; top: 54px; bottom: 18px; background: #fff; color: #1A1C1F; border-radius: 10px; box-shadow: 0 24px 70px rgba(0,0,0,0.6), 0 0 0 1px #2C3036; overflow: hidden; display: flex; flex-direction: column; }
+.peek-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 9px; }
+
+/* split layouts */
+.layouts { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: stretch; }
+.lay-stage { background: var(--g-bg); border: 1px solid var(--line); border-radius: 14px; padding: 14px; height: 380px; display: grid; gap: 8px; min-width: 0; transition: grid-template-columns 0.35s ease, grid-template-rows 0.35s ease; }
+.lp { border-radius: 9px; background: #101215; box-shadow: 0 0 0 1px var(--g-line); display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; transition: opacity 0.25s; }
+.lp .pane-head { background: transparent; }
+.lp .lpb { flex: 1; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.lp .lpb .bar { background: #1E2126; height: 8px; }
+.lp.focus { box-shadow: 0 0 0 1px var(--g-accent), 0 0 0 4px rgba(155, 232, 166, 0.12); }
+.lp.light { background: #fff; }
+.lp.light .lpb .bar { background: #E7E9EC; }
+.lp.light .pane-head { background: var(--g-bg); }
+.lay-stage[data-l="cols"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+.lay-stage[data-l="rows"] { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+.lay-stage[data-l="three"] { grid-template-columns: 1.2fr 1fr; grid-template-rows: 1fr 1fr; }
+.lay-stage[data-l="three"] .lp:nth-child(1) { grid-row: 1 / 3; }
+.lay-stage[data-l="grid"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.lay-stage[data-l="cols"] .lp:nth-child(n+3), .lay-stage[data-l="rows"] .lp:nth-child(n+3), .lay-stage[data-l="three"] .lp:nth-child(4) { display: none; }
+.lay-pick { display: flex; flex-direction: column; gap: 8px; }
+.lay-btn {
+  display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; text-align: left; min-height: 56px;
+  padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 500 14.5px var(--font); cursor: pointer;
+}
+.lay-btn:hover { border-color: color-mix(in srgb, var(--fg) 22%, var(--line)); }
+.lay-btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.lay-btn small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.ico { width: 36px; height: 26px; display: grid; gap: 2px; padding: 2px; border: 1.5px solid currentColor; border-radius: 5px; color: var(--muted); }
+.lay-btn[aria-pressed="true"] .ico { color: var(--accent); }
+.ico b { background: currentColor; border-radius: 1.5px; opacity: 0.55; }
+.lay-tip { margin-top: 6px; font-size: 14px; color: var(--fg-2); display: grid; gap: 6px; }
+
+/* tabs band */
+.tabs-shot { background: var(--g-bg); border: 1px solid var(--line); border-radius: 14px; padding: 8px 0 0; height: 430px; display: flex; justify-content: center; overflow: hidden; }
+.tabs-shot .tablist { width: 260px; font-size: 13px; color: var(--g-fg); line-height: 1.3; }
+.filter { height: 30px; margin: 0 2px 8px; border-radius: 7px; background: var(--g-surface); border: 1px solid var(--g-accent); display: flex; align-items: center; gap: 7px; padding: 0 9px; font-size: 12.5px; color: var(--g-fg); }
+.row mark { background: rgba(155, 232, 166, 0.22); color: var(--g-fg); border-radius: 2px; }
+
+/* privacy */
+.url-demo { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: grid; gap: 14px; min-width: 0; }
+.url-line { font: 14px/1.6 var(--mono); word-break: break-all; color: var(--fg); }
+.url-line s { color: var(--muted); text-decoration-color: #E5484D; text-decoration-thickness: 1.5px; }
+.url-label { font: 11px var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.url-label.ok { color: var(--accent); }
+.hosts { display: flex; flex-wrap: wrap; gap: 8px; }
+.hosts code { font: 12.5px var(--mono); background: var(--recessed); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; color: var(--fg-2); }
+.divider { height: 1px; background: var(--line); }
+
+/* native */
+.specs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
+.spec { padding: 24px 22px; display: grid; gap: 6px; align-content: start; border-left: 1px solid var(--line); min-width: 0; }
+.spec:first-child { border-left: 0; }
+.spec .big { font-size: 30px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.spec span { color: var(--fg-2); font-size: 14.5px; }
+.more { margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.more div { display: grid; gap: 6px; }
+.more b { font-weight: 600; }
+.more span { color: var(--fg-2); font-size: 15px; }
+
+/* build */
+.build { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: center; }
+.copy-row { display: flex; justify-content: flex-end; padding: 0 10px 10px; }
+.copy { font: 500 12px var(--font); color: #C9CDD3; background: #1E2126; border: 1px solid #2C3036; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.copy:hover { color: #fff; }
+.req { color: var(--muted); font-size: 14px; }
+
+footer { border-top: 1px solid var(--line); padding-block: 32px 48px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: center; }
+footer a { text-decoration: none; }
+footer a:hover { color: var(--fg); }
+
+@media (max-width: 900px) {
+  .split2, .layouts, .build { grid-template-columns: minmax(0, 1fr); }
+  .trio { grid-template-columns: minmax(0, 1fr); max-width: 520px; }
+  .specs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .spec:nth-child(3) { border-left: 0; }
+  .spec:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .more { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .lay-pick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lay-tip { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .nav-links { display: none; }
+  .nav .btn { margin-left: auto; }
+  section.band { padding-block: 64px; }
+  .hero { padding-block: 48px 28px; }
+  .lay-stage { height: 280px; }
+  .lay-btn { grid-template-columns: 1fr; gap: 6px; }
+  .lay-btn .kbd { justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Tern home">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 9.5c3.2-.2 6 .9 8.2 3.4L12 14.5l1.4-1.7c2.6-3 5.6-4.4 8.1-4.3-2.2 1.3-4 3.3-5.3 6.1L15 17l-3 4-3-4-1.2-2.4C6.6 12.3 4.8 10.6 2.5 9.5Z"></path></svg>
+      Tern
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#agents">Agents</a>
+      <a href="#keyboard">Keyboard</a>
+      <a href="#split">Split view</a>
+      <a href="#privacy">Privacy</a>
+    </nav>
+    <a class="btn small" href="https://github.com/TorstenDittmann/tern">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow"><span class="dot"></span>Native macOS browser · WebKit · Swift</div>
+      <h1>A browser your <em>coding agent</em> can drive.</h1>
+      <p class="lede">Tern is a fast, keyboard-first browser for developers. It's plain AppKit around WebKit, under 1&nbsp;MB, and it ships a CLI and an MCP server so agents can open, click and read the same tabs you do.</p>
+      <div class="ctas">
+        <a class="btn primary" href="#build">Build from source</a>
+        <a class="btn" href="https://github.com/TorstenDittmann/tern">View on GitHub</a>
+        <span class="note">No prebuilt releases yet. The build takes about a minute.</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="frame" id="frame">
+        <div class="app" role="img" aria-label="Tern window: a split view with a checkout page an agent is filling in, a docs page beside it, and the tab list on the right">
+          <div class="main">
+            <div class="topbar">
+              <div class="lights"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></div>
+              <span class="ib"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"></path></svg></span>
+              <span class="ib dim"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"></path></svg></span>
+              <span class="ib"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6"></path><path d="M13 2.5v2.8h-2.8"></path></svg></span>
+              <div class="addr">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#8A9099" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="5.5"></circle><path d="M2.5 8h11M8 2.5c-2 2.2-2 8.8 0 11M8 2.5c2 2.2 2 8.8 0 11"></path></svg>
+                <span class="scheme">http://</span><span>localhost:5173</span><span class="path">/checkout?step=2</span>
+                <span style="flex:1"></span>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8A9099" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"></path></svg>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8A9099" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="m8 2 1.8 3.8 4.2.5-3.1 2.9.8 4.1L8 11.3l-3.7 2 .8-4.1L2 6.3l4.2-.5z"></path></svg>
+              </div>
+              <span class="ib on"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2"></rect><path d="M8 3v10"></path></svg></span>
+              <span class="ib" style="color:#8A9099"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2"></rect><path d="M10 3v10"></path></svg></span>
+            </div>
+            <div class="panes">
+              <div class="pane agent">
+                <div class="pane-head"><span style="width:6px;height:6px;border-radius:50%;background:#9BE8A6"></span>localhost:5173</div>
+                <div class="page-dark">
+                  <div class="crumbs"><span>Cart</span><span>›</span><span style="color:#E6E8EB">Shipping</span><span>›</span><span>Pay</span></div>
+                  <div class="ph1">Shipping address</div>
+                  <div class="fld typing">ada@example.com</div>
+                  <div class="two"><div class="fld">Ada</div><div class="fld">Lovelace</div></div>
+                  <div class="fld">12 St James's Square</div>
+                  <div class="two"><div class="fld">London</div><div class="fld label-only">Postcode</div></div>
+                  <div class="pbtn">Continue
+                    <svg class="cursor" width="20" height="22" viewBox="0 0 20 22" aria-hidden="true"><path d="M2 2v16l4.5-4 3 6.5 3-1.4-3-6.4H16z" fill="#fff" stroke="#0B0C0E" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+                  </div>
+                </div>
+                <div class="agent-tag">Agent is driving</div>
+              </div>
+              <div class="pane">
+                <div class="pane-head"><span style="width:6px;height:6px;border-radius:50%;background:#5A5F68"></span>docs.example.dev</div>
+                <div class="page-light">
+                  <div style="font-size:12px;color:#6B7079">Guides / Checkout</div>
+                  <div class="ph1">Validating addresses</div>
+                  <div class="bar" style="width:92%"></div>
+                  <div class="bar" style="width:86%"></div>
+                  <div class="bar" style="width:64%"></div>
+                  <div class="codeblk">const schema = z.object({
+  email: z.string().email(),
+  postcode: z.string().min(5),
+})</div>
+                  <div class="bar" style="width:88%"></div>
+                  <div class="bar" style="width:72%"></div>
+                  <div class="bar" style="width:80%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tablist">
+            <div class="pins">
+              <div class="pin"><span class="fav" style="background:#5B6CF0">G</span></div>
+              <div class="pin"><span class="fav" style="background:#D9764A">L</span></div>
+              <div class="pin"><span class="fav" style="background:#3E9C7A">V</span></div>
+              <div class="pin"><span class="fav" style="background:#A5579E">S</span></div>
+            </div>
+            <div class="split-block on">
+              <div class="row sel"><span class="fav" style="background:#3E9C7A">L</span><span class="t">Checkout · step 2</span><span class="minimap"><b class="me"></b><b></b></span></div>
+              <div class="row"><span class="fav" style="background:#6C7A89">D</span><span class="t">Validating addresses</span><span class="minimap"><b></b><b class="me"></b></span></div>
+            </div>
+            <div class="row"><span class="fav" style="background:#5B6CF0">G</span><span class="t">Pull request #8 · Fix viewport</span></div>
+            <div class="row"><span class="fav" style="background:#C2913A">C</span><span class="t">CI run #412 · failed</span></div>
+            <div class="row"><span class="fav" style="background:#A5579E">S</span><span class="t">Storybook · Button</span></div>
+            <div class="row"><span class="fav" style="background:#D9764A">L</span><span class="t">Linear · TRN-114</span></div>
+            <div class="row sleep"><span class="fav" style="background:#3A3E45;color:#C9CDD3">M</span><span class="t">MDN · Intl.Segmenter</span><svg class="moon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.2A5 5 0 1 0 12.8 9.6 4 4 0 0 1 9.5 3.2Z"></path></svg></div>
+            <div class="row sleep"><span class="fav" style="background:#3A3E45;color:#C9CDD3">H</span><span class="t">Hacker News</span><svg class="moon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.2A5 5 0 1 0 12.8 9.6 4 4 0 0 1 9.5 3.2Z"></path></svg></div>
+            <div class="row sleep"><span class="fav" style="background:#3A3E45;color:#C9CDD3">W</span><span class="t">WebKit Feature Status</span><svg class="moon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.2A5 5 0 1 0 12.8 9.6 4 4 0 0 1 9.5 3.2Z"></path></svg></div>
+            <div class="tl-foot"><span>+ New tab</span><span class="mono" style="font-size:11px">412 MB</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="band" id="agents">
+    <div class="wrap">
+      <div class="band-head">
+        <div class="eyebrow">Agent API</div>
+        <h2>Let your agent test the thing it just built.</h2>
+        <p>Turn on the agent API and Tern listens on a local socket. Agents get the page as a compact outline with a ref on every element, then click, type and read it back, in a real tab you can watch.</p>
+      </div>
+      <div class="split2">
+        <div style="min-width:0">
+          <div class="term" role="region" aria-label="Terminal example using the tern CLI">
+            <div class="term-head"><span class="lights"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></span>zsh · ~/shop</div>
+<pre><span class="p">$</span> tern tabs open localhost:5173/checkout --wait idle
+<span class="p">$</span> tern page snapshot
+<span class="o">form "Shipping address"
+  textbox "Email" </span><span class="r">e3</span><span class="o">
+  textbox "First name" </span><span class="r">e4</span><span class="o">
+  button "Continue" </span><span class="r">e7</span>
+<span class="p">$</span> tern page type e3 "ada@example.com"
+<span class="p">$</span> tern page click e7
+<span class="p">$</span> tern console read --level error
+<span class="o">[error] POST /api/address 422 (postcode required)</span>
+<span class="p">$</span> tern network list --failedOnly true
+<span class="o">422  POST  /api/address   38 ms</span></pre>
+          </div>
+          <div class="term mcp" role="region" aria-label="Adding Tern as an MCP server to Claude Code">
+            <div class="term-head">MCP · one line for Claude Code</div>
+<pre><span class="p">$</span> claude mcp add tern -- \
+    /Applications/Tern.app/Contents/Helpers/tern mcp</pre>
+          </div>
+        </div>
+        <ul class="facts">
+          <li><b>You can see what it's doing.</b><span>A tab an agent is acting on gets a purple ring and an “Agent is driving” tag.</span></li>
+          <li><b>Real input, real logs.</b><span>Clicks and key presses are real macOS events, so pages see trusted input. Console output, uncaught errors and fetch or XHR requests are captured per tab.</span></li>
+          <li><b>MCP without glue.</b><span><span class="mono" style="font-size:.9em">tern mcp</span> exposes the API as tools like <span class="mono" style="font-size:.9em">page_snapshot</span>, <span class="mono" style="font-size:.9em">page_click</span> and <span class="mono" style="font-size:.9em">page_screenshot</span>, which comes back as an image.</span></li>
+          <li><b>Local only.</b><span>Off by default. It listens on a Unix socket created <span class="mono" style="font-size:.9em">0600</span> and opens no network port. You can limit agents to the tabs they opened.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="keyboard">
+    <div class="wrap">
+      <div class="band-head">
+        <div class="eyebrow">Keyboard first</div>
+        <h2>Reach anything without leaving the keys.</h2>
+        <p>Every command has a shortcut you can rebind, in Settings or in a JSON file. Pages can't capture them, because Tern matches shortcuts before the page sees the key.</p>
+      </div>
+      <div class="trio">
+        <article class="card">
+          <div class="shot" aria-hidden="true">
+            <div class="pal">
+              <div class="pal-in"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#8A9099" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"></circle><path d="m10.5 10.5 3 3"></path></svg><span>pr</span><span class="caret"></span></div>
+              <div class="pal-list">
+                <div class="pal-sec">TABS</div>
+                <div class="pal-row sel"><span class="fav" style="background:#5B6CF0">G</span><span class="t"><b>P</b>ull <b>r</b>equest #8 · Fix viewport</span></div>
+                <div class="pal-sec">HISTORY</div>
+                <div class="pal-row"><span class="fav" style="background:#6C7A89">D</span><span class="t"><b>Pr</b>oduction deploys</span><span class="k">docs.example.dev</span></div>
+                <div class="pal-sec">COMMANDS</div>
+                <div class="pal-row"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#8A9099" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="2"></rect><path d="M8 3v10"></path></svg><span class="t">Split with <b>Pr</b>evious Tab</span><span class="k">⌥⌘\</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="txt">
+            <h3>Command palette <span class="kbd">⌘K</span></h3>
+            <p>Fuzzy-search open tabs, history and every command, or type a URL. Pages and commands you use often and recently rank first.</p>
+          </div>
+        </article>
+        <article class="card">
+          <div class="shot" aria-hidden="true">
+            <div class="hpage">
+              <div class="hnav"><span class="logo">acme/docs</span><span class="hl">Guides<span class="hint" hidden>as</span></span><span class="hl">API<span class="hint"><span class="done">d</span>f</span></span><span class="hl">Blog<span class="hint"><span class="done">d</span>s</span></span></div>
+              <div class="hbig">Deploying to production</div>
+              <div class="bar" style="width:92%"></div>
+              <div class="bar" style="width:70%"></div>
+              <div class="hbtns"><span class="hl hbtn">Get started<span class="hint"><span class="done">d</span>a</span></span><span class="hl hbtn ghost">Changelog<span class="hint" hidden>fj</span></span></div>
+            </div>
+            <div class="hstatus">hint <b>D</b>▍ <small>· ⌫ undo · esc</small></div>
+          </div>
+          <div class="txt">
+            <h3>Link hints <span class="kbd">⌘J</span></h3>
+            <p>Every link, button and field on screen gets a short code, and a bar in the corner shows what you've typed. Hold ⇧ on the last letter for a background tab, or ⌥ to peek.</p>
+          </div>
+        </article>
+        <article class="card">
+          <div class="shot" aria-hidden="true">
+            <div class="peek-under">
+              <div class="bar" style="width:80%"></div>
+              <div class="bar" style="width:60%"></div>
+              <span class="lnk">RFC 9110 · HTTP Semantics</span>
+              <div class="bar" style="width:88%"></div>
+            </div>
+            <div class="peek-scrim"></div>
+            <div class="peek-bar"><span class="sp">rfc-editor.org</span><span class="pb">Open as Tab<i>⌘↩</i></span><span class="pb">Split<i>⇧⌘↩</i></span><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#8A9099" stroke-width="1.6" stroke-linecap="round"><path d="m5 5 6 6M11 5l-6 6"></path></svg></div>
+            <div class="peek">
+              <div class="peek-body">
+                <div style="font-weight:600;font-size:15px">15.5.23. 422 Unprocessable Content</div>
+                <div class="bar" style="width:94%"></div>
+                <div class="bar" style="width:88%"></div>
+                <div class="bar" style="width:52%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="txt">
+            <h3>Link peek <span class="kbd">⌥-click</span></h3>
+            <p>Open a link in a floating preview without losing your place. Keep it as a tab with ⌘↩, put it in a split with ⇧⌘↩, or close it with esc.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="split">
+    <div class="wrap">
+      <div class="band-head">
+        <div class="eyebrow">Split view</div>
+        <h2>Your app, its docs and its logs, in one window.</h2>
+        <p>Up to four tabs side by side, stacked or in a grid, with draggable dividers. Split from the top bar or drag a tab onto the page. Each pane is labeled with its host, and the address bar, find and ⌘W follow whichever pane you click.</p>
+      </div>
+      <div class="layouts">
+        <div class="lay-stage" id="layStage" data-l="cols" aria-hidden="true">
+          <div class="lp focus"><div class="pane-head"><span style="width:6px;height:6px;border-radius:50%;background:#9BE8A6"></span>localhost:5173</div><div class="lpb"><div class="bar" style="width:40%;height:14px;background:#2A2E34"></div><div class="bar" style="width:90%"></div><div class="bar" style="width:76%"></div><div class="bar" style="width:84%"></div></div></div>
+          <div class="lp light"><div class="pane-head">docs.example.dev</div><div class="lpb"><div class="bar" style="width:50%;height:14px;background:#D5D8DD"></div><div class="bar" style="width:88%"></div><div class="bar" style="width:70%"></div><div class="bar" style="width:80%"></div></div></div>
+          <div class="lp"><div class="pane-head">localhost:5173/admin</div><div class="lpb"><div class="bar" style="width:66%"></div><div class="bar" style="width:52%"></div></div></div>
+          <div class="lp"><div class="pane-head">github.com/…/pull/8</div><div class="lpb"><div class="bar" style="width:72%"></div><div class="bar" style="width:44%"></div></div></div>
+        </div>
+        <div class="lay-pick" role="group" aria-label="Split layout">
+          <button class="lay-btn" type="button" id="lay-cols" data-l="cols" aria-pressed="true"><span class="ico" style="grid-template-columns:1fr 1fr"><b></b><b></b></span><span>Side by side<small>New tab next to this one</small></span><span class="kbd">⌘\</span></button>
+          <button class="lay-btn" type="button" id="lay-rows" data-l="rows" aria-pressed="false"><span class="ico" style="grid-template-rows:1fr 1fr"><b></b><b></b></span><span>Stacked<small>New tab below</small></span><span class="kbd">⌃⌘\</span></button>
+          <button class="lay-btn" type="button" id="lay-three" data-l="three" aria-pressed="false"><span class="ico" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr"><b style="grid-row:1/3"></b><b></b><b></b></span><span>Three panes<small>One left, two stacked</small></span><span class="kbd">⌃⇧⌘\</span></button>
+          <button class="lay-btn" type="button" id="lay-grid" data-l="grid" aria-pressed="false"><span class="ico" style="grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr"><b></b><b></b><b></b><b></b></span><span>2×2 grid<small>Four tabs at once</small></span><span class="kbd">⌃⇧⌘\</span></button>
+          <div class="lay-tip"><span>⌥⌘← → and ⌃⌘↑ ↓ move focus between panes. Double-click a divider to even them out.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="tabs">
+    <div class="wrap">
+      <div class="split2">
+        <div class="band-head" style="margin-bottom:0">
+          <div class="eyebrow">Tab list</div>
+          <h2>Tabs on the right, where long titles fit.</h2>
+          <p>The tab list sits on the right, level with the address bar, so the bar can run the full width for long URLs. Pinned sites sit as tiles on top, and split tabs stay together in one block.</p>
+          <ul class="facts" style="margin-top:12px">
+            <li><b>Filter from the keyboard with ⌘E.</b><span>Type to narrow the list, ↑↓ to move, ↩ to open, ⌘⌫ to close.</span></li>
+            <li><b>Two hundred tabs cost about as much as one.</b><span>Restored tabs are just a URL and a title until you open them. Background tabs idle for 15 minutes give their memory back, keep their history, and show a moon. The bottom bar shows what Tern is using right now.</span></li>
+          </ul>
+        </div>
+        <div class="tabs-shot" aria-hidden="true">
+          <div class="tablist">
+            <div class="pins">
+              <div class="pin"><span class="fav" style="background:#5B6CF0">G</span></div>
+              <div class="pin"><span class="fav" style="background:#D9764A">L</span></div>
+              <div class="pin"><span class="fav" style="background:#3E9C7A">V</span></div>
+              <div class="pin"><span class="fav" style="background:#A5579E">S</span></div>
+            </div>
+            <div class="filter"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#8A9099" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5h10M5 8h6M7 11.5h2"></path></svg>check</div>
+            <div class="split-block on">
+              <div class="row sel"><span class="fav" style="background:#3E9C7A">L</span><span class="t"><mark>Check</mark>out · step 2</span><span class="minimap"><b class="me"></b><b></b></span></div>
+              <div class="row"><span class="fav" style="background:#6C7A89">D</span><span class="t">Validating addresses</span><span class="minimap"><b></b><b class="me"></b></span></div>
+            </div>
+            <div class="row"><span class="fav" style="background:#C2913A">C</span><span class="t">CI <mark>check</mark>s · #412</span></div>
+            <div class="row sleep"><span class="fav" style="background:#3A3E45;color:#C9CDD3">S</span><span class="t">Stripe · <mark>Check</mark>out Sessions</span><svg class="moon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.2A5 5 0 1 0 12.8 9.6 4 4 0 0 1 9.5 3.2Z"></path></svg></div>
+            <div class="row sleep"><span class="fav" style="background:#3A3E45;color:#C9CDD3">M</span><span class="t">MDN · <mark>check</mark>Validity()</span><svg class="moon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.2A5 5 0 1 0 12.8 9.6 4 4 0 0 1 9.5 3.2Z"></path></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="privacy">
+    <div class="wrap">
+      <div class="split2">
+        <div class="band-head" style="margin-bottom:0">
+          <div class="eyebrow">Private by default</div>
+          <h2>Ads and trackers are blocked before you change a setting.</h2>
+          <p>EasyList and EasyPrivacy are compiled to native WebKit content rules, so blocking costs the page almost nothing. Third-party pings are dropped, and links lose their tracking parameters before they load.</p>
+        </div>
+        <div class="url-demo">
+          <div class="url-label">Link you clicked</div>
+          <div class="url-line">https://shop.example.com/item/42?color=slate<s>&amp;utm_source=newsletter&amp;utm_medium=email&amp;fbclid=IwAR2xK9</s></div>
+          <div class="url-label ok"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3 3 7-7"></path></svg>Page Tern loads</div>
+          <div class="url-line">https://shop.example.com/item/42?color=slate</div>
+          <div class="divider"></div>
+          <div class="url-label">Left alone, so your dev server just works</div>
+          <div class="hosts"><code>localhost</code><code>*.test</code><code>*.local</code></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="native">
+    <div class="wrap">
+      <div class="band-head">
+        <div class="eyebrow">Native</div>
+        <h2>No Electron, no bundled Chromium.</h2>
+        <p>Tern is plain AppKit around WKWebView. It uses the WebKit already on your Mac, and the tab list is a cell-reusing table view rather than a web page.</p>
+      </div>
+      <div class="specs">
+        <div class="spec"><div class="big">&lt;&nbsp;1 MB</div><span>Release build of the app</span></div>
+        <div class="spec"><div class="big">WebKit</div><span>The engine Safari uses, with one shared data store for every tab</span></div>
+        <div class="spec"><div class="big">15 min</div><span>Idle time before a background tab gives back its memory</span></div>
+        <div class="spec"><div class="big">macOS 15.4</div><span>Or later, for WebKit's web extension API</span></div>
+      </div>
+      <div class="more">
+        <div><b>Safari Web Extensions</b><span>Tern finds Safari extensions installed with your apps, and loads unpacked Chrome, Firefox or Safari extensions in place.</span></div>
+        <div><b>Built for developers</b><span>Web Inspector and console shortcuts, copy the URL as a Markdown link, and <span class="mono" style="font-size:.9em">vscode://</span> links open in their own app.</span></div>
+        <div><b>Graphite</b><span>A quiet dark theme with a matching light one, so the page you're building stays the brightest thing on screen.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="build">
+    <div class="wrap">
+      <div class="build">
+        <div class="band-head" style="margin-bottom:0">
+          <div class="eyebrow">Get Tern</div>
+          <h2>Build it in about a minute.</h2>
+          <p>There are no signed releases yet, so Tern is built from source. You need macOS 15.4 or later, Xcode 16.3 or later, and XcodeGen.</p>
+          <p class="req">Tern is early and moving fast. It's MIT licensed, and issues and pull requests are welcome.</p>
+          <div class="ctas" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+            <a class="btn primary" href="https://github.com/TorstenDittmann/tern">Open the repository</a>
+            <a class="btn" href="https://github.com/TorstenDittmann/tern/issues">Report an issue</a>
+          </div>
+        </div>
+        <div class="term" style="min-width:0">
+          <div class="term-head"><span class="lights"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></span>zsh</div>
+<pre id="buildCmds"><span class="p">$</span> brew install xcodegen
+<span class="p">$</span> git clone https://github.com/TorstenDittmann/tern.git
+<span class="p">$</span> cd tern
+<span class="p">$</span> make run       <span class="c"># build Debug and launch</span>
+<span class="p">$</span> make release   <span class="c"># optimized Tern.app</span></pre>
+          <div class="copy-row"><button class="copy" type="button" id="copyBtn">Copy commands</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top" style="font-size:15px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 9.5c3.2-.2 6 .9 8.2 3.4L12 14.5l1.4-1.7c2.6-3 5.6-4.4 8.1-4.3-2.2 1.3-4 3.3-5.3 6.1L15 17l-3 4-3-4-1.2-2.4C6.6 12.3 4.8 10.6 2.5 9.5Z"></path></svg>
+      Tern
+    </a>
+    <span>A keyboard-first browser for macOS.</span>
+    <span style="margin-left:auto">MIT © Torsten Dittmann</span>
+    <a href="https://github.com/TorstenDittmann/tern">GitHub</a>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // Scale the 1180×720 app mock to the width it has.
+  var frame = document.getElementById('frame');
+  var app = frame.querySelector('.app');
+  function fit() { app.style.setProperty('--s', (frame.clientWidth / 1180).toFixed(4)); }
+  fit();
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(frame); else window.addEventListener('resize', fit);
+
+  // Split layout picker.
+  var stage = document.getElementById('layStage');
+  var btns = document.querySelectorAll('.lay-btn');
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      stage.setAttribute('data-l', b.dataset.l);
+      btns.forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+    });
+  });
+
+  // Copy build commands.
+  var copyBtn = document.getElementById('copyBtn');
+  copyBtn.addEventListener('click', function () {
+    var text = document.getElementById('buildCmds').innerText
+      .split('\n').map(function (l) { return l.replace(/^\$\s*/, '').replace(/\s+#.*$/, ''); }).join('\n');
+    var done = function () { copyBtn.textContent = 'Copied'; setTimeout(function () { copyBtn.textContent = 'Copy commands'; }, 1600); };
+    try {
+      navigator.clipboard.writeText(text).then(done, function () { selectCmds(); });
+    } catch (e) { selectCmds(); }
+  });
+  function selectCmds() {
+    var r = document.createRange(); r.selectNodeContents(document.getElementById('buildCmds'));
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    copyBtn.textContent = 'Press ⌘C';
+  }
+})();
+</script>
+
+</body>
+</html>
