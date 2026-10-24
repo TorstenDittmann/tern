@@ -138,10 +138,12 @@ final class SidebarViewController: NSViewController {
     /// Space between a row's edge and its chip (half the gap between rows).
     var rowChipInset: CGFloat { tableView.intercellSpacing.height / 2 }
 
-    /// The first row and the list's visible area, in window coordinates (for the smoke test).
-    var firstRowFrame: (row: NSRect, visible: NSRect)? {
+    /// The first row, the split block a split starting there would get, and the list's visible area,
+    /// in window coordinates (for the smoke test).
+    var firstRowFrame: (row: NSRect, block: NSRect, visible: NSRect)? {
         guard tableView.numberOfRows > 0, let clip = tableView.enclosingScrollView?.contentView else { return nil }
-        return (tableView.convert(tableView.rect(ofRow: 0), to: nil), clip.convert(clip.bounds, to: nil))
+        return (tableView.convert(tableView.rect(ofRow: 0), to: nil), tableView.convert(tableView.blockRect(0...0), to: nil),
+                clip.convert(clip.bounds, to: nil))
     }
 
     // MARK: Updates from the window
@@ -470,12 +472,16 @@ final class TabTableView: NSTableView {
     struct SplitRun: Equatable { var rows: ClosedRange<Int>; var onScreen: Bool }
     var splitRuns: [SplitRun] = [] { didSet { if splitRuns != oldValue { needsDisplay = true } } }
 
+    /// The block behind a run of split rows. The row rects already leave a point around each chip; staying
+    /// inside them keeps the block's top edge on screen when the split's first tab is the first row.
+    func blockRect(_ rows: ClosedRange<Int>) -> NSRect {
+        rect(ofRow: rows.lowerBound).union(rect(ofRow: rows.upperBound))
+    }
+
     override func drawBackground(inClipRect clipRect: NSRect) {
         super.drawBackground(inClipRect: clipRect)
         for run in splitRuns where run.rows.upperBound < numberOfRows {
-            // The row rects already leave a point around each chip; staying inside them keeps the block's
-            // top edge on screen when the split's first tab is the first row.
-            let rect = rect(ofRow: run.rows.lowerBound).union(rect(ofRow: run.rows.upperBound))
+            let rect = blockRect(run.rows)
             guard rect.intersects(clipRect) else { continue }
             let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: Theme.rowRadius + 2, yRadius: Theme.rowRadius + 2)
             Theme.accent.withAlphaComponent(run.onScreen ? 0.12 : 0.06).setFill()
