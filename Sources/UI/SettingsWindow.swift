@@ -102,7 +102,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         root.addSubview(grid)
         NSLayoutConstraint.activate([
             grid.topAnchor.constraint(equalTo: root.topAnchor, constant: 24),
-            grid.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -24),
+            // The pane can be taller than the grid (the window fits the tallest tab): spare room goes below.
+            grid.bottomAnchor.constraint(lessThanOrEqualTo: root.bottomAnchor, constant: -24),
             grid.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 32),
             grid.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -32),
             root.widthAnchor.constraint(equalToConstant: 520),

@@ -256,10 +256,20 @@ extension Tab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         loadsEnded += 1
+        clearStrippedUnlessCancelled(error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         loadsEnded += 1
+        clearStrippedUnlessCancelled(error)
+    }
+
+    /// A load that really failed (offline, bad host) ends the redirect guard; the cancel that
+    /// strips the tracked URL, or a new load taking over, doesn't.
+    private func clearStrippedUnlessCancelled(_ error: Error) {
+        let e = error as NSError
+        let cancelled = (e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled) || (e.domain == "WebKitErrorDomain" && e.code == 102)
+        if !cancelled { lastStripped = nil }
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
