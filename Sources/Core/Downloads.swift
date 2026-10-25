@@ -15,6 +15,7 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
         directoryOverride ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
     }
 
+    @MainActor
     final class Item {
         enum State: Equatable { case running, finished, failed(String), cancelled }
 
