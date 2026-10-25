@@ -360,7 +360,7 @@ extension Tab: WKNavigationDelegate {
         guard [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodNTLM].contains(method) else {
             return completionHandler(.performDefaultHandling, nil)
         }
-        AuthPrompt.ask(challenge, in: owner?.window, isPrivate: isPrivate) { credential in
+        AuthPrompt.ask(challenge, in: owner?.window) { credential in
             // Cancel shows the server's own 401 page, like Safari.
             completionHandler(credential == nil ? .performDefaultHandling : .useCredential, credential)
         }

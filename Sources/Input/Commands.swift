@@ -20,7 +20,7 @@ enum Command: String, CaseIterable {
     case responsiveDesignMode, rotateDevice, toggleReader
     case resetPinnedTab, repinTab, toggleCompactMode, showArchivedTabs
     case showDownloads, printPage, exportPDF, makeDefaultBrowser, toggleMuteTab, resetSitePermissions
-    case fillPassword, showPasswords, showRequests
+    case showRequests
 
     var title: String {
         switch self {
@@ -101,8 +101,6 @@ enum Command: String, CaseIterable {
         case .makeDefaultBrowser: "Make Tern the Default Browser"
         case .toggleMuteTab: "Mute or Unmute Tab"
         case .resetSitePermissions: "Reset Permissions for This Site"
-        case .fillPassword: "Fill Password"
-        case .showPasswords: "Show Passwords"
         case .showRequests: "Requests"
         }
     }
@@ -185,8 +183,6 @@ enum Command: String, CaseIterable {
         case .makeDefaultBrowser: "checkmark.seal"
         case .toggleMuteTab: "speaker.slash"
         case .resetSitePermissions: "hand.raised"
-        case .fillPassword: "key.fill"
-        case .showPasswords: "key"
         case .showRequests: "network"
         }
     }
@@ -219,7 +215,6 @@ enum CommandRouter {
             SettingsWindow.shared.general.refresh()
             return
         case .openSettings: SettingsWindow.shared.show(); return
-        case .showPasswords: SettingsWindow.shared.show(tab: SettingsWindow.passwordsTab); return
         case .showHistory: LibraryWindow.shared.show(.history); return
         case .showBookmarks: LibraryWindow.shared.show(.bookmarks); return
         case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
@@ -305,7 +300,6 @@ enum CommandRouter {
         case .exportPDF: if let tab { PagePrinter.exportPDF(tab, in: browser.window) }
         case .toggleMuteTab: tab?.isMuted.toggle()
         case .resetSitePermissions: if let url = tab?.currentURL { SitePermissions.reset(for: url) }
-        case .fillPassword: if let tab { PasswordManager.shared.fill(in: tab, from: browser.content.topBar.field) }
         case .copyURL:
             if let url = tab?.currentURL { copy(url.absoluteString) }
         case .copyMarkdownLink:
