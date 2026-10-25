@@ -20,7 +20,7 @@ enum Command: String, CaseIterable {
     case responsiveDesignMode, rotateDevice, toggleReader
     case resetPinnedTab, repinTab, toggleCompactMode, showArchivedTabs
     case showDownloads, printPage, exportPDF, makeDefaultBrowser, toggleMuteTab, resetSitePermissions
-    case fillPassword, showPasswords
+    case fillPassword, showPasswords, showRequests
 
     var title: String {
         switch self {
@@ -103,6 +103,7 @@ enum Command: String, CaseIterable {
         case .resetSitePermissions: "Reset Permissions for This Site"
         case .fillPassword: "Fill Password"
         case .showPasswords: "Show Passwords"
+        case .showRequests: "Requests"
         }
     }
 
@@ -186,6 +187,7 @@ enum Command: String, CaseIterable {
         case .resetSitePermissions: "hand.raised"
         case .fillPassword: "key.fill"
         case .showPasswords: "key"
+        case .showRequests: "network"
         }
     }
 
@@ -285,6 +287,7 @@ enum CommandRouter {
         case .zoomReset: webView?.pageZoom = 1
         case .toggleInspector: webView.map { Inspector.toggle($0) }
         case .showConsole: webView.map { Inspector.showConsole($0) }
+        case .showRequests: if let tab { RequestInspector.show(for: tab) }
         case .showSiteInfo: browser.content.topBar.showSiteInfo()
         case .urlBreakdown: browser.content.topBar.showURLBreakdown()
         case .toggleSiteBlocking:

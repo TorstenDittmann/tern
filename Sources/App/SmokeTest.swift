@@ -152,6 +152,7 @@ enum SmokeTest {
         await privateWindow(base: base)
         await pageTools(browser: browser, base: base)
         await passwords(browser: browser, base: base)
+        await requests(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
         // TERN_SMOKE_SPLIT=1 leaves a pair on screen for the snapshots; =columns|rows|grid leaves three or four tabs.
@@ -870,6 +871,41 @@ enum SmokeTest {
         settings.window?.close()
         PasswordStore.delete(ada)
         browser.close(tab)
+    }
+
+    /// The Requests window: it picks up what the page already loaded, filters, clears, and starts over on reload.
+    private static func requests(browser: BrowserWindowController, base: String) async {
+        let tab = browser.newTab(url: URL(string: "\(base)/requests.html")!)
+        await wait { tab.pageTitle == "Requests" && !tab.isLoading }
+        for _ in 0..<40 {
+            if ((try? await tab.webView?.evaluateJavaScript("document.getElementById('status').textContent")) as? String) == "Done" { break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        CommandRouter.perform(.showRequests, in: browser)
+        guard let inspector = RequestInspector.inspector(for: tab) else { return check(false, "Requests opens a window for the tab") }
+        func has(_ name: String) -> Bool { inspector.entries.contains { $0.url.hasSuffix(name) } }
+        await wait { has("style.css") && has("data.json") && has("missing.json") }
+        check(inspector.window?.isVisible == true && has("style.css") && has("data.json") && has("missing.json"),
+              "Requests lists what the page already loaded (\(inspector.entries.map { URL(string: $0.url)?.lastPathComponent ?? "" }))")
+        let missing = inspector.entries.first { $0.url.hasSuffix("missing.json") }
+        print("INFO  requests: missing.json status \(missing?.status ?? -1), type \(missing?.type ?? "none")")
+        check(missing?.status == 0 || missing?.status == 404, "a failed request shows its status when WebKit reports one")
+        inspector.filter = .fetch
+        check(!inspector.rows.isEmpty && inspector.rows.allSatisfy { $0.kind == .fetch }, "filtering to Fetch/XHR (\(inspector.rows.count) rows)")
+        inspector.filter = .stylesheet
+        check(inspector.rows.map { URL(string: $0.url)?.lastPathComponent } == ["style.css"], "filtering to stylesheets")
+        inspector.filter = .all
+        inspector.clearLog()
+        check(inspector.entries.isEmpty, "Clear empties the list")
+        let before = tab.loadsEnded
+        tab.webView?.reload()
+        await wait { tab.loadsEnded > before && !tab.isLoading }
+        await wait { has("data.json") && inspector.entries.contains { $0.kind == .document } }
+        check(has("data.json") && inspector.entries.contains { $0.kind == .document }, "requests after a reload are listed, with the document itself")
+        check(RequestInspector.curl(inspector.entries[0]).hasPrefix("curl 'http://localhost:8765/"), "Copy as cURL")
+        browser.close(tab)
+        await wait { RequestInspector.inspector(for: tab) == nil }
+        check(RequestInspector.inspector(for: tab) == nil && inspector.window?.isVisible != true, "closing the tab closes its Requests window")
     }
 
     /// Responsive design mode, the JSON viewer, and the reader.

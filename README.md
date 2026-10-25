@@ -35,6 +35,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
 - **Welcome sheet.** The first launch shows the four shortcuts worth learning, each with a Try It button. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
 - **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
+- **Requests (⌥⌘N).** A small window lists every request the tab's page made: status, type, size and time, filtered by type or URL, with failed requests in red. Double-click opens one in a tab; right-click copies the URL or a cURL command. **Preserve log** keeps it across navigations.
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
 - **Safari Web Extensions.** Tern finds Safari extensions installed with your apps and also loads unpacked or `.zip` extensions in place.
 - **Private by default.** Ads and trackers are blocked with EasyList and EasyPrivacy, compiled to native WebKit content rules, so blocking costs the page almost nothing. Links lose tracking parameters like `utm_source` and `fbclid` before they load, and third-party pings are dropped. Local dev servers (`localhost`, `*.test`, `*.local`) are left alone. **Toggle Ad Blocking for This Site** in ⌘K turns it off for a site, or on for a dev server, and Settings turns it off everywhere.
@@ -92,6 +93,7 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Peek at a link / keep it as a tab / in a split | ⌥-click / ⌘↩ / ⇧⌘↩ |
 | Zoom in / out / actual size | ⌘= / ⌘- / ⌘0 |
 | Web Inspector / console | ⌥⌘I / ⌥⌘C |
+| Requests | ⌥⌘N |
 | Copy URL / as Markdown link | ⇧⌘C / ⌥⇧⌘C |
 | Edit key bindings | ⌥⌘, |
 

@@ -121,7 +121,7 @@ final class Keymap {
         ("cmd+shift+c", .copyURL), ("cmd+alt+shift+c", .copyMarkdownLink), ("cmd+alt+l", .urlBreakdown),
         ("cmd+,", .openSettings), ("cmd+d", .toggleBookmark), ("cmd+y", .showHistory), ("cmd+alt+b", .showBookmarks), ("cmd+alt+,", .openKeymapFile),
         ("cmd+shift+j", .showDownloads), ("cmd+shift+l", .toggleCompactMode), ("cmd+ctrl+r", .responsiveDesignMode), ("cmd+alt+r", .toggleReader), ("cmd+alt+p", .printPage), ("cmd+shift+m", .toggleMuteTab),
-        ("cmd+alt+a", .fillPassword),
+        ("cmd+alt+a", .fillPassword), ("cmd+alt+n", .showRequests),
     ]
 
     /// Set by the smoke test, so it never touches your real keymap.
