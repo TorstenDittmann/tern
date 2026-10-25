@@ -35,6 +35,7 @@ enum MainMenu {
             item(.showWelcome),
             .separator(),
             item(.openSettings),
+            item(.makeDefaultBrowser),
             .separator(),
             item(.openKeymapFile),
             item(.reloadKeymap),
@@ -48,7 +49,8 @@ enum MainMenu {
 
         main.addItem(menu("File", [
             item(.newTab), item(.newWindow), item(.focusAddressBar), .separator(),
-            item(.closeTab), item(.closeWindow), item(.reopenClosedTab),
+            item(.closeTab), item(.closeWindow), item(.reopenClosedTab), .separator(),
+            item(.exportPDF), item(.printPage),
         ]))
 
         main.addItem(menu("Edit", [
@@ -70,6 +72,7 @@ enum MainMenu {
             item(.toggleSidebar), item(.moveSidebar), item(.commandPalette), item(.tabPicker), item(.linkHints), .separator(),
             item(.reload), item(.hardReload), item(.stopLoading), item(.toggleSiteBlocking), .separator(),
             item(.zoomIn), item(.zoomOut), item(.zoomReset), .separator(),
+            item(.showDownloads), .separator(),
             std("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         ]))
 
@@ -78,13 +81,13 @@ enum MainMenu {
 
         main.addItem(menu("Tabs", [
             item(.nextTab), item(.previousTab), item(.moveTabUp), item(.moveTabDown), item(.focusTabList), .separator(),
-            item(.togglePinTab),
+            item(.togglePinTab), item(.toggleMuteTab),
             item(.duplicateTab), item(.suspendBackgroundTabs), .separator(),
             item(.toggleSplit), item(.splitDown), item(.splitWith), item(.splitWithPreviousTab), item(.addPane), item(.removeFromSplit),
             item(.changeSplitLayout), item(.swapPanes), item(.focusLeftPane), item(.focusRightPane), item(.focusPaneAbove), item(.focusPaneBelow), .separator(),
         ] + [Command.selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectLastTab].map(item)))
 
-        main.addItem(menu("Develop", [item(.toggleInspector), item(.showConsole), .separator(), item(.showSiteInfo), item(.urlBreakdown)]))
+        main.addItem(menu("Develop", [item(.toggleInspector), item(.showConsole), .separator(), item(.showSiteInfo), item(.urlBreakdown), item(.resetSitePermissions)]))
 
         let ext = menu("Extensions", [])
         ext.submenu?.delegate = extensionsMenuDelegate

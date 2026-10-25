@@ -22,6 +22,8 @@ final class TopBar: NSView {
     private lazy var forwardButton = HoverButton(symbol: "chevron.forward", label: "Forward", target: self, action: #selector(forwardClicked))
     private lazy var reloadButton = HoverButton(symbol: "arrow.clockwise", label: "Reload", target: self, action: #selector(reloadClicked))
     private(set) lazy var splitButton = HoverButton(symbol: "rectangle.split.2x1", label: "Split View", target: self, action: #selector(splitClicked))
+    /// Shown once something has been downloaded this session; lit while a download runs.
+    private(set) lazy var downloadsButton = HoverButton(symbol: "arrow.down.circle", label: "Downloads", target: self, action: #selector(downloadsClicked))
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -35,11 +37,15 @@ final class TopBar: NSView {
         NotificationCenter.default.addObserver(forName: BookmarkStore.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateChrome() }
         }
+        NotificationCenter.default.addObserver(forName: DownloadManager.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateDownloadsButton() }
+        }
         pill.translatesAutoresizingMaskIntoConstraints = false
-        let stack = NSStackView(views: [sidebarLeft, backButton, forwardButton, reloadButton, pill, splitButton, sidebarRight])
+        let stack = NSStackView(views: [sidebarLeft, backButton, forwardButton, reloadButton, pill, downloadsButton, splitButton, sidebarRight])
         stack.spacing = 2
         stack.setCustomSpacing(8, after: reloadButton)
         stack.setCustomSpacing(8, after: pill)
+        stack.setCustomSpacing(4, after: downloadsButton)
         stack.setCustomSpacing(4, after: splitButton)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -49,8 +55,27 @@ final class TopBar: NSView {
             pill.heightAnchor.constraint(equalToConstant: Self.height),
         ])
         setSidebarSide(right: false)
+        updateDownloadsButton()
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    private func updateDownloadsButton() {
+        let manager = DownloadManager.shared
+        downloadsButton.isHidden = manager.items.isEmpty
+        let running = manager.runningCount
+        downloadsButton.contentTintColor = running > 0 ? Theme.accent : .secondaryLabelColor
+        downloadsButton.image = Theme.symbol(running > 0 ? "arrow.down.circle.fill" : "arrow.down.circle")
+        let keys = Keymap.shared.primaryChord(for: .showDownloads).map { " (\($0))" } ?? ""
+        downloadsButton.toolTip = (running > 0 ? "Downloads: \(running) in progress" : "Downloads") + keys
+    }
+
+    /// The downloads popover, from the downloads button (or the address bar while the button is hidden).
+    func showDownloads() {
+        if popover?.contentViewController is DownloadsController, popover?.isShown == true { popover?.close(); return }
+        let controller = DownloadsController()
+        controller.browser = browser
+        present(controller, from: downloadsButton.isHidden ? pill : downloadsButton)
+    }
 
     /// The toggle sits on the sidebar's side.
     func setSidebarSide(right: Bool) {
@@ -105,6 +130,7 @@ final class TopBar: NSView {
     }
 
     @objc private func sidebarClicked() { browser?.toggleSidebar() }
+    @objc private func downloadsClicked() { showDownloads() }
     @objc private func splitClicked() { browser.map { CommandRouter.perform(.toggleSplit, in: $0) } }
     @objc private func backClicked() { browser?.activeTab?.webView?.goBack() }
     @objc private func forwardClicked() { browser?.activeTab?.webView?.goForward() }

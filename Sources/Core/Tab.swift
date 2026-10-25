@@ -24,6 +24,13 @@ final class Tab: NSObject {
     var isAgentDriving = false
     /// Pinned tabs stay at the top of the list, in their own block, and survive "Close Other Tabs".
     var isPinned = false
+    /// Muted tabs stay muted when they're suspended and restored.
+    var isMuted = false {
+        didSet { guard isMuted != oldValue else { return }; applyMute(); owner?.tabDidChange(self) }
+    }
+    /// The page is playing sound right now (muted or not).
+    private(set) var isPlayingAudio = false
+    private weak var audioObserved: WKWebView?
 
     private var pendingState: Any?
     /// Where tracking parameters were last removed on the way to, until that load finishes, so a
@@ -89,6 +96,8 @@ final class Tab: NSObject {
         guard let wv = webView, !isVisible else { return }
         pendingState = wv.interactionState
         observations.removeAll()
+        stopObservingAudio()
+        isPlayingAudio = false
         wv.navigationDelegate = nil
         wv.uiDelegate = nil
         wv.stopLoading()
@@ -102,6 +111,7 @@ final class Tab: NSObject {
     /// Tears the tab down for good (tab closed or window closing).
     func discard() {
         observations.removeAll()
+        stopObservingAudio()
         webView?.navigationDelegate = nil
         webView?.uiDelegate = nil
         webView?.stopLoading()
@@ -159,6 +169,47 @@ final class Tab: NSObject {
             },
         ]
         webView = wv
+        observeAudio(wv)
+        if isMuted { applyMute() }
+    }
+
+    // MARK: Sound
+
+    // WebKit's public API can pause media but not mute it, or say whether a page is playing sound.
+    // `_setPageMuted:` and `_isPlayingAudio` are SPI that Safari uses; both are checked for first.
+    private nonisolated static let isPlayingAudioKey = "_isPlayingAudio"
+
+    private func observeAudio(_ wv: WKWebView) {
+        guard wv.responds(to: NSSelectorFromString(Self.isPlayingAudioKey)) else { return }
+        wv.addObserver(self, forKeyPath: Self.isPlayingAudioKey, options: [.initial, .new], context: nil)
+        audioObserved = wv
+    }
+
+    private func stopObservingAudio() {
+        audioObserved?.removeObserver(self, forKeyPath: Self.isPlayingAudioKey)
+        audioObserved = nil
+    }
+
+    override nonisolated func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?,
+                                           context: UnsafeMutableRawPointer?) {
+        guard keyPath == Self.isPlayingAudioKey else { return }
+        let playing = (change?[.newKey] as? Bool) ?? false
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard self.isPlayingAudio != playing else { return }
+                self.isPlayingAudio = playing
+                self.owner?.tabDidChange(self)
+            }
+        }
+    }
+
+    private func applyMute() {
+        guard let wv = webView else { return }
+        let sel = NSSelectorFromString("_setPageMuted:")
+        guard let method = class_getInstanceMethod(type(of: wv), sel) else { return }
+        typealias SetMuted = @convention(c) (AnyObject, Selector, UInt) -> Void
+        // _WKMediaMutedState: 1 mutes audio; camera and microphone are left alone.
+        unsafeBitCast(method_getImplementation(method), to: SetMuted.self)(wv, sel, isMuted ? 1 : 0)
     }
 
     private func changed(_ props: WKWebExtension.TabChangedProperties) {
@@ -244,11 +295,11 @@ extension Tab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        download.delegate = DownloadManager.shared
+        DownloadManager.shared.track(download)
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = DownloadManager.shared
+        DownloadManager.shared.track(download)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -278,6 +329,19 @@ extension Tab: WKNavigationDelegate {
         let e = error as NSError
         let cancelled = (e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled) || (e.domain == "WebKitErrorDomain" && e.code == 102)
         if !cancelled { lastStripped = nil }
+    }
+
+    /// HTTP basic and digest auth get a sign-in sheet; certificates and everything else, WebKit's default.
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                 completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let method = challenge.protectionSpace.authenticationMethod
+        guard [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodNTLM].contains(method) else {
+            return completionHandler(.performDefaultHandling, nil)
+        }
+        AuthPrompt.ask(challenge, in: owner?.window) { credential in
+            // Cancel shows the server's own 401 page, like Safari.
+            completionHandler(credential == nil ? .performDefaultHandling : .useCredential, credential)
+        }
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -342,43 +406,26 @@ extension Tab: WKUIDelegate {
         panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.urls : nil) }
     }
 
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo,
+                 type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        SitePermissions.ask(.init(type), origin: SitePermissions.origin(origin), in: owner?.window) { decisionHandler($0 ? .grant : .deny) }
+    }
+
+    // Geolocation has no public delegate method on macOS; these are the WKUIDelegatePrivate ones
+    // (the newer one first). Without them WebKit denies every request.
+    @objc(_webView:requestGeolocationPermissionForOrigin:initiatedByFrame:decisionHandler:)
+    func requestGeolocationPermission(_ webView: WKWebView, origin: WKSecurityOrigin, frame: WKFrameInfo,
+                                      decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        SitePermissions.ask(.location, origin: SitePermissions.origin(origin), in: owner?.window) { decisionHandler($0 ? .grant : .deny) }
+    }
+
+    @objc(_webView:requestGeolocationPermissionForFrame:decisionHandler:)
+    func requestGeolocationPermission(_ webView: WKWebView, frame: WKFrameInfo, decisionHandler: @escaping (Bool) -> Void) {
+        SitePermissions.ask(.location, origin: SitePermissions.origin(frame.securityOrigin), in: owner?.window, completion: decisionHandler)
+    }
+
     private func present(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
         if let window = owner?.window { alert.beginSheetModal(for: window, completionHandler: completion) }
         else { completion(alert.runModal()) }
-    }
-}
-
-// MARK: - Downloads
-
-@MainActor
-final class DownloadManager: NSObject, WKDownloadDelegate {
-    static let shared = DownloadManager()
-    private var destinations: [ObjectIdentifier: URL] = [:]
-
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
-                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-        let base = (suggestedFilename as NSString).deletingPathExtension
-        let ext = (suggestedFilename as NSString).pathExtension
-        var url = dir.appendingPathComponent(suggestedFilename)
-        var n = 1
-        while FileManager.default.fileExists(atPath: url.path) {
-            url = dir.appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
-            n += 1
-        }
-        destinations[ObjectIdentifier(download)] = url
-        completionHandler(url)
-    }
-
-    func downloadDidFinish(_ download: WKDownload) {
-        // Makes the Downloads stack in the Dock bounce, like Safari.
-        if let url = destinations.removeValue(forKey: ObjectIdentifier(download)) {
-            DistributedNotificationCenter.default().post(name: .init("com.apple.DownloadFileFinished"), object: url.path)
-        }
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        destinations.removeValue(forKey: ObjectIdentifier(download))
-        NSLog("Tern download failed: \(error.localizedDescription)")
     }
 }

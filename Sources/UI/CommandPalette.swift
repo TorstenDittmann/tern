@@ -233,13 +233,16 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
                 let matchedCommands = mode == .splitWith ? [] : commands.compactMap { c in
                     Self.score(q, c.title).map { ($0 + Frecency.bonus(CommandUsage.frecency(c)), c) }
                 }.sorted { $0.0 > $1.0 }.map(\.1)
-                let looksLikeURL = q.contains(".") || q.contains("://") || q.hasPrefix("localhost")
+                let bang = Bangs.parse(q) != nil
+                let looksLikeURL = !bang && (q.contains(".") || q.contains("://") || q.hasPrefix("localhost"))
+                // A !bang goes first: it's what the user asked for.
+                if bang { result.append(.open(q)) }
                 if looksLikeURL { result.append(.open(q)) }
                 if !matchedTabs.isEmpty { result.append(.header("Tabs")); result += matchedTabs.map(Item.tab) }
                 if !matchedBookmarks.isEmpty { result.append(.header("Bookmarks")); result += matchedBookmarks.map(Item.bookmark) }
                 if !matchedPages.isEmpty { result.append(.header("History")); result += matchedPages.map(Item.page) }
                 if !matchedCommands.isEmpty { result.append(.header("Commands")); result += matchedCommands.map(Item.command) }
-                if !looksLikeURL {
+                if !looksLikeURL && !bang {
                     result.append(.header("Web"))
                     result.append(.open(q))
                 }
@@ -385,6 +388,13 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             ])
             return v
         case .open(let input):
+            if let (bang, query) = Bangs.parse(input) {
+                return PaletteCell(icon: Theme.symbol(query.isEmpty ? "arrow.up.forward.app" : "magnifyingglass", size: 14),
+                                   tinted: true,
+                                   title: query.isEmpty ? "Open \(bang.name)" : "Search \(bang.name) for “\(query)”",
+                                   subtitle: "!\(bang.trigger)",
+                                   accessory: KeycapView(glyphs: ["↩"]))
+            }
             let url = BrowserEngine.shared.resolve(input: input)
             let searchPrefix = BrowserEngine.shared.searchTemplate.components(separatedBy: "%s")[0]
             let isSearch = url?.absoluteString.hasPrefix(searchPrefix) ?? false
