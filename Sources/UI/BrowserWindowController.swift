@@ -8,6 +8,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Stable for the window's lifetime; how the agent API names windows.
     let id = UUID()
+    /// A private window: its tabs share a data store that lives only in memory, record no history,
+    /// aren't saved with the session, and are invisible to extensions.
+    let isPrivate: Bool
+    private lazy var privateConfiguration: WKWebViewConfiguration = {
+        let c = BrowserEngine.shared.webViewConfiguration.copy() as! WKWebViewConfiguration
+        c.websiteDataStore = .nonPersistent()
+        c.webExtensionController = nil
+        return c
+    }()
+
+    /// What a tab in this window creates its web view with.
+    func webViewConfiguration(for url: URL?) -> WKWebViewConfiguration {
+        isPrivate ? privateConfiguration : BrowserEngine.shared.configuration(for: url)
+    }
     private(set) var tabs: [Tab] = []
     private(set) var activeTab: Tab?
     private(set) var split: SplitGroup?
@@ -36,7 +50,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// The collapsed state the content and top bar were last laid out for.
     private var laidOutCollapsed = false
 
-    init(tabs initial: [Tab], active: Int, frame: NSRect?, sidebarCollapsed: Bool) {
+    init(tabs initial: [Tab], active: Int, frame: NSRect?, sidebarCollapsed: Bool, isPrivate: Bool = false) {
+        self.isPrivate = isPrivate
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -108,7 +123,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Called once the window is registered with the app, so extensions see a consistent world.
     func announceToExtensions() {
-        guard !isAnnounced else { return }
+        guard !isAnnounced, !isPrivate else { return }
         isAnnounced = true
         extensions.didOpenWindow(self)
         tabs.forEach { extensions.didOpenTab($0) }

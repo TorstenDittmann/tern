@@ -32,6 +32,7 @@ final class BrowserEngine {
         c.applicationNameForUserAgent = "Version/26.0 Safari/605.1.15"
         // Turns on the "Inspect Element" context menu item for every page.
         c.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        c.userContentController.addUserScript(JSONViewer.userScript)
         return c
     }()
 

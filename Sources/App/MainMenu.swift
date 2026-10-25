@@ -48,7 +48,7 @@ enum MainMenu {
         ]))
 
         main.addItem(menu("File", [
-            item(.newTab), item(.newWindow), item(.focusAddressBar), .separator(),
+            item(.newTab), item(.newWindow), item(.newPrivateWindow), item(.focusAddressBar), .separator(),
             item(.closeTab), item(.closeWindow), item(.reopenClosedTab), .separator(),
             item(.exportPDF), item(.printPage),
         ]))
@@ -72,7 +72,7 @@ enum MainMenu {
             item(.toggleSidebar), item(.moveSidebar), item(.commandPalette), item(.tabPicker), item(.linkHints), .separator(),
             item(.reload), item(.hardReload), item(.stopLoading), item(.toggleSiteBlocking), .separator(),
             item(.zoomIn), item(.zoomOut), item(.zoomReset), .separator(),
-            item(.showDownloads), .separator(),
+            item(.toggleReader), item(.showDownloads), .separator(),
             std("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         ]))
 
@@ -87,7 +87,8 @@ enum MainMenu {
             item(.changeSplitLayout), item(.swapPanes), item(.focusLeftPane), item(.focusRightPane), item(.focusPaneAbove), item(.focusPaneBelow), .separator(),
         ] + [Command.selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5, .selectTab6, .selectTab7, .selectTab8, .selectLastTab].map(item)))
 
-        main.addItem(menu("Develop", [item(.toggleInspector), item(.showConsole), .separator(), item(.showSiteInfo), item(.urlBreakdown), item(.resetSitePermissions)]))
+        main.addItem(menu("Develop", [item(.toggleInspector), item(.showConsole), .separator(),
+            item(.responsiveDesignMode), item(.rotateDevice), .separator(), item(.showSiteInfo), item(.urlBreakdown), item(.resetSitePermissions)]))
 
         let ext = menu("Extensions", [])
         ext.submenu?.delegate = extensionsMenuDelegate

@@ -22,6 +22,9 @@ final class TopBar: NSView {
     private lazy var forwardButton = HoverButton(symbol: "chevron.forward", label: "Forward", target: self, action: #selector(forwardClicked))
     private lazy var reloadButton = HoverButton(symbol: "arrow.clockwise", label: "Reload", target: self, action: #selector(reloadClicked))
     private(set) lazy var splitButton = HoverButton(symbol: "rectangle.split.2x1", label: "Split View", target: self, action: #selector(splitClicked))
+    /// "Private" next to the address bar in a private window.
+    private let privateBadge = PrivateBadge()
+    var showsPrivateBadge: Bool { !privateBadge.isHidden }
     /// Shown once something has been downloaded this session; lit while a download runs.
     private(set) lazy var downloadsButton = HoverButton(symbol: "arrow.down.circle", label: "Downloads", target: self, action: #selector(downloadsClicked))
 
@@ -41,9 +44,11 @@ final class TopBar: NSView {
             MainActor.assumeIsolated { self?.updateDownloadsButton() }
         }
         pill.translatesAutoresizingMaskIntoConstraints = false
-        let stack = NSStackView(views: [sidebarLeft, backButton, forwardButton, reloadButton, pill, downloadsButton, splitButton, sidebarRight])
+        let stack = NSStackView(views: [sidebarLeft, backButton, forwardButton, reloadButton, privateBadge, pill, downloadsButton, splitButton, sidebarRight])
         stack.spacing = 2
         stack.setCustomSpacing(8, after: reloadButton)
+        stack.setCustomSpacing(6, after: privateBadge)
+        privateBadge.isHidden = true
         stack.setCustomSpacing(8, after: pill)
         stack.setCustomSpacing(4, after: downloadsButton)
         stack.setCustomSpacing(4, after: splitButton)
@@ -87,6 +92,9 @@ final class TopBar: NSView {
 
     func updateChrome() {
         let tab = browser?.activeTab
+        let isPrivate = browser?.isPrivate ?? false
+        privateBadge.isHidden = !isPrivate
+        field.placeholderString = isPrivate ? "Search privately or enter URL" : "Search or enter URL"
         pill.show(url: tab?.currentURL, bookmarked: BookmarkStore.shared.contains(tab?.currentURL))
         backButton.isEnabled = tab?.webView?.canGoBack ?? false
         forwardButton.isEnabled = tab?.webView?.canGoForward ?? false
@@ -290,3 +298,29 @@ final class AddressField: NSTextField {
     }
 }
 
+/// The pill that marks a private window: nothing in it is saved.
+final class PrivateBadge: FilledView {
+    init() {
+        super.init(frame: .zero)
+        fill = Theme.accentWash
+        radius = 7
+        toolTip = "Private window: no history, and cookies and site data are forgotten when it closes"
+        let icon = NSImageView(image: Theme.symbol("eye.slash", size: 11, weight: .semibold)!)
+        icon.contentTintColor = Theme.accent
+        let label = NSTextField(labelWithString: "Private")
+        label.font = .systemFont(ofSize: 11.5, weight: .semibold)
+        label.textColor = Theme.accent
+        let stack = NSStackView(views: [icon, label])
+        stack.spacing = 4
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 9)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            heightAnchor.constraint(equalToConstant: TopBar.height),
+        ])
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}

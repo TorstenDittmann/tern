@@ -8,6 +8,8 @@ import WebKit
 final class Tab: NSObject {
     let id: UUID
     weak var owner: BrowserWindowController?
+    /// For a tab that has no owner yet (a link peek): the window whose data store it uses.
+    weak var homeWindow: BrowserWindowController?
 
     private(set) var webView: WKWebView?
     private(set) var currentURL: URL?
@@ -28,6 +30,15 @@ final class Tab: NSObject {
     var isMuted = false {
         didSet { guard isMuted != oldValue else { return }; applyMute(); owner?.tabDidChange(self) }
     }
+    /// Responsive design mode: the device this tab's page is laid out as, or nil.
+    var devicePreview: DevicePreview? {
+        didSet {
+            guard devicePreview != oldValue else { return }
+            if let preview = devicePreview { DevicePreview.lastPreset = preview.preset }
+            if let webView { DeviceEmulation.apply(devicePreview, to: webView) }
+            owner?.tabDidChange(self)
+        }
+    }
     /// The page is playing sound right now (muted or not).
     private(set) var isPlayingAudio = false
     private weak var audioObserved: WKWebView?
@@ -39,6 +50,8 @@ final class Tab: NSObject {
     private var observations: [NSKeyValueObservation] = []
 
     var isSuspended: Bool { webView == nil }
+    /// In a private window: no history, and a data store that's thrown away with the window.
+    var isPrivate: Bool { (owner ?? homeWindow)?.isPrivate ?? false }
     var isActive: Bool { owner?.activeTab === self }
     /// On screen: the active tab, or the other half of its split. Never suspended.
     var isVisible: Bool { owner?.visibleTabs.contains(self) ?? false }
@@ -71,7 +84,8 @@ final class Tab: NSObject {
     @discardableResult
     func materialize() -> WKWebView {
         if let webView { return webView }
-        let wv = TernWebView(frame: .zero, configuration: BrowserEngine.shared.configuration(for: currentURL))
+        let wv = TernWebView(frame: .zero, configuration: (owner ?? homeWindow)?.webViewConfiguration(for: currentURL)
+            ?? BrowserEngine.shared.configuration(for: currentURL))
         attach(wv)
         if let state = pendingState {
             wv.interactionState = state
@@ -145,7 +159,7 @@ final class Tab: NSObject {
                 MainActor.assumeIsolated {
                     self?.pageTitle = wv.title
                     self?.changed([.title])
-                    HistoryStore.shared.updateTitle(wv.title, for: wv.url)
+                    if self?.isPrivate == false { HistoryStore.shared.updateTitle(wv.title, for: wv.url) }
                 }
             },
             wv.observe(\.url) { [weak self] wv, _ in
@@ -171,6 +185,7 @@ final class Tab: NSObject {
         webView = wv
         observeAudio(wv)
         if isMuted { applyMute() }
+        if devicePreview != nil { DeviceEmulation.apply(devicePreview, to: wv) }
     }
 
     // MARK: Sound
@@ -215,7 +230,7 @@ final class Tab: NSObject {
     private func changed(_ props: WKWebExtension.TabChangedProperties) {
         owner?.tabDidChange(self)
         AgentServer.shared.tabDidChange(self)
-        if owner != nil {
+        if let owner, !owner.isPrivate {
             BrowserEngine.shared.extensionController.didChangeTabProperties(props, for: self)
         }
     }
@@ -306,7 +321,7 @@ extension Tab: WKNavigationDelegate {
         loadsEnded += 1
         lastStripped = nil
         Metrics.markPageLoaded()
-        if let url = webView.url { HistoryStore.shared.recordVisit(url, title: webView.title) }
+        if let url = webView.url, !isPrivate { HistoryStore.shared.recordVisit(url, title: webView.title) }
         FaviconLoader.load(for: webView) { [weak self] image in
             self?.favicon = image
             if let self { self.owner?.tabDidChange(self) }

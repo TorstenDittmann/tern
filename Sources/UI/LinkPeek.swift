@@ -29,6 +29,7 @@ final class LinkPeek: NSView {
 
     init(url: URL, from anchor: Tab) {
         tab = Tab(url: url)
+        tab.homeWindow = anchor.owner
         self.anchor = anchor
         super.init(frame: .zero)
         wantsLayer = true

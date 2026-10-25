@@ -12,6 +12,8 @@ final class ContentViewController: NSViewController {
     private let dropZone = SplitDropView()
     private var shown: [Tab] = []
     private weak var focusedWebView: WKWebView?
+    /// Open reader views, by tab.
+    private var readers: [UUID: ReaderView] = [:]
     let topBar = TopBar()
     private var panesLeading: NSLayoutConstraint!
     private var panesTrailing: NSLayoutConstraint!
@@ -103,6 +105,7 @@ final class ContentViewController: NSViewController {
             }
             // In a split each pane gets a header with its host, so you can tell the panes apart.
             card.showsHeader = tabs.count > 1
+            card.setDevice(i < tabs.count ? tabs[i].devicePreview : nil, for: i < tabs.count ? tabs[i] : nil)
             webView?.frame = card.pageFrame
             if i < tabs.count { card.header.show(tabs[i].currentURL) }
             card.isFocusedPane = tabs.count > 1 && i < tabs.count && tabs[i] === focused
@@ -110,6 +113,7 @@ final class ContentViewController: NSViewController {
             if i < tabs.count { card.progress.set(progress: tabs[i].progress, visible: tabs[i].isLoading) }
         }
         focusedWebView = focused.webView
+        placeReaders()
     }
 
     func update(for tab: Tab) {
@@ -117,6 +121,48 @@ final class ContentViewController: NSViewController {
         panes.cards[i].progress.set(progress: tab.progress, visible: tab.isLoading)
         panes.cards[i].agentRing.isShown = tab.isAgentDriving
         panes.cards[i].header.show(tab.currentURL)
+        panes.cards[i].setDevice(tab.devicePreview, for: tab)
+        if let reader = readers[tab.id], reader.source.absoluteString != tab.currentURL?.absoluteString { closeReader(for: tab) }
+    }
+
+    // MARK: Reader
+
+    func reader(for tab: Tab) -> ReaderView? { readers[tab.id] }
+
+    /// Opens the page's article in the reader, or closes the reader. Beeps when there's no article.
+    func toggleReader(for tab: Tab) {
+        if readers[tab.id] != nil { return closeReader(for: tab) }
+        guard let webView = tab.webView, let url = tab.currentURL else { return NSSound.beep() }
+        Task {
+            guard let article = await Reader.extract(from: webView), tab.currentURL == url else { return NSSound.beep() }
+            let reader = ReaderView(article: article, source: url)
+            reader.onOpenLink = { [weak self, weak tab] url, newTab in
+                guard let self, let tab, let browser = self.browser else { return }
+                if newTab { browser.newTab(url: url, activate: false, after: tab) } else { self.closeReader(for: tab); tab.load(url) }
+            }
+            readers[tab.id] = reader
+            placeReaders()
+            if tab.isActive { view.window?.makeFirstResponder(reader.webView) }
+        }
+    }
+
+    func closeReader(for tab: Tab) {
+        guard let reader = readers.removeValue(forKey: tab.id) else { return }
+        reader.removeFromSuperview()
+        if tab.isActive { view.window?.makeFirstResponder(tab.webView) }
+    }
+
+    /// Puts each shown tab's reader over its page, and takes readers of tabs that aren't shown off screen.
+    private func placeReaders() {
+        let open = Set((browser?.tabs ?? []).map(\.id))
+        for id in readers.keys where !open.contains(id) { readers.removeValue(forKey: id)?.removeFromSuperview() }
+        for (id, reader) in readers {
+            guard let i = shown.firstIndex(where: { $0.id == id }) else { reader.removeFromSuperview(); continue }
+            let card = panes.cards[i]
+            if reader.superview !== card.clip { card.clip.addSubview(reader, positioned: .below, relativeTo: card.progress) }
+            reader.autoresizingMask = card.device == nil ? [.width, .height] : []
+            reader.frame = card.pageFrame
+        }
     }
 
     // MARK: Drag a tab onto the page
@@ -303,6 +349,10 @@ final class CardView: NSView {
     let progress = ProgressLine()
     let agentRing = AgentRingView()
     let header = PaneHeader()
+    /// Responsive design mode's bar, below the header.
+    let deviceBar = DeviceBar()
+    private(set) var device: DevicePreview?
+    private var deviceBarTop: NSLayoutConstraint!
 
     /// In split view the pane with keyboard focus gets an accent ring with a soft glow.
     var isFocusedPane = false {
@@ -319,15 +369,40 @@ final class CardView: NSView {
         didSet {
             guard showsHeader != oldValue else { return }
             header.isHidden = !showsHeader
+            deviceBarTop?.constant = showsHeader ? PaneHeader.height : 0
             for case let webView as WKWebView in clip.subviews { webView.frame = pageFrame }
         }
     }
 
-    /// Where the web view goes in `clip`: all of it, or below the header.
+    /// Where the web view goes in `clip`: all of it, or below the header. In responsive design mode, the
+    /// device's size (or as much of it as fits), centered below the device bar.
     var pageFrame: NSRect {
         var frame = clip.bounds
         if showsHeader { frame.size.height -= PaneHeader.height }
-        return frame
+        guard let device else { return frame }
+        frame.size.height -= DeviceBar.height
+        let margin: CGFloat = 12
+        let size = device.size
+        let w = max(1, min(size.width, frame.width - 2 * margin)), h = max(1, min(size.height, frame.height - 2 * margin))
+        return NSRect(x: (frame.midX - w / 2).rounded(), y: frame.maxY - margin - h, width: w, height: h)
+    }
+
+    /// Shows `preview`'s device for `tab`'s page, or the page at full size when it's nil.
+    func setDevice(_ preview: DevicePreview?, for tab: Tab?) {
+        deviceBar.onChange = { [weak tab] p in tab?.devicePreview = p }
+        guard preview != nil || device != nil else { return }
+        device = preview
+        deviceBar.isHidden = preview == nil
+        clip.fill = preview == nil ? .textBackgroundColor : Theme.ground
+        layoutDevicePage()
+    }
+
+    private func layoutDevicePage() {
+        for page in clip.subviews where page is WKWebView || page is ReaderView {
+            page.autoresizingMask = device == nil ? [.width, .height] : []
+            page.frame = pageFrame
+        }
+        if let device { deviceBar.show(device, shown: pageFrame.size) }
     }
 
     override init(frame: NSRect) {
@@ -342,11 +417,19 @@ final class CardView: NSView {
         agentRing.translatesAutoresizingMaskIntoConstraints = false
         header.translatesAutoresizingMaskIntoConstraints = false
         header.isHidden = true
+        deviceBar.translatesAutoresizingMaskIntoConstraints = false
+        deviceBar.isHidden = true
         addSubview(clip)
         addSubview(agentRing)
         clip.addSubview(header)
+        clip.addSubview(deviceBar)
         clip.addSubview(progress)
+        deviceBarTop = deviceBar.topAnchor.constraint(equalTo: clip.topAnchor)
         NSLayoutConstraint.activate([
+            deviceBarTop,
+            deviceBar.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            deviceBar.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            deviceBar.heightAnchor.constraint(equalToConstant: DeviceBar.height),
             header.topAnchor.constraint(equalTo: clip.topAnchor),
             header.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
@@ -365,6 +448,7 @@ final class CardView: NSView {
 
     override func layout() {
         super.layout()
+        if device != nil { layoutDevicePage() }
         clip.layer?.masksToBounds = true
         layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Theme.cardRadius, cornerHeight: Theme.cardRadius, transform: nil)
     }

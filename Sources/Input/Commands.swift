@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 enum Command: String, CaseIterable {
-    case newTab, newWindow, closeTab, closeWindow, reopenClosedTab, duplicateTab
+    case newTab, newWindow, newPrivateWindow, closeTab, closeWindow, reopenClosedTab, duplicateTab
     case focusAddressBar, commandPalette, tabPicker, toggleSidebar, moveSidebar
     case reload, hardReload, stopLoading, goBack, goForward
     case nextTab, previousTab, moveTabUp, moveTabDown, focusTabList, togglePinTab
@@ -17,12 +17,14 @@ enum Command: String, CaseIterable {
     case toggleAgentAPI, clearHistory, showWelcome, openSettings
     case toggleBookmark, showHistory, showBookmarks
     case toggleSiteBlocking
+    case responsiveDesignMode, rotateDevice, toggleReader
     case showDownloads, printPage, exportPDF, makeDefaultBrowser, toggleMuteTab, resetSitePermissions
 
     var title: String {
         switch self {
         case .newTab: "New Tab"
         case .newWindow: "New Window"
+        case .newPrivateWindow: "New Private Window"
         case .closeTab: "Close Tab"
         case .closeWindow: "Close Window"
         case .reopenClosedTab: "Reopen Closed Tab"
@@ -84,6 +86,9 @@ enum Command: String, CaseIterable {
         case .showHistory: "Show History"
         case .showBookmarks: "Show Bookmarks"
         case .toggleSiteBlocking: "Toggle Ad Blocking for This Site"
+        case .responsiveDesignMode: "Responsive Design Mode"
+        case .rotateDevice: "Rotate Device"
+        case .toggleReader: "Reader"
         case .showDownloads: "Show Downloads"
         case .printPage: "Print…"
         case .exportPDF: "Export as PDF…"
@@ -98,6 +103,7 @@ enum Command: String, CaseIterable {
         switch self {
         case .newTab: "plus.square"
         case .newWindow: "macwindow.badge.plus"
+        case .newPrivateWindow: "eye.slash"
         case .closeTab: "xmark.square"
         case .closeWindow: "xmark.rectangle"
         case .reopenClosedTab: "arrow.uturn.backward.square"
@@ -157,6 +163,9 @@ enum Command: String, CaseIterable {
         case .showHistory: "clock"
         case .showBookmarks: "book"
         case .toggleSiteBlocking: "shield.lefthalf.filled"
+        case .responsiveDesignMode: "iphone"
+        case .rotateDevice: "rotate.right"
+        case .toggleReader: "text.page"
         case .showDownloads: "arrow.down.circle"
         case .printPage: "printer"
         case .exportPDF: "doc.richtext"
@@ -180,6 +189,7 @@ enum CommandRouter {
         // Commands that don't need a window.
         switch command {
         case .newWindow: app.openWindow(); return
+        case .newPrivateWindow: app.openWindow(isPrivate: true); return
         case .reloadKeymap: app.reloadKeymap(); return
         case .openKeymapFile:
             Keymap.shared.ensureFileExists()
@@ -261,6 +271,10 @@ enum CommandRouter {
         case .toggleSiteBlocking:
             ContentBlocker.shared.toggle(for: tab?.currentURL)
             webView?.reload()
+        case .responsiveDesignMode:
+            if let tab { tab.devicePreview = tab.devicePreview == nil ? DevicePreview(preset: DevicePreview.lastPreset) : nil }
+        case .rotateDevice: tab?.devicePreview?.landscape.toggle()
+        case .toggleReader: if let tab { browser.content.toggleReader(for: tab) }
         case .showDownloads: browser.content.topBar.showDownloads()
         case .printPage: if let tab { PagePrinter.print(tab, in: browser.window) }
         case .exportPDF: if let tab { PagePrinter.exportPDF(tab, in: browser.window) }

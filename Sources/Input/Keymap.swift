@@ -98,7 +98,7 @@ final class Keymap {
     static let shared = Keymap()
 
     static let defaults: [(String, Command)] = [
-        ("cmd+t", .newTab), ("cmd+n", .newWindow), ("cmd+w", .closeTab), ("cmd+shift+w", .closeWindow),
+        ("cmd+t", .newTab), ("cmd+n", .newWindow), ("cmd+shift+n", .newPrivateWindow), ("cmd+w", .closeTab), ("cmd+shift+w", .closeWindow),
         ("cmd+shift+t", .reopenClosedTab), ("cmd+shift+d", .duplicateTab),
         ("cmd+l", .focusAddressBar), ("cmd+k", .commandPalette), ("cmd+shift+p", .commandPalette),
         ("cmd+p", .tabPicker), ("cmd+shift+a", .tabPicker),
@@ -120,7 +120,7 @@ final class Keymap {
         ("cmd+alt+i", .toggleInspector), ("cmd+alt+c", .showConsole),
         ("cmd+shift+c", .copyURL), ("cmd+alt+shift+c", .copyMarkdownLink), ("cmd+alt+l", .urlBreakdown),
         ("cmd+,", .openSettings), ("cmd+d", .toggleBookmark), ("cmd+y", .showHistory), ("cmd+alt+b", .showBookmarks), ("cmd+alt+,", .openKeymapFile),
-        ("cmd+shift+j", .showDownloads), ("cmd+alt+p", .printPage), ("cmd+shift+m", .toggleMuteTab),
+        ("cmd+shift+j", .showDownloads), ("cmd+ctrl+r", .responsiveDesignMode), ("cmd+alt+r", .toggleReader), ("cmd+alt+p", .printPage), ("cmd+shift+m", .toggleMuteTab),
     ]
 
     /// Set by the smoke test, so it never touches your real keymap.
