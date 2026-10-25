@@ -24,12 +24,15 @@ final class ArchiveStore {
         entries = saved
     }
 
-    func archive(_ tab: Tab) {
-        guard let url = tab.currentURL, HistoryStore.isRecordable(url) else { return }
+    /// False for pages the archive can't bring back (blank tabs, file:// and other non-web URLs).
+    @discardableResult
+    func archive(_ tab: Tab) -> Bool {
+        guard let url = tab.currentURL, HistoryStore.isRecordable(url) else { return false }
         entries.removeAll { $0.url == url.absoluteString }
         entries.insert(Entry(url: url.absoluteString, title: tab.pageTitle, archived: Date()), at: 0)
         if entries.count > Self.limit { entries.removeLast(entries.count - Self.limit) }
         changed()
+        return true
     }
 
     /// Opens the entry as a new tab in `browser` and takes it out of the archive.
@@ -54,9 +57,8 @@ final class ArchiveStore {
                 guard let wv = tab.webView else { return true }
                 return wv.cameraCaptureState == .none && wv.microphoneCaptureState == .none
             }
-            // Never the window's last tab.
-            for tab in stale where browser.tabs.count > 1 {
-                archive(tab)
+            // Never the window's last tab, and never one the archive couldn't keep.
+            for tab in stale where browser.tabs.count > 1 && archive(tab) {
                 browser.close(tab)
             }
         }

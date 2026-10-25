@@ -210,7 +210,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             }.sorted { $0.0 > $1.0 }.prefix(limit).map { Item.archived($0.1) }
         }
         if mode == .archived {
-            result = archiveMatches(200)
+            result = archiveMatches(archived.count)
         } else if q.isEmpty {
             switch mode {
             case .tabs:
