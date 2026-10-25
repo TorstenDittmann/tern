@@ -180,6 +180,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     func close(_ tab: Tab) {
         guard let index = tabs.firstIndex(of: tab) else { return }
+        RequestInspector.tabClosed(tab)
         closedTabs.append(ClosedTab(url: tab.currentURL, title: tab.pageTitle, state: tab.interactionStateData, index: index))
         if closedTabs.count > 50 { closedTabs.removeFirst() }
 

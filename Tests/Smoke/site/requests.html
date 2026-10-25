@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><title>Requests</title><link rel="stylesheet" href="style.css">
+<h1>Requests</h1>
+<p id="status">Loading…</p>
+<script>
+  Promise.all([fetch("data.json"), fetch("missing.json")]).then(() => { document.getElementById("status").textContent = "Done"; });
+</script>
