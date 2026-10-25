@@ -988,9 +988,13 @@ enum SmokeTest {
         // Archive
         let stale = browser.newTab(url: URL(string: "\(base)/two.html?stale")!, activate: false)
         stale.lastActivated = Date().addingTimeInterval(-3 * 3600)
+        let blank = browser.newTab(url: nil, activate: false)
+        blank.lastActivated = stale.lastActivated
         let count = browser.tabs.count
         ArchiveStore.shared.sweep(olderThan: 2 * 3600)
         check(!browser.tabs.contains(stale) && browser.tabs.count == count - 1, "a tab idle past the archive time closes")
+        check(browser.tabs.contains(blank), "a blank tab the archive couldn't bring back stays open")
+        browser.close(blank)
         let entry = ArchiveStore.shared.entries.first
         check(entry?.url == "\(base)/two.html?stale", "and goes to the archive (\(entry?.url ?? "nothing"))")
         ArchiveStore.shared.sweep(olderThan: 2 * 3600)
