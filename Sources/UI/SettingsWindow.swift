@@ -1,21 +1,18 @@
 import AppKit
-import LocalAuthentication
 
-/// Settings (⌘,): General (search engine, tab suspension, ad blocking, agent API, history), Shortcuts, and Passwords.
+/// Settings (⌘,): General (search engine, tab suspension, ad blocking, agent API, history) and Shortcuts.
 @MainActor
 final class SettingsWindow: NSWindowController {
     static let shared = SettingsWindow()
 
     let general = GeneralSettings()
     let shortcuts = ShortcutSettings()
-    let passwords = PasswordSettings()
-    static let passwordsTab = 2
 
     private init() {
         super.init(window: nil)
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
-        let panes: [(NSViewController, String, String)] = [(general, "General", "gearshape"), (shortcuts, "Shortcuts", "keyboard"), (passwords, "Passwords", "key")]
+        let panes: [(NSViewController, String, String)] = [(general, "General", "gearshape"), (shortcuts, "Shortcuts", "keyboard")]
         for (vc, title, symbol) in panes {
             let item = NSTabViewItem(viewController: vc)
             item.label = title
@@ -34,7 +31,6 @@ final class SettingsWindow: NSWindowController {
         (window?.contentViewController as? NSTabViewController)?.selectedTabViewItemIndex = tab
         general.refresh()
         shortcuts.reload()
-        passwords.reload()
         if window?.isVisible != true { window?.center() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
@@ -412,162 +408,4 @@ final class ShortcutSettings: NSViewController, NSTableViewDataSource, NSTableVi
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
-}
-
-// MARK: - Passwords
-
-/// Sign-ins Tern saved in your keychain. Copying a password asks for your Mac's password or Touch ID first.
-@MainActor
-final class PasswordSettings: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
-    private let table = NSTableView()
-    private let search = NSSearchField()
-    private let status = NSTextField(labelWithString: "")
-    private let removeButton = NSButton(title: "Remove", target: nil, action: nil)
-    private let copyUserButton = NSButton(title: "Copy User Name", target: nil, action: nil)
-    private let copyPasswordButton = NSButton(title: "Copy Password", target: nil, action: nil)
-    private let neverButton = NSButton(title: "Forget “Never” Sites", target: nil, action: nil)
-    private(set) var logins: [PasswordStore.Login] = []
-
-    override func loadView() {
-        title = "Passwords"
-        search.placeholderString = "Filter by website or user name"
-        search.delegate = self
-        for (id, title, width) in [("host", "Website", 280.0), ("user", "User Name", 180.0)] {
-            let column = NSTableColumn(identifier: .init(id))
-            column.title = title
-            column.width = width
-            table.addTableColumn(column)
-        }
-        table.dataSource = self
-        table.delegate = self
-        table.rowHeight = 24
-        table.style = .inset
-        table.usesAlternatingRowBackgroundColors = true
-        table.allowsMultipleSelection = true
-        let scroll = NSScrollView()
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-
-        status.textColor = .secondaryLabelColor
-        status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        status.lineBreakMode = .byTruncatingTail
-        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        for (button, action) in [(removeButton, #selector(removeSelected)), (copyUserButton, #selector(copyUser)),
-                                 (copyPasswordButton, #selector(copyPassword)), (neverButton, #selector(forgetNever))] {
-            button.target = self
-            button.action = action
-        }
-        let bottom = NSStackView(views: [status, neverButton, copyUserButton, copyPasswordButton, removeButton])
-        bottom.spacing = 8
-
-        let stack = NSStackView(views: [search, scroll, bottom])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 16, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let root = NSView()
-        root.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: root.topAnchor), stack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: root.leadingAnchor), stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            search.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            bottom.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            scroll.heightAnchor.constraint(equalToConstant: 380),
-            root.widthAnchor.constraint(equalToConstant: 620),
-        ])
-        view = root
-        NotificationCenter.default.addObserver(forName: PasswordStore.didChange, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.reload() }
-        }
-        reload()
-    }
-
-    func reload() {
-        guard isViewLoaded else { return }
-        let filter = search.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
-        logins = PasswordStore.all().filter { filter.isEmpty || $0.host.lowercased().contains(filter) || $0.user.lowercased().contains(filter) }
-        table.reloadData()
-        let never = PasswordManager.neverSave.count
-        status.stringValue = logins.isEmpty && filter.isEmpty ? "Tern offers to save passwords when you sign in."
-            : "\(logins.count) saved" + (never > 0 ? " · never saving on \(never) site\(never == 1 ? "" : "s")" : "")
-        neverButton.isHidden = never == 0
-        updateButtons()
-    }
-
-    private func updateButtons() {
-        let count = table.selectedRowIndexes.count
-        removeButton.isEnabled = count > 0
-        copyUserButton.isEnabled = count == 1
-        copyPasswordButton.isEnabled = count == 1
-    }
-
-    private var selected: [PasswordStore.Login] { table.selectedRowIndexes.compactMap { logins.indices.contains($0) ? logins[$0] : nil } }
-
-    func controlTextDidChange(_ obj: Notification) { reload() }
-    func tableViewSelectionDidChange(_ notification: Notification) { updateButtons() }
-
-    @objc func removeSelected() {
-        let doomed = selected
-        guard !doomed.isEmpty else { return }
-        let remove = { doomed.forEach(PasswordStore.delete) }
-        if SmokeTest.isRunning { return remove() }
-        let alert = NSAlert()
-        alert.messageText = doomed.count == 1 ? "Remove the password for \(doomed[0].host)?" : "Remove \(doomed.count) passwords?"
-        alert.informativeText = "They're deleted from your keychain."
-        alert.addButton(withTitle: "Remove")
-        alert.addButton(withTitle: "Cancel")
-        guard let window = view.window else { return }
-        alert.beginSheetModal(for: window) { if $0 == .alertFirstButtonReturn { remove() } }
-    }
-
-    @objc private func copyUser() {
-        guard let login = selected.first else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(login.user, forType: .string)
-    }
-
-    @objc private func copyPassword() {
-        guard let login = selected.first else { return }
-        let copy = {
-            guard let password = PasswordStore.password(for: login) else { return NSSound.beep() }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(password, forType: .string)
-        }
-        if SmokeTest.isRunning { return copy() }
-        let context = LAContext()
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "copy the password for \(login.host)") { ok, _ in
-            if ok { DispatchQueue.main.async { MainActor.assumeIsolated { copy() } } }
-        }
-    }
-
-    @objc private func forgetNever() {
-        PasswordManager.neverSave = []
-        reload()
-    }
-
-    func select(_ login: PasswordStore.Login) {
-        guard let row = logins.firstIndex(of: login) else { return }
-        table.selectRowIndexes([row], byExtendingSelection: false)
-    }
-
-    func numberOfRows(in tableView: NSTableView) -> Int { logins.count }
-
-    func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
-        let login = logins[row]
-        let isHost = column?.identifier.rawValue == "host"
-        let text = NSTextField(labelWithString: isHost ? login.host : (login.user.isEmpty ? "—" : login.user))
-        text.lineBreakMode = .byTruncatingTail
-        if !isHost { text.textColor = .secondaryLabelColor }
-        let cell = NSTableCellView()
-        text.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(text)
-        NSLayoutConstraint.activate([
-            text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            text.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
-            text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-        ])
-        return cell
-    }
 }

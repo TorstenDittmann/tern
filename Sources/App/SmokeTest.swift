@@ -151,7 +151,6 @@ enum SmokeTest {
         await tabHousekeeping(browser: browser, base: base)
         await privateWindow(base: base)
         await pageTools(browser: browser, base: base)
-        await passwords(browser: browser, base: base)
         await requests(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
@@ -784,96 +783,6 @@ enum SmokeTest {
         window.window?.performClose(nil)
         await wait { !AppDelegate.shared.windows.contains { $0 === window } }
         check(!AppDelegate.shared.windows.contains { $0 === window }, "closing a private window")
-    }
-
-    /// Saving a sign-in, filling it back in, and the Passwords pane. The store is in memory for the run.
-    private static func passwords(browser: BrowserWindowController, base: String) async {
-        let manager = PasswordManager.shared
-        let ada = PasswordStore.Login(host: "localhost", user: "ada@example.com")
-        check(PasswordStore.all().isEmpty, "the smoke run starts with no saved passwords")
-        let tab = browser.newTab(url: URL(string: "\(base)/login.html")!)
-        await wait { tab.pageTitle == "Sign In" && !tab.isLoading }
-        func js(_ source: String) async -> Any? { try? await tab.webView?.evaluateJavaScript(source) }
-        func signIn(_ user: String, _ password: String) async {
-            _ = await js("""
-            document.getElementById('user').value = '\(user)'; document.getElementById('pw').value = '\(password)';
-            document.getElementById('go').click(); true
-            """)
-        }
-        await signIn(ada.user, "hunter2")
-        await wait { PasswordStore.password(for: ada) != nil }
-        check(PasswordStore.password(for: ada) == "hunter2", "signing in offers to save the password, and Save keeps it")
-        let offers = manager.offers
-        await signIn(ada.user, "hunter2")
-        try? await Task.sleep(for: .milliseconds(400))
-        check(manager.offers == offers, "signing in again with the saved password doesn't ask again")
-
-        func reloadPage() async {
-            let before = tab.loadsEnded
-            tab.webView?.reload()
-            await wait { tab.loadsEnded > before && !tab.isLoading }
-        }
-        await reloadPage()
-        var filled = ""
-        for _ in 0..<40 where filled.isEmpty {
-            filled = await js("document.getElementById('pw').value") as? String ?? ""
-            if filled.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
-        }
-        let user = await js("document.getElementById('user').value") as? String
-        check(filled == "hunter2" && user == ada.user, "the only saved sign-in for a site fills in by itself (\(user ?? "nil"))")
-
-        let grace = PasswordStore.Login(host: "localhost", user: "grace@example.com")
-        manager.smokeAnswer = .alertSecondButtonReturn
-        await signIn(grace.user, "cobol")
-        await wait { manager.offers > offers }
-        check(PasswordStore.password(for: grace) == nil, "Not Now saves nothing")
-        manager.smokeAnswer = .alertFirstButtonReturn
-        PasswordStore.save("cobol", for: grace)
-        await reloadPage()
-        try? await Task.sleep(for: .milliseconds(500))
-        let empty = await js("document.getElementById('pw').value") as? String
-        check(empty == "", "with two sign-ins saved, nothing fills by itself")
-        if let webView = tab.webView { manager.fill(grace, into: webView) }
-        var picked = ""
-        for _ in 0..<20 where picked.isEmpty {
-            picked = await js("document.getElementById('user').value") as? String ?? ""
-            if picked.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
-        }
-        check(picked == grace.user, "Fill Password fills the sign-in you pick")
-
-        manager.smokeAnswer = .alertThirdButtonReturn
-        let other = PasswordStore.Login(host: "127.0.0.1", user: "linus")
-        tab.load(URL(string: "http://127.0.0.1:8765/login.html")!)
-        await wait { tab.currentURL?.host == "127.0.0.1" && !tab.isLoading }
-        await signIn(other.user, "kernel")
-        await wait { PasswordManager.neverSave.contains("127.0.0.1") }
-        check(PasswordManager.neverSave.contains("127.0.0.1") && PasswordStore.password(for: other) == nil, "Never for This Site saves nothing and stops asking")
-        PasswordManager.neverSave = []
-        manager.smokeAnswer = .alertFirstButtonReturn
-
-        let window = AppDelegate.shared.openWindow(restoring: [Tab(url: URL(string: "\(base)/login.html?private")!)], isPrivate: true)
-        if let privateTab = window.activeTab {
-            await wait { privateTab.pageTitle == "Sign In" && !privateTab.isLoading }
-            let before = manager.offers
-            _ = try? await privateTab.webView?.evaluateJavaScript("""
-            document.getElementById('user').value = 'secret'; document.getElementById('pw').value = 'shh';
-            document.getElementById('go').click(); true
-            """)
-            try? await Task.sleep(for: .milliseconds(500))
-            check(manager.offers == before && PasswordStore.logins(for: "localhost").count == 2, "private windows never offer to save")
-        }
-        window.window?.performClose(nil)
-        await wait { !AppDelegate.shared.windows.contains { $0 === window } }
-
-        let settings = SettingsWindow.shared
-        CommandRouter.perform(.showPasswords, in: browser)
-        check(settings.passwords.logins.count == 2, "Show Passwords lists the saved sign-ins (\(settings.passwords.logins.count))")
-        settings.passwords.select(grace)
-        settings.passwords.removeSelected()
-        check(PasswordStore.all() == [ada] && settings.passwords.logins == [ada], "removing a password in Settings")
-        settings.window?.close()
-        PasswordStore.delete(ada)
-        browser.close(tab)
     }
 
     /// The Requests window: it picks up what the page already loaded, filters, clears, and starts over on reload.
