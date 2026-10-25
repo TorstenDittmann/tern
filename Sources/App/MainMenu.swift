@@ -69,7 +69,7 @@ enum MainMenu {
         ]))
 
         main.addItem(menu("View", [
-            item(.toggleSidebar), item(.moveSidebar), item(.commandPalette), item(.tabPicker), item(.linkHints), .separator(),
+            item(.toggleSidebar), item(.toggleCompactMode), item(.moveSidebar), item(.commandPalette), item(.tabPicker), item(.linkHints), .separator(),
             item(.reload), item(.hardReload), item(.stopLoading), item(.toggleSiteBlocking), .separator(),
             item(.zoomIn), item(.zoomOut), item(.zoomReset), .separator(),
             item(.toggleReader), item(.showDownloads), .separator(),
@@ -81,7 +81,7 @@ enum MainMenu {
 
         main.addItem(menu("Tabs", [
             item(.nextTab), item(.previousTab), item(.moveTabUp), item(.moveTabDown), item(.focusTabList), .separator(),
-            item(.togglePinTab), item(.toggleMuteTab),
+            item(.togglePinTab), item(.resetPinnedTab), item(.repinTab), item(.toggleMuteTab), item(.showArchivedTabs),
             item(.duplicateTab), item(.suspendBackgroundTabs), .separator(),
             item(.toggleSplit), item(.splitDown), item(.splitWith), item(.splitWithPreviousTab), item(.addPane), item(.removeFromSplit),
             item(.changeSplitLayout), item(.swapPanes), item(.focusLeftPane), item(.focusRightPane), item(.focusPaneAbove), item(.focusPaneBelow), .separator(),

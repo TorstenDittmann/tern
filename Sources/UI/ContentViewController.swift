@@ -20,6 +20,14 @@ final class ContentViewController: NSViewController {
     private var barTop: NSLayoutConstraint!
     private var barLeading: NSLayoutConstraint!
     private var barGap: NSLayoutConstraint!
+    /// Compact mode: the page starts at the top gutter, and the top bar floats over it when revealed.
+    private var compactTop: NSLayoutConstraint!
+    private let revealStrip = RevealStrip()
+    private let barBackdrop = BarBackdrop()
+    private(set) var isCompact = false
+    private(set) var isBarRevealed = false
+    /// Told when the bar shows or hides in compact mode, so the window can show or hide its traffic lights.
+    var onBarReveal: ((Bool) -> Void)?
 
     override func loadView() {
         let root = NSView()
@@ -36,7 +44,15 @@ final class ContentViewController: NSViewController {
             return browser.drop(tab, at: target)
         }
 
-        for v in [topBar, panes, dropZone, findBar] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        revealStrip.onEnter = { [weak self] in self?.revealBar(true) }
+        barBackdrop.onExit = { [weak self] in self?.hideBarIfIdle() }
+        topBar.onEndEditing = { [weak self] in self?.hideBarIfIdle() }
+        barBackdrop.isHidden = true
+        revealStrip.isHidden = true
+        for v in [panes, dropZone, findBar, barBackdrop, topBar, revealStrip] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(v)
+        }
         let g = Theme.gutter
         panesLeading = panes.leadingAnchor.constraint(equalTo: root.leadingAnchor)
         panesTrailing = panes.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -g)
@@ -44,6 +60,7 @@ final class ContentViewController: NSViewController {
         barTop = topBar.topAnchor.constraint(equalTo: root.topAnchor, constant: defaultTop)
         barLeading = topBar.leadingAnchor.constraint(equalTo: panes.leadingAnchor)
         barGap = panes.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: defaultTop)
+        compactTop = panes.topAnchor.constraint(equalTo: root.topAnchor, constant: g)
         NSLayoutConstraint.activate([
             barTop, barLeading,
             topBar.trailingAnchor.constraint(equalTo: panes.trailingAnchor),
@@ -56,6 +73,14 @@ final class ContentViewController: NSViewController {
             dropZone.leadingAnchor.constraint(equalTo: panes.leadingAnchor), dropZone.trailingAnchor.constraint(equalTo: panes.trailingAnchor),
             findBar.topAnchor.constraint(equalTo: panes.topAnchor, constant: 10),
             findBar.trailingAnchor.constraint(equalTo: panes.trailingAnchor, constant: -12),
+            barBackdrop.topAnchor.constraint(equalTo: topBar.topAnchor, constant: -5),
+            barBackdrop.bottomAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 5),
+            barBackdrop.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: -5),
+            barBackdrop.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: 5),
+            revealStrip.topAnchor.constraint(equalTo: root.topAnchor),
+            revealStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            revealStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            revealStrip.heightAnchor.constraint(equalToConstant: 6),
         ])
         view = root
     }
@@ -66,6 +91,58 @@ final class ContentViewController: NSViewController {
         panesLeading.constant = collapsed || onRight ? Theme.gutter : 0
         panesTrailing.constant = !collapsed && onRight ? 0 : -Theme.gutter
         topBar.setSidebarSide(right: onRight)
+    }
+
+    // MARK: Compact mode
+
+    func setCompact(_ compact: Bool) {
+        loadViewIfNeeded()
+        isCompact = compact
+        barGap.isActive = !compact
+        compactTop.isActive = compact
+        revealStrip.isHidden = !compact
+        isBarRevealed = false
+        topBar.alphaValue = 1
+        topBar.isHidden = compact
+        barBackdrop.isHidden = true
+        onBarReveal?(false)
+    }
+
+    /// Shows (or hides) the top bar over the page in compact mode.
+    func revealBar(_ show: Bool) {
+        guard isCompact, show != isBarRevealed else { return }
+        isBarRevealed = show
+        if show {
+            topBar.isHidden = false
+            barBackdrop.isHidden = false
+            topBar.alphaValue = 0
+            barBackdrop.alphaValue = 0
+        }
+        onBarReveal?(show)
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = show ? 0.12 : 0.2
+            topBar.animator().alphaValue = show ? 1 : 0
+            barBackdrop.animator().alphaValue = show ? 1 : 0
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !self.isBarRevealed, self.isCompact else { return }
+                self.topBar.isHidden = true
+                self.barBackdrop.isHidden = true
+            }
+        })
+    }
+
+    /// The pointer left the bar or the address field stopped editing: hide, unless the other still holds it.
+    private func hideBarIfIdle() {
+        guard isCompact, isBarRevealed, !topBar.field.isEditing, topBar.popover?.isShown != true,
+              let window = view.window else { return }
+        let inside = barBackdrop.convert(barBackdrop.bounds, to: nil).contains(window.mouseLocationOutsideOfEventStream)
+        if !inside { revealBar(false) }
+    }
+
+    func focusAddressBar() {
+        revealBar(true)
+        topBar.focusAddressField()
     }
 
     /// For the smoke test: the hosts the visible pane headers show (none outside split view).
@@ -598,6 +675,41 @@ final class ProgressLine: NSView {
             animator().alphaValue = visible ? 1 : 0
         }
     }
+}
+
+/// The top edge of the window in compact mode: pointing at it reveals the top bar. Clicks go through.
+final class RevealStrip: NSView {
+    var onEnter: (() -> Void)?
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func mouseEntered(with event: NSEvent) { onEnter?() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// The surface behind the revealed top bar in compact mode; the bar hides when the pointer leaves it.
+final class BarBackdrop: FilledView {
+    var onExit: (() -> Void)?
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        fill = Theme.ground
+        border = Theme.hairline
+        radius = 10
+        wantsLayer = true
+        shadow = {
+            let s = NSShadow()
+            s.shadowColor = NSColor.black.withAlphaComponent(0.18)
+            s.shadowBlurRadius = 8
+            s.shadowOffset = NSSize(width: 0, height: -2)
+            return s
+        }()
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func mouseExited(with event: NSEvent) { onExit?() }
+    override var mouseDownCanMoveWindow: Bool { true }
 }
 
 /// Floating find pill in the card's top-right corner (Safari-style).

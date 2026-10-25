@@ -88,6 +88,22 @@ enum Preferences {
         set { store(newValue.sorted(), "blockingExceptions") }
     }
 
+    /// Compact mode: no top bar until you point at the top edge or press ⌘L.
+    static var compactMode: Bool {
+        get { value("compactMode") as? Bool ?? false }
+        set { store(newValue, "compactMode") }
+    }
+
+    static let archiveChoices: [(name: String, seconds: TimeInterval)] = [
+        ("Never", -1), ("After 12 hours", 12 * 3600), ("After 1 day", 24 * 3600), ("After 1 week", 7 * 24 * 3600), ("After 30 days", 30 * 24 * 3600),
+    ]
+
+    /// How long a tab may go unvisited before it's closed into the archive; nil means never (the default).
+    static var archiveAfter: TimeInterval? {
+        get { let v = value("archiveAfter") as? Double ?? -1; return v > 0 ? v : nil }
+        set { store(newValue ?? -1, "archiveAfter") }
+    }
+
     /// Remembered answers to camera, microphone and location prompts, keyed "origin|kind".
     static var sitePermissions: [String: Bool] {
         get { value("sitePermissions") as? [String: Bool] ?? [:] }

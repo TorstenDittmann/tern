@@ -26,6 +26,13 @@ final class Tab: NSObject {
     var isAgentDriving = false
     /// Pinned tabs stay at the top of the list, in their own block, and survive "Close Other Tabs".
     var isPinned = false
+    /// Where a pinned tab belongs. ⌘W on a pinned tab that wandered off takes it back here.
+    var pinnedURL: URL?
+    /// A pinned tab is somewhere other than its pinned page.
+    var hasLeftPinnedURL: Bool {
+        guard isPinned, let pinnedURL, let currentURL else { return false }
+        return currentURL.absoluteString != pinnedURL.absoluteString
+    }
     /// Muted tabs stay muted when they're suspended and restored.
     var isMuted = false {
         didSet { guard isMuted != oldValue else { return }; applyMute(); owner?.tabDidChange(self) }

@@ -19,6 +19,9 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
 - **History and bookmarks.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. ⌘D (or the star in the address bar) bookmarks a page. ⌘Y and ⌥⌘B open a window to search, open, rename or delete them. New tabs show your bookmarks and most visited sites.
 - **!bangs.** Type `!gh swift-nio`, `!mdn grid`, `!npm zod` or `!so` in the address bar or ⌘K to search that site directly; a bang on its own opens the site. About 25 are built in (`!g`, `!ddg`, `!gh`, `!mdn`, `!caniuse`, `!so`, `!npm`, `!pypi`, `!crates`, `!rs`, `!go`, `!spi`, `!apple`, `!docker`, `!hn`, `!r`, `!yt`, `!w`, `!maps`, `!tr`, …). Add your own in `~/.config/tern/bangs.json`, like `{ "jira": "https://acme.atlassian.net/browse/%s" }`.
+- **Pinned tabs that go back home.** A pinned tab remembers its page. ⌘W on a pinned tab that has wandered off takes it back there; ⌘W on one that's already home puts it to sleep and shows the previous tab. Right-click ▸ **Make This the Pinned Page** changes where home is.
+- **Archive idle tabs.** Settings ▸ General ▸ **Archive idle tabs** closes tabs you haven't opened in 12 hours, a day, a week or 30 days (off by default). Pinned tabs, tabs on screen and tabs playing sound stay. Archived tabs show up when you search in ⌘K, and **Archived Tabs…** lists them all.
+- **Compact mode (⇧⌘L).** Hides the top bar so the page reaches the top of the window. Point at the top edge, or press ⌘L, to bring the bar back over the page.
 - **Private windows (⇧⌘N).** Tabs in a private window share cookies and site data that live only in memory and are gone when the window closes. They add nothing to history, aren't saved with your session, and extensions can't see them. The top bar shows a **Private** badge.
 - **Responsive design mode (⌃⌘R).** Lays the page out at a phone, tablet or laptop size, centered in its card, with that device's user agent and pixel density. The bar above the page picks the device, rotates it, and overrides the user agent (Safari, Chrome or Firefox on Mac, iPhone, iPad, Android).
 - **JSON viewer.** JSON responses open as a collapsible, colored tree with expand and collapse all, a raw view that can be formatted, and copy.
@@ -77,6 +80,7 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Find / next / previous | ⌘F / ⌘G / ⇧⌘G |
 | Bookmark page / show bookmarks / show history | ⌘D / ⌥⌘B / ⌘Y |
 | New private window | ⇧⌘N |
+| Compact mode | ⇧⌘L |
 | Reader / responsive design mode | ⌥⌘R / ⌃⌘R |
 | Show downloads | ⇧⌘J |
 | Print | ⌥⌘P |

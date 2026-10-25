@@ -6,7 +6,7 @@ import AppKit
 /// ⌥⌘\ ("Split with…"): pick a tab, page or address to show beside the current tab.
 @MainActor
 final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSWindowDelegate {
-    enum Mode { case everything, tabs, splitWith }
+    enum Mode { case everything, tabs, splitWith, archived }
 
     private enum Item {
         case header(String)
@@ -15,6 +15,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         case page(HistoryStore.Entry)
         case bookmark(BookmarkStore.Bookmark)
         case command(Command)
+        case archived(ArchiveStore.Entry)
 
         var isHeader: Bool { if case .header = self { true } else { false } }
     }
@@ -87,6 +88,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         case .tabs: "rectangle.stack"
         case .splitWith: "rectangle.split.2x1"
         case .everything: "magnifyingglass"
+        case .archived: "archivebox"
         }
         let glass = NSImageView(image: Theme.symbol(symbol, size: 16, weight: .medium)!)
         glass.contentTintColor = .secondaryLabelColor
@@ -95,6 +97,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         case .tabs: "Switch to tab…"
         case .splitWith: "Split with a tab, a page, or an address…"
         case .everything: "Search tabs, history and commands, or enter an address"
+        case .archived: "Search archived tabs…"
         }
         field.font = .systemFont(ofSize: 17)
         field.isBordered = false
@@ -198,7 +201,17 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             .map(\.element)
 
         var result: [Item] = []
-        if q.isEmpty {
+        let archived = ArchiveStore.shared.entries
+        func archiveMatches(_ limit: Int) -> [Item] {
+            guard !q.isEmpty else { return archived.prefix(limit).map(Item.archived) }
+            return archived.compactMap { e -> (Int, ArchiveStore.Entry)? in
+                guard let s = [Self.score(q, e.title ?? ""), Self.score(q, HistoryStore.bare(e.url))].compactMap({ $0 }).max() else { return nil }
+                return (s, e)
+            }.sorted { $0.0 > $1.0 }.prefix(limit).map { Item.archived($0.1) }
+        }
+        if mode == .archived {
+            result = archiveMatches(200)
+        } else if q.isEmpty {
             switch mode {
             case .tabs:
                 result = tabs.map(Item.tab)
@@ -212,6 +225,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
                 if !bookmarks.isEmpty { result.append(.header("Bookmarks")); result += bookmarks.map(Item.bookmark) }
                 result.append(.header("Commands"))
                 result += rankedCommands.map(Item.command)
+            case .archived: break
             }
         } else {
             let matchedTabs = tabs.compactMap { t -> (Int, Tab)? in
@@ -242,6 +256,8 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
                 if !matchedBookmarks.isEmpty { result.append(.header("Bookmarks")); result += matchedBookmarks.map(Item.bookmark) }
                 if !matchedPages.isEmpty { result.append(.header("History")); result += matchedPages.map(Item.page) }
                 if !matchedCommands.isEmpty { result.append(.header("Commands")); result += matchedCommands.map(Item.command) }
+                let matchedArchive = mode == .splitWith ? [] : archiveMatches(4)
+                if !matchedArchive.isEmpty { result.append(.header("Archived")); result += matchedArchive }
                 if !looksLikeURL && !bang {
                     result.append(.header("Web"))
                     result.append(.open(q))
@@ -307,6 +323,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         case .command(let cmd):
             CommandUsage.record(cmd)
             CommandRouter.perform(cmd, in: browser)
+        case .archived(let entry): ArchiveStore.shared.restore(entry, in: browser)
         }
     }
 
@@ -324,6 +341,9 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             partner = browser.newTab(url: url, activate: false, after: active)
         case .bookmark(let bookmark):
             guard let url = URL(string: bookmark.url) else { return }
+            partner = browser.newTab(url: url, activate: false, after: active)
+        case .archived(let entry):
+            guard let url = URL(string: entry.url) else { return }
             partner = browser.newTab(url: url, activate: false, after: active)
         case .header, .command: return
         }
@@ -427,6 +447,14 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
                                title: bookmark.title,
                                subtitle: HistoryStore.bare(bookmark.url),
                                accessory: star)
+        case .archived(let entry):
+            let url = URL(string: entry.url)
+            let ago = RelativeDateTimeFormatter().localizedString(for: entry.archived, relativeTo: Date())
+            return PaletteCell(icon: FaviconLoader.cached(for: url) ?? Monogram.image(for: url, title: entry.title ?? ""),
+                               tinted: false,
+                               title: entry.title?.isEmpty == false ? entry.title! : HistoryStore.bare(entry.url),
+                               subtitle: HistoryStore.bare(entry.url),
+                               accessory: Self.tag("archived \(ago)"))
         case .command(let cmd):
             let chord = Keymap.shared.primaryChord(for: cmd)
             return PaletteCell(icon: Theme.symbol(cmd.symbol, size: 14) ?? Theme.symbol("command", size: 14),

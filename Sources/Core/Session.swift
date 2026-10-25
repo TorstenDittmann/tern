@@ -13,7 +13,10 @@ enum AppPaths {
 /// only each window's active tab gets a web view at launch.
 @MainActor
 enum SessionStore {
-    struct SavedTab: Codable { var id: UUID; var url: String?; var title: String?; var state: Data?; var pinned: Bool? }
+    struct SavedTab: Codable {
+        var id: UUID; var url: String?; var title: String?; var state: Data?; var pinned: Bool?
+        var pinnedURL: String?; var lastActivated: Double?
+    }
     struct SavedWindow: Codable {
         var tabs: [SavedTab]; var active: Int; var frame: String; var sidebarCollapsed: Bool
         /// Indices of the split's tabs, in pane order. `splitFraction` is from when splits had two side-by-side panes.
@@ -27,7 +30,8 @@ enum SessionStore {
         let saved = windows.filter { !$0.isPrivate }.map { w in
             SavedWindow(
                 tabs: w.tabs.map { SavedTab(id: $0.id, url: $0.currentURL?.absoluteString, title: $0.pageTitle, state: $0.interactionStateData,
-                                       pinned: $0.isPinned ? true : nil) },
+                                       pinned: $0.isPinned ? true : nil, pinnedURL: $0.pinnedURL?.absoluteString,
+                                       lastActivated: $0.lastActivated.timeIntervalSince1970) },
                 active: w.activeTab.flatMap { w.tabs.firstIndex(of: $0) } ?? 0,
                 frame: NSStringFromRect(w.window?.frame ?? .zero),
                 sidebarCollapsed: w.isSidebarCollapsed,
@@ -52,6 +56,8 @@ enum SessionStore {
             let tabs = w.tabs.map { saved in
                 let tab = Tab(url: saved.url.flatMap(URL.init(string:)), title: saved.title, interactionState: saved.state, id: saved.id)
                 tab.isPinned = saved.pinned ?? false
+                if tab.isPinned { tab.pinnedURL = saved.pinnedURL.flatMap(URL.init(string:)) ?? tab.currentURL }
+                if let t = saved.lastActivated { tab.lastActivated = Date(timeIntervalSince1970: t) }
                 return tab
             }
             let frame = NSRectFromString(w.frame)
@@ -98,6 +104,7 @@ final class TabSuspender {
     }
 
     func sweep() {
+        if let archive = Preferences.archiveAfter { ArchiveStore.shared.sweep(olderThan: archive) }
         guard let idleInterval else { return }
         let cutoff = Date().addingTimeInterval(-idleInterval)
         for tab in AppDelegate.shared.allTabs where !tab.isSuspended && !tab.isVisible && tab.lastActivated < cutoff {
