@@ -16,6 +16,10 @@ final class PinnedTabsView: NSView {
     private static let gap: CGFloat = 6
 
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+    /// The tiles can sit in the titlebar strip: keep the window server from dragging the window from them
+    /// (see TabTableView).
+    @objc func _opaqueRectForWindowMoveWhenInTitlebar() -> NSRect { visibleRect }
 
     func show(_ tabs: [Tab], active: Tab?) {
         if tiles.count != tabs.count || zip(tiles, tabs).contains(where: { $0.tab !== $1 }) {
