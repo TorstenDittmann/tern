@@ -192,6 +192,9 @@ final class SidebarViewController: NSViewController {
                 clip.convert(clip.bounds, to: nil))
     }
 
+    /// The part of the list the window can't be dragged by in the titlebar strip, in window coordinates (for the smoke test).
+    var windowMoveExclusion: NSRect { tableView.convert(tableView._opaqueRectForWindowMoveWhenInTitlebar(), to: nil) }
+
     // MARK: Updates from the window
 
     func reloadTabs() {
@@ -526,6 +529,10 @@ final class TabTableView: NSTableView {
     /// The first rows can sit in the titlebar strip (tab list on the right), where the window is movable by
     /// its background: a press on a tab must start a tab drag there, never move the window.
     override var mouseDownCanMoveWindow: Bool { false }
+    /// `mouseDownCanMoveWindow` isn't enough in the titlebar strip of a full-size-content window: the window
+    /// server drags (and tiles) the window from there on its own, around only the rects views claim with
+    /// this AppKit hook. Claiming the visible list keeps tab drags on the tabs; the strip above stays draggable.
+    @objc func _opaqueRectForWindowMoveWhenInTitlebar() -> NSRect { visibleRect }
 
     /// Rows of the split's tabs, drawn behind them as one block so the group reads as a unit.
     struct SplitRun: Equatable { var rows: ClosedRange<Int>; var onScreen: Bool }
