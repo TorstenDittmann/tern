@@ -120,7 +120,9 @@ final class PasswordManager: NSObject, WKScriptMessageHandlerWithReply {
             replyHandler(["username": login.user, "password": password], nil)
         case "save":
             replyHandler(nil, nil)
-            guard let password = body["password"] as? String, !password.isEmpty, tab?.isPrivate != true,
+            // A link peek's tab isn't in any window's list, so its in-memory data store is what says it's private.
+            let isPrivate = tab?.isPrivate == true || message.webView?.configuration.websiteDataStore.isPersistent != true
+            guard let password = body["password"] as? String, !password.isEmpty, !isPrivate,
                   !Self.neverSave.contains(host), !host.isEmpty else { return }
             let login = PasswordStore.Login(host: host, user: (body["username"] as? String ?? "").trimmingCharacters(in: .whitespaces))
             offerToSave(login, password: password, in: tab?.owner?.window)
