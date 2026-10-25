@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>Sign In</title><link rel="stylesheet" href="style.css">
+<h1>Sign In</h1>
+<form id="login">
+  <p><label>Email <input id="user" type="email" name="email" autocomplete="username"></label></p>
+  <p><label>Password <input id="pw" type="password" name="password" autocomplete="current-password"></label></p>
+  <p><button id="go" type="submit">Sign In</button></p>
+</form>
+<p id="done" hidden>Signed in.</p>
+<script>
+  document.getElementById("login").addEventListener("submit", (e) => { e.preventDefault(); document.getElementById("done").hidden = false; });
+</script>

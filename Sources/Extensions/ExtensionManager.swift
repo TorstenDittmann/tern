@@ -248,6 +248,12 @@ final class ExtensionManager: NSObject {
 extension ExtensionManager {
     /// The windows extensions can see: every one but private windows.
     static var windowsForExtensions: [BrowserWindowController] { AppDelegate.shared.windows.filter { !$0.isPrivate } }
+
+    /// Where an extension's new tabs go: the key window unless it's private, else the last normal one, else a new one.
+    static var browserForExtensions: BrowserWindowController {
+        if let key = AppDelegate.shared.keyBrowser, !key.isPrivate { return key }
+        return windowsForExtensions.last ?? AppDelegate.shared.openWindow()
+    }
 }
 
 extension ExtensionManager: WKWebExtensionControllerDelegate {
@@ -262,7 +268,7 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     func webExtensionController(_ controller: WKWebExtensionController, openNewTabUsing configuration: WKWebExtension.TabConfiguration,
                                 for extensionContext: WKWebExtensionContext,
                                 completionHandler: @escaping ((any WKWebExtensionTab)?, (any Error)?) -> Void) {
-        let browser = (configuration.window as? BrowserWindowController) ?? AppDelegate.shared.keyBrowser ?? AppDelegate.shared.openWindow()
+        let browser = (configuration.window as? BrowserWindowController).flatMap { $0.isPrivate ? nil : $0 } ?? Self.browserForExtensions
         let tab = Tab(url: configuration.url)
         browser.insert(tab, at: configuration.index, activate: configuration.shouldBeActive)
         completionHandler(tab, nil)
@@ -282,8 +288,7 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         guard let url = extensionContext.optionsPageURL else {
             return completionHandler(ExtensionManager.unsupported("This extension has no options page."))
         }
-        let browser = AppDelegate.shared.keyBrowser ?? AppDelegate.shared.openWindow()
-        browser.newTab(url: url)
+        Self.browserForExtensions.newTab(url: url)
         completionHandler(nil)
     }
 

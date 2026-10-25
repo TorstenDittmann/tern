@@ -122,7 +122,16 @@ enum JSONViewer {
       const collapse = button("Collapse All", () => tree.querySelectorAll("details").forEach(d => d.open = false));
       const expand = button("Expand All", () => tree.querySelectorAll("details").forEach(d => d.open = true));
       button("Copy", (e) => {
-        navigator.clipboard.writeText(raw).then(() => { e.target.textContent = "Copied"; setTimeout(() => e.target.textContent = "Copy", 1200); });
+        const done = () => { e.target.textContent = "Copied"; setTimeout(() => e.target.textContent = "Copy", 1200); };
+        // navigator.clipboard is missing on plain-http pages; fall back to a selected textarea.
+        const fallback = () => {
+          const t = el("textarea"); t.value = raw; t.style.position = "fixed"; t.style.opacity = "0";
+          document.body.append(t); t.select();
+          const ok = document.execCommand("copy"); t.remove();
+          if (ok) done();
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(raw).then(done, fallback);
+        else fallback();
       });
       const size = raw.length < 1024 ? raw.length + " B" : raw.length < 1048576 ? (raw.length / 1024).toFixed(1) + " KB" : (raw.length / 1048576).toFixed(1) + " MB";
       bar.append(el("span", "meta", size));

@@ -17,7 +17,7 @@ enum Bangs {
         var home: URL? {
             guard let url = URL(string: template.replacingOccurrences(of: "%s", with: "")),
                   let scheme = url.scheme, let host = url.host else { return nil }
-            return URL(string: "\(scheme)://\(host)/")
+            return URL(string: "\(scheme)://\(host)" + (url.port.map { ":\($0)" } ?? "") + "/")
         }
 
         func url(for query: String) -> URL? {

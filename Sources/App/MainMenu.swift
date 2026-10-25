@@ -66,6 +66,8 @@ enum MainMenu {
             item(.find), item(.findNext), item(.findPrevious),
             .separator(),
             item(.copyURL), item(.copyMarkdownLink),
+            .separator(),
+            item(.fillPassword), item(.showPasswords),
         ]))
 
         main.addItem(menu("View", [

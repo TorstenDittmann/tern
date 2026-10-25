@@ -360,7 +360,7 @@ extension Tab: WKNavigationDelegate {
         guard [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodNTLM].contains(method) else {
             return completionHandler(.performDefaultHandling, nil)
         }
-        AuthPrompt.ask(challenge, in: owner?.window) { credential in
+        AuthPrompt.ask(challenge, in: owner?.window, isPrivate: isPrivate) { credential in
             // Cancel shows the server's own 401 page, like Safari.
             completionHandler(credential == nil ? .performDefaultHandling : .useCredential, credential)
         }
@@ -430,7 +430,7 @@ extension Tab: WKUIDelegate {
 
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo,
                  type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-        SitePermissions.ask(.init(type), origin: SitePermissions.origin(origin), in: owner?.window) { decisionHandler($0 ? .grant : .deny) }
+        SitePermissions.ask(.init(type), origin: SitePermissions.origin(origin), in: owner?.window, isPrivate: isPrivate) { decisionHandler($0 ? .grant : .deny) }
     }
 
     // Geolocation has no public delegate method on macOS; these are the WKUIDelegatePrivate ones
@@ -438,12 +438,12 @@ extension Tab: WKUIDelegate {
     @objc(_webView:requestGeolocationPermissionForOrigin:initiatedByFrame:decisionHandler:)
     func requestGeolocationPermission(_ webView: WKWebView, origin: WKSecurityOrigin, frame: WKFrameInfo,
                                       decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-        SitePermissions.ask(.location, origin: SitePermissions.origin(origin), in: owner?.window) { decisionHandler($0 ? .grant : .deny) }
+        SitePermissions.ask(.location, origin: SitePermissions.origin(origin), in: owner?.window, isPrivate: isPrivate) { decisionHandler($0 ? .grant : .deny) }
     }
 
     @objc(_webView:requestGeolocationPermissionForFrame:decisionHandler:)
     func requestGeolocationPermission(_ webView: WKWebView, frame: WKFrameInfo, decisionHandler: @escaping (Bool) -> Void) {
-        SitePermissions.ask(.location, origin: SitePermissions.origin(frame.securityOrigin), in: owner?.window, completion: decisionHandler)
+        SitePermissions.ask(.location, origin: SitePermissions.origin(frame.securityOrigin), in: owner?.window, isPrivate: isPrivate, completion: decisionHandler)
     }
 
     private func present(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {

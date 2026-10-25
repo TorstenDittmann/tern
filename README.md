@@ -29,6 +29,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Downloads.** A downloads button appears in the top bar once something is downloading. Its popover (⇧⌘J) shows progress, opens finished files, shows them in Finder, and cancels or retries.
 - **Print and PDF.** ⌥⌘P prints the page, and **File ▸ Export as PDF…** saves it as a paginated PDF.
 - **Mute tabs.** A tab playing sound shows a speaker on its icon; click it, right-click ▸ **Mute Tab**, or press ⇧⌘M.
+- **Passwords.** Sign in to a site and Tern offers to save the password in your login keychain (never in private windows). The next time, a site's only saved sign-in fills in by itself; with several, **Fill Password** (⌥⌘A) lets you pick. Logins fill only into the top frame of an HTTPS page or a local dev server on the same host. Settings ▸ **Passwords** lists them, copies a password after Touch ID or your Mac's password, and removes them. HTTP sign-in sheets use and save them too.
 - **Site sign-in and permissions.** Sites behind HTTP basic or digest auth (staging servers, routers) get a sign-in sheet. Camera, microphone and location requests ask first and can be remembered per site; **Reset Permissions for This Site** in ⌘K forgets them.
 - **Default browser.** **Tern ▸ Make Tern the Default Browser**, or the button in Settings ▸ General.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
@@ -85,6 +86,7 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Show downloads | ⇧⌘J |
 | Print | ⌥⌘P |
 | Mute or unmute tab | ⇧⌘M |
+| Fill password | ⌥⌘A |
 | Settings | ⌘, |
 | Link hints (click links from the keyboard) | ⌘J |
 | Peek at a link / keep it as a tab / in a split | ⌥-click / ⌘↩ / ⇧⌘↩ |

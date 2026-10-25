@@ -40,7 +40,8 @@ enum SitePermissions {
         Preferences.sitePermissions["\(origin)|\(kind.rawValue)"]
     }
 
-    static func ask(_ kind: Kind, origin: String, in window: NSWindow?, completion: @escaping (Bool) -> Void) {
+    /// Private tabs use remembered answers but never add to them.
+    static func ask(_ kind: Kind, origin: String, in window: NSWindow?, isPrivate: Bool = false, completion: @escaping (Bool) -> Void) {
         if let answer = remembered(kind, for: origin) { return completion(answer) }
         let alert = NSAlert()
         let host = URL(string: origin)?.host ?? origin
@@ -50,11 +51,11 @@ enum SitePermissions {
             : "Tern shows when a tab is using \(kind.phrase)."
         alert.addButton(withTitle: "Allow")
         alert.addButton(withTitle: "Don’t Allow")
-        alert.showsSuppressionButton = true
+        alert.showsSuppressionButton = !isPrivate
         alert.suppressionButton?.title = "Remember for this site"
         let finish = { (response: NSApplication.ModalResponse) in
             let allowed = response == .alertFirstButtonReturn
-            if alert.suppressionButton?.state == .on {
+            if !isPrivate, alert.suppressionButton?.state == .on {
                 Preferences.sitePermissions["\(origin)|\(kind.rawValue)"] = allowed
             }
             completion(allowed)
@@ -71,8 +72,12 @@ enum SitePermissions {
 /// The sign-in sheet for sites behind HTTP basic or digest auth (staging servers, routers, intranets).
 @MainActor
 enum AuthPrompt {
-    static func ask(_ challenge: URLAuthenticationChallenge, in window: NSWindow?, completion: @escaping (URLCredential?) -> Void) {
+    /// A login saved in Tern's passwords for the host fills the sheet; a new one is saved after you log in,
+    /// unless the tab is private.
+    static func ask(_ challenge: URLAuthenticationChallenge, in window: NSWindow?, isPrivate: Bool = false,
+                    completion: @escaping (URLCredential?) -> Void) {
         let space = challenge.protectionSpace
+        let saved = PasswordStore.logins(for: space.host).first { challenge.proposedCredential?.user == nil || $0.user == challenge.proposedCredential?.user }
         let alert = NSAlert()
         alert.messageText = "Log in to \(space.host)"
         var lines: [String] = []
@@ -83,9 +88,11 @@ enum AuthPrompt {
         alert.addButton(withTitle: "Log In")
         alert.addButton(withTitle: "Cancel")
 
-        let user = NSTextField(string: challenge.proposedCredential?.user ?? "")
+        let user = NSTextField(string: challenge.proposedCredential?.user ?? saved?.user ?? "")
         user.placeholderString = "User name"
-        let password = NSSecureTextField(string: "")
+        // A saved password that just failed isn't offered again.
+        let savedPassword = challenge.previousFailureCount == 0 ? saved.flatMap { PasswordStore.password(for: $0) } : nil
+        let password = NSSecureTextField(string: savedPassword ?? "")
         password.placeholderString = "Password"
         for field in [user, password] { field.translatesAutoresizingMaskIntoConstraints = false; field.widthAnchor.constraint(equalToConstant: 260).isActive = true }
         let stack = NSStackView(views: [user, password])
@@ -94,9 +101,15 @@ enum AuthPrompt {
         stack.frame = NSRect(x: 0, y: 0, width: 260, height: 56)
         alert.accessoryView = stack
         alert.window.initialFirstResponder = user.stringValue.isEmpty ? user : password
+        alert.showsSuppressionButton = !isPrivate
+        alert.suppressionButton?.title = "Save in Tern’s passwords"
+        alert.suppressionButton?.state = saved == nil ? .off : .on
 
         let finish = { (response: NSApplication.ModalResponse) in
             guard response == .alertFirstButtonReturn else { return completion(nil) }
+            if !isPrivate, alert.suppressionButton?.state == .on, !password.stringValue.isEmpty {
+                PasswordStore.save(password.stringValue, for: .init(host: space.host, user: user.stringValue))
+            }
             completion(URLCredential(user: user.stringValue, password: password.stringValue, persistence: .forSession))
         }
         if let window { alert.beginSheetModal(for: window, completionHandler: finish) } else { finish(alert.runModal()) }

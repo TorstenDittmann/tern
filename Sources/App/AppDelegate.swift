@@ -196,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openExtensionOptions(_ sender: NSMenuItem) {
         guard let item = extensionItem(sender), let url = ExtensionManager.shared.context(for: item)?.optionsPageURL else { return }
-        (keyBrowser ?? openWindow()).newTab(url: url)
+        ExtensionManager.browserForExtensions.newTab(url: url)
     }
 
     @objc private func rescanExtensions() {
