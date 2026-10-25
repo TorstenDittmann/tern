@@ -33,6 +33,7 @@ final class BrowserEngine {
         // Turns on the "Inspect Element" context menu item for every page.
         c.preferences.setValue(true, forKey: "developerExtrasEnabled")
         c.userContentController.addUserScript(JSONViewer.userScript)
+        PasswordManager.shared.install(in: c.userContentController)
         return c
     }()
 

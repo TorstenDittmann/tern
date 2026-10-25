@@ -74,6 +74,8 @@ private final class PrintCallback: NSObject {
     init(completion: ((Bool) -> Void)?) { self.completion = completion }
 
     @objc func printOperationDidRun(_ op: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        // Read before the release: it can be the last reference to self.
+        let completion = self.completion
         if let contextInfo { Unmanaged<PrintCallback>.fromOpaque(contextInfo).release() }
         completion?(success)
     }

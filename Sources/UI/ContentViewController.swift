@@ -235,6 +235,12 @@ final class ContentViewController: NSViewController {
         for id in readers.keys where !open.contains(id) { readers.removeValue(forKey: id)?.removeFromSuperview() }
         for (id, reader) in readers {
             guard let i = shown.firstIndex(where: { $0.id == id }) else { reader.removeFromSuperview(); continue }
+            // The tab went somewhere else while it wasn't shown.
+            if reader.source.absoluteString != shown[i].currentURL?.absoluteString {
+                readers.removeValue(forKey: id)
+                reader.removeFromSuperview()
+                continue
+            }
             let card = panes.cards[i]
             if reader.superview !== card.clip { card.clip.addSubview(reader, positioned: .below, relativeTo: card.progress) }
             reader.autoresizingMask = card.device == nil ? [.width, .height] : []
