@@ -245,13 +245,18 @@ final class ExtensionManager: NSObject {
 
 // MARK: - WKWebExtensionControllerDelegate
 
+extension ExtensionManager {
+    /// The windows extensions can see: every one but private windows.
+    static var windowsForExtensions: [BrowserWindowController] { AppDelegate.shared.windows.filter { !$0.isPrivate } }
+}
+
 extension ExtensionManager: WKWebExtensionControllerDelegate {
     func webExtensionController(_ controller: WKWebExtensionController, openWindowsFor extensionContext: WKWebExtensionContext) -> [any WKWebExtensionWindow] {
-        AppDelegate.shared.windows
+        Self.windowsForExtensions
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, focusedWindowFor extensionContext: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
-        AppDelegate.shared.keyBrowser
+        AppDelegate.shared.keyBrowser.flatMap { $0.isPrivate ? nil : $0 }
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, openNewTabUsing configuration: WKWebExtension.TabConfiguration,

@@ -23,7 +23,8 @@ enum SessionStore {
     private static var fileURL: URL { AppPaths.support.appendingPathComponent("session.json") }
 
     static func save(_ windows: [BrowserWindowController]) {
-        let saved = windows.map { w in
+        // Private windows are never written down.
+        let saved = windows.filter { !$0.isPrivate }.map { w in
             SavedWindow(
                 tabs: w.tabs.map { SavedTab(id: $0.id, url: $0.currentURL?.absoluteString, title: $0.pageTitle, state: $0.interactionStateData,
                                        pinned: $0.isPinned ? true : nil) },

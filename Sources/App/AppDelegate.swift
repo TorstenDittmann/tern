@@ -78,8 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Windows
 
     @discardableResult
-    func openWindow(restoring tabs: [Tab] = [], active: Int = 0, frame: NSRect? = nil, sidebarCollapsed: Bool = false) -> BrowserWindowController {
-        let controller = BrowserWindowController(tabs: tabs, active: active, frame: frame, sidebarCollapsed: sidebarCollapsed)
+    func openWindow(restoring tabs: [Tab] = [], active: Int = 0, frame: NSRect? = nil, sidebarCollapsed: Bool = false,
+                    isPrivate: Bool = false) -> BrowserWindowController {
+        let controller = BrowserWindowController(tabs: tabs, active: active, frame: frame, sidebarCollapsed: sidebarCollapsed, isPrivate: isPrivate)
         if frame == nil, let last = windows.last?.window {
             controller.window?.setFrameTopLeftPoint(NSPoint(x: last.frame.minX + 24, y: last.frame.maxY - 24))
         }

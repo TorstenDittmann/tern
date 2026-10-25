@@ -148,6 +148,8 @@ enum SmokeTest {
         await privacy(browser: browser, base: base)
         await bookmarksAndLibrary(browser: browser, base: base)
         await browsingBasics(browser: browser, base: base, out: out)
+        await privateWindow(base: base)
+        await pageTools(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
 
         // TERN_SMOKE_SPLIT=1 leaves a pair on screen for the snapshots; =columns|rows|grid leaves three or four tabs.
@@ -747,6 +749,76 @@ enum SmokeTest {
         SitePermissions.reset(for: URL(string: "\(origin)/one.html")!)
         check(SitePermissions.remembered(.camera, for: origin) == nil, "Reset Permissions for This Site")
         print("INFO  default browser: \(DefaultBrowser.isDefault ? "Tern" : "another app")")
+        browser.close(tab)
+    }
+
+    /// A private window keeps nothing: in-memory site data, no history, no session, no extensions.
+    private static func privateWindow(base: String) async {
+        let url = URL(string: "\(base)/one.html?private-smoke")!
+        let window = AppDelegate.shared.openWindow(restoring: [Tab(url: url)], isPrivate: true)
+        let tab = window.activeTab!
+        await wait { tab.pageTitle == "Page One" && !tab.isLoading }
+        check(window.isPrivate && tab.isPrivate, "New Private Window opens a private window")
+        check(tab.webView?.configuration.websiteDataStore.isPersistent == false, "private tabs use an in-memory data store")
+        check(HistoryStore.shared.entries[url.absoluteString] == nil, "private pages aren't added to history")
+        check(window.content.topBar.showsPrivateBadge, "a private window says so in the top bar")
+        check(!ExtensionManager.windowsForExtensions.contains { $0 === window }, "extensions don't see private windows")
+        let other = window.newTab(url: URL(string: "\(base)/two.html?private-smoke")!)
+        await wait { other.pageTitle == "Page Two" && !other.isLoading }
+        let cookie = try? await tab.webView?.evaluateJavaScript("document.cookie = 'p=1'; document.cookie")
+        let shared = try? await other.webView?.evaluateJavaScript("document.cookie")
+        check((cookie as? String) == "p=1" && (shared as? String) == "p=1", "a private window's tabs share their cookies")
+        window.window?.performClose(nil)
+        await wait { !AppDelegate.shared.windows.contains { $0 === window } }
+        check(!AppDelegate.shared.windows.contains { $0 === window }, "closing a private window")
+    }
+
+    /// Responsive design mode, the JSON viewer, and the reader.
+    private static func pageTools(browser: BrowserWindowController, base: String) async {
+        let tab = browser.newTab(url: URL(string: "\(base)/one.html?device")!)
+        await wait { tab.pageTitle == "Page One" && !tab.isLoading }
+        func innerWidth() async -> Int? { (try? await tab.webView?.evaluateJavaScript("window.innerWidth")) as? Int }
+        func reloaded(_ change: () -> Void) async {
+            let before = tab.loadsEnded
+            change()
+            await wait { tab.loadsEnded > before && !tab.isLoading }
+        }
+        await reloaded { CommandRouter.perform(.responsiveDesignMode, in: browser) }
+        let device = tab.devicePreview?.size ?? .zero
+        check(tab.devicePreview != nil && tab.webView?.frame.width == device.width, "responsive design mode lays the page out at the device's width (\(tab.webView?.frame.width ?? 0) vs \(device.width))")
+        let width = await innerWidth()
+        check(width == Int(device.width), "the page sees the device's viewport (innerWidth \(width ?? 0))")
+        check(tab.webView?.customUserAgent?.contains("iPhone") == true, "and an iPhone user agent")
+        CommandRouter.perform(.rotateDevice, in: browser)
+        browser.content.view.layoutSubtreeIfNeeded()
+        check(tab.webView?.frame.width == min(device.height, (tab.webView?.superview?.bounds.width ?? 0) - 24), "Rotate Device swaps width and height")
+        await reloaded { CommandRouter.perform(.responsiveDesignMode, in: browser) }
+        check(tab.devicePreview == nil && tab.webView?.customUserAgent == nil && tab.webView?.frame.width == tab.webView?.superview?.bounds.width,
+              "leaving responsive design mode restores the page")
+
+        // JSON viewer
+        tab.load(URL(string: "\(base)/data.json")!)
+        await wait { tab.currentURL?.lastPathComponent == "data.json" && !tab.isLoading }
+        var viewer: Any?
+        await wait {
+            tab.webView?.evaluateJavaScript("document.documentElement.dataset.ternJson") { r, _ in viewer = r }
+            return viewer as? String == "tree"
+        }
+        let details = try? await tab.webView?.evaluateJavaScript("document.querySelectorAll('#tern-json-tree details').length")
+        check(viewer as? String == "tree" && ((details as? Int) ?? 0) >= 4, "JSON opens in the viewer (\(details ?? "nil") nodes)")
+
+        // Reader
+        tab.load(URL(string: "\(base)/article.html")!)
+        await wait { tab.pageTitle == "A Long Read | Smoke" && !tab.isLoading }
+        CommandRouter.perform(.toggleReader, in: browser)
+        await wait { browser.content.reader(for: tab) != nil }
+        let reader = browser.content.reader(for: tab)
+        check(reader?.article.title == "A Long Read" && (reader?.article.words ?? 0) > 400, "Reader finds the article (\(reader?.article.title ?? "none"), \(reader?.article.words ?? 0) words)")
+        check(reader?.article.html.contains("Footer text") == false && reader?.article.html.contains("newsletter") == false, "Reader leaves out the page around it")
+        check(reader?.superview != nil, "Reader shows over the page")
+        tab.load(URL(string: "\(base)/two.html")!)
+        await wait { tab.pageTitle == "Page Two" && !tab.isLoading }
+        check(browser.content.reader(for: tab) == nil && reader?.superview == nil, "Reader closes when the tab navigates")
         browser.close(tab)
     }
 
