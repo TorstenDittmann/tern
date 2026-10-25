@@ -17,6 +17,7 @@ enum Command: String, CaseIterable {
     case toggleAgentAPI, clearHistory, showWelcome, openSettings
     case toggleBookmark, showHistory, showBookmarks
     case toggleSiteBlocking
+    case showDownloads, printPage, exportPDF, makeDefaultBrowser, toggleMuteTab, resetSitePermissions
 
     var title: String {
         switch self {
@@ -83,6 +84,12 @@ enum Command: String, CaseIterable {
         case .showHistory: "Show History"
         case .showBookmarks: "Show Bookmarks"
         case .toggleSiteBlocking: "Toggle Ad Blocking for This Site"
+        case .showDownloads: "Show Downloads"
+        case .printPage: "Print…"
+        case .exportPDF: "Export as PDF…"
+        case .makeDefaultBrowser: "Make Tern the Default Browser"
+        case .toggleMuteTab: "Mute or Unmute Tab"
+        case .resetSitePermissions: "Reset Permissions for This Site"
         }
     }
 
@@ -150,6 +157,12 @@ enum Command: String, CaseIterable {
         case .showHistory: "clock"
         case .showBookmarks: "book"
         case .toggleSiteBlocking: "shield.lefthalf.filled"
+        case .showDownloads: "arrow.down.circle"
+        case .printPage: "printer"
+        case .exportPDF: "doc.richtext"
+        case .makeDefaultBrowser: "checkmark.seal"
+        case .toggleMuteTab: "speaker.slash"
+        case .resetSitePermissions: "hand.raised"
         }
     }
 
@@ -183,6 +196,7 @@ enum CommandRouter {
         case .showHistory: LibraryWindow.shared.show(.history); return
         case .showBookmarks: LibraryWindow.shared.show(.bookmarks); return
         case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
+        case .makeDefaultBrowser: DefaultBrowser.makeDefault(); return
         case .revealExtensionsFolder:
             NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return
         default: break
@@ -247,6 +261,11 @@ enum CommandRouter {
         case .toggleSiteBlocking:
             ContentBlocker.shared.toggle(for: tab?.currentURL)
             webView?.reload()
+        case .showDownloads: browser.content.topBar.showDownloads()
+        case .printPage: if let tab { PagePrinter.print(tab, in: browser.window) }
+        case .exportPDF: if let tab { PagePrinter.exportPDF(tab, in: browser.window) }
+        case .toggleMuteTab: tab?.isMuted.toggle()
+        case .resetSitePermissions: if let url = tab?.currentURL { SitePermissions.reset(for: url) }
         case .copyURL:
             if let url = tab?.currentURL { copy(url.absoluteString) }
         case .copyMarkdownLink:

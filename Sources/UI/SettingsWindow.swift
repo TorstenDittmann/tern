@@ -48,6 +48,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     let agentCheckbox = NSButton(checkboxWithTitle: "Let coding agents control Tern", target: nil, action: nil)
     let sidebarPopup = NSPopUpButton()
     let blockingCheckbox = NSButton(checkboxWithTitle: "Block ads and trackers", target: nil, action: nil)
+    let defaultBrowserButton = NSButton(title: "Make Tern the Default Browser", target: nil, action: nil)
 
     override func loadView() {
         title = "General"
@@ -76,6 +77,9 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
 
         let clear = NSButton(title: "Clear History", target: self, action: #selector(clearHistory))
         clear.bezelStyle = .push
+        defaultBrowserButton.bezelStyle = .push
+        defaultBrowserButton.target = self
+        defaultBrowserButton.action = #selector(makeDefaultBrowser)
 
         let grid = NSGridView(views: [
             [label("Appearance:"), appearancePopup],
@@ -89,13 +93,14 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
             [label("Agent API:"), agentCheckbox],
             [NSGridCell.emptyContentView, note("A local socket for the tern CLI and MCP server. Only your user can connect.")],
             [label("History:"), clear],
+            [label("Default browser:"), defaultBrowserButton],
         ])
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
         grid.columnSpacing = 10
         for row in [2, 4, 7, 9] { grid.row(at: row).topPadding = -4 }
-        for row in [1, 3, 5, 6, 8, 10] { grid.row(at: row).topPadding = 8 }
+        for row in [1, 3, 5, 6, 8, 10, 11] { grid.row(at: row).topPadding = 8 }
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
@@ -133,7 +138,12 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         agentCheckbox.state = AgentServer.isEnabled ? .on : .off
         blockingCheckbox.state = Preferences.blocksTrackers ? .on : .off
         sidebarPopup.selectItem(at: Preferences.sidebarOnRight ? 1 : 0)
+        let isDefault = DefaultBrowser.isDefault
+        defaultBrowserButton.title = isDefault ? "Tern is your default browser" : "Make Tern the Default Browser"
+        defaultBrowserButton.isEnabled = !isDefault
     }
+
+    @objc private func makeDefaultBrowser() { DefaultBrowser.makeDefault() }
 
     @objc func sidebarSideChanged() {
         Preferences.sidebarOnRight = sidebarPopup.indexOfSelectedItem == 1

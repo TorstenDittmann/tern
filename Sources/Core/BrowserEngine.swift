@@ -48,6 +48,7 @@ final class BrowserEngine {
     func resolve(input raw: String) -> URL? {
         let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return nil }
+        if let url = Bangs.url(for: input) { return url }
 
         if let url = URL(string: input), let scheme = url.scheme?.lowercased(),
            ["http", "https", "file", "about", "data", "webkit-extension"].contains(scheme) {

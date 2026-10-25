@@ -379,7 +379,7 @@ final class SidebarViewController: NSViewController {
             ("Remove from Split", #selector(ctxRemoveFromSplit)),
             ("Unsplit", #selector(ctxUnsplit)),
             nil,
-            ("Pin Tab", #selector(ctxPin)),
+            ("Pin Tab", #selector(ctxPin)), ("Mute Tab", #selector(ctxMute)),
             ("Duplicate", #selector(ctxDuplicate)), ("Copy URL", #selector(ctxCopyURL)), ("Suspend", #selector(ctxSuspend)),
             nil,
             ("Close Tab", #selector(ctxClose)), ("Close Tabs Below", #selector(ctxCloseBelow)), ("Close Other Tabs", #selector(ctxCloseOthers)),
@@ -396,6 +396,7 @@ final class SidebarViewController: NSViewController {
         return rows.indices.contains(tableView.clickedRow) ? rows[tableView.clickedRow] : nil
     }
     @objc private func ctxPin() { clickedTab.map { browser?.setPinned($0, !$0.isPinned) } }
+    @objc private func ctxMute() { clickedTab?.isMuted.toggle() }
     @objc private func ctxSplit() {
         guard let browser, let clicked = clickedTab, let active = browser.activeTab else { return }
         if clicked === active { return browser.toggleSplit() }
@@ -456,6 +457,11 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
         cell.onClose = { [weak self, weak cell] in
             guard let self, let cell else { return }
             self.closeTab(atRow: self.tableView.row(for: cell))
+        }
+        cell.onToggleMute = { [weak self, weak cell] in
+            guard let self, let cell else { return }
+            let row = self.tableView.row(for: cell)
+            if self.rows.indices.contains(row) { self.rows[row].isMuted.toggle() }
         }
         return cell
     }
@@ -634,6 +640,7 @@ final class TabCellView: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("TabCell")
 
     var onClose: (() -> Void)?
+    var onToggleMute: (() -> Void)?
     var isSelected = false { didSet { updateState() } }
     var isHovering = false { didSet { updateState() } }
     /// Where the tab sits in the split, drawn as a small map of the panes.
@@ -653,6 +660,8 @@ final class TabCellView: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     private let closeButton = NSButton()
+    /// A speaker badge on the favicon while the page plays sound, or once it's muted. Click to (un)mute.
+    private let audioButton = NSButton()
     private var suspended = false
 
     init() {
@@ -675,6 +684,13 @@ final class TabCellView: NSTableCellView {
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         closeButton.toolTip = "Close Tab"
+        audioButton.isBordered = false
+        audioButton.imagePosition = .imageOnly
+        audioButton.target = self
+        audioButton.action = #selector(audioClicked)
+        audioButton.wantsLayer = true
+        audioButton.layer?.cornerRadius = 7
+        audioButton.layer?.backgroundColor = Theme.surface.cgColor
 
         glyph.onClick = { [weak self] in self?.onUnsplit?() }
         agentIcon.contentTintColor = AgentRingView.color
@@ -683,7 +699,7 @@ final class TabCellView: NSTableCellView {
         pinIcon.toolTip = "Pinned"
         sleepIcon.contentTintColor = .tertiaryLabelColor
         sleepIcon.toolTip = "Suspended: uses no memory until you open it"
-        for v in [icon, spinner, title, closeButton, glyph, agentIcon, pinIcon, sleepIcon] as [NSView] {
+        for v in [icon, spinner, title, closeButton, glyph, agentIcon, pinIcon, sleepIcon, audioButton] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -714,6 +730,10 @@ final class TabCellView: NSTableCellView {
             pinIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
             sleepIcon.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
             sleepIcon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            audioButton.centerXAnchor.constraint(equalTo: icon.trailingAnchor, constant: -1),
+            audioButton.centerYAnchor.constraint(equalTo: icon.bottomAnchor, constant: -1),
+            audioButton.widthAnchor.constraint(equalToConstant: 14),
+            audioButton.heightAnchor.constraint(equalToConstant: 14),
         ])
         titleToClose = title.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -6)
         titleToGlyph = title.trailingAnchor.constraint(lessThanOrEqualTo: glyph.leadingAnchor, constant: -4)
@@ -735,8 +755,15 @@ final class TabCellView: NSTableCellView {
         suspended = tab.isSuspended
         isAgentDriving = tab.isAgentDriving
         isPinned = tab.isPinned
+        audioButton.isHidden = !(tab.isMuted || tab.isPlayingAudio)
+        audioButton.image = Theme.symbol(tab.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill", size: 8, weight: .semibold)
+        audioButton.contentTintColor = tab.isMuted ? .secondaryLabelColor : Theme.accent
+        audioButton.toolTip = tab.isMuted ? "Unmute Tab" : "Mute Tab"
+        audioButton.layer?.backgroundColor = Theme.surface.cgColor
         updateState()
     }
+
+    var showsAudioBadge: Bool { !audioButton.isHidden }
 
     private func updateState() {
         closeButton.isHidden = !(isHovering || isSelected)
@@ -753,6 +780,7 @@ final class TabCellView: NSTableCellView {
     }
 
     @objc private func closeClicked() { onClose?() }
+    @objc private func audioClicked() { onToggleMute?() }
 }
 
 /// A tiny map of the split's panes with this tab's pane filled in. Hovering it turns it into a button
@@ -818,6 +846,7 @@ final class PaneGlyph: NSView {
 extension SidebarViewController: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(ctxPin) { item.title = clickedTab?.isPinned == true ? "Unpin Tab" : "Pin Tab" }
+        if item.action == #selector(ctxMute) { item.title = clickedTab?.isMuted == true ? "Unmute Tab" : "Mute Tab" }
         let paired = clickedTab.map { browser?.isPaired($0) ?? false } ?? false
         if item.action == #selector(ctxRemoveFromSplit) || item.action == #selector(ctxUnsplit) { item.isHidden = !paired }
         if item.action == #selector(ctxSplit), let browser, let active = browser.activeTab, let clicked = clickedTab {

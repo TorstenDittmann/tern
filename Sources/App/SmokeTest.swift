@@ -147,6 +147,7 @@ enum SmokeTest {
         settings()
         await privacy(browser: browser, base: base)
         await bookmarksAndLibrary(browser: browser, base: base)
+        await browsingBasics(browser: browser, base: base, out: out)
         await agentAPI(browser: browser, base: base)
 
         // TERN_SMOKE_SPLIT=1 leaves a pair on screen for the snapshots; =columns|rows|grid leaves three or four tabs.
@@ -680,6 +681,73 @@ enum SmokeTest {
         keymap.resetToDefaults()
         window.close()
         try? FileManager.default.removeItem(at: Keymap.fileURL)
+    }
+
+    /// !bangs, downloads, Export as PDF, muting a tab, and remembered site permissions.
+    private static func browsingBasics(browser: BrowserWindowController, base: String, out: URL) async {
+        let engine = BrowserEngine.shared
+        let gh = engine.resolve(input: "!gh swift-nio")
+        check(gh?.host == "github.com" && gh?.query == "q=swift-nio", "!gh searches GitHub (\(gh?.absoluteString ?? "nil"))")
+        check(engine.resolve(input: "swift-nio !gh")?.host == "github.com", "a bang at the end works too")
+        check(engine.resolve(input: "!mdn")?.absoluteString == "https://developer.mozilla.org/", "a bang alone opens the site")
+        check(engine.resolve(input: "!nope foo")?.host == "duckduckgo.com", "an unknown bang is a normal search")
+        check(engine.resolve(input: "!g a&b")?.absoluteString.contains("q=a%26b") == true, "bang queries are escaped")
+        try? #"{ "jira": "https://acme.example/browse/%s" }"#.write(to: Bangs.fileURL, atomically: true, encoding: .utf8)
+        check(engine.resolve(input: "!jira ABC-1")?.absoluteString == "https://acme.example/browse/ABC-1", "custom bangs from bangs.json")
+        try? FileManager.default.removeItem(at: Bangs.fileURL)
+
+        // Downloads
+        let bar = browser.content.topBar
+        check(bar.downloadsButton.isHidden == DownloadManager.shared.items.isEmpty, "the downloads button shows only once there are downloads")
+        let tab = browser.newTab(url: URL(string: "\(base)/downloads.html"))
+        await wait { tab.pageTitle == "Downloads" && !tab.isLoading }
+        _ = try? await tab.webView?.evaluateJavaScript("document.getElementById('dl').click()")
+        await wait { DownloadManager.shared.items.first?.state == .finished }
+        let item = DownloadManager.shared.items.first
+        let size = (item?.destination).flatMap { try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize }
+        check(item?.state == .finished && item?.destination?.deletingLastPathComponent().lastPathComponent == "downloads" && size == 16384,
+              "a download lands in the downloads folder (\(item.map(DownloadManager.status) ?? "none"), \(size ?? 0) bytes)")
+        check(!bar.downloadsButton.isHidden, "the downloads button appears")
+        CommandRouter.perform(.showDownloads, in: browser)
+        let list = bar.popover?.contentViewController as? DownloadsController
+        check(list?.rowCount == DownloadManager.shared.items.count, "Show Downloads lists them (\(list?.rowCount ?? -1) rows)")
+        bar.popover?.close()
+
+        // Export as PDF
+        if let webView = tab.webView {
+            let pdf = out.appendingPathComponent("page.pdf")
+            try? FileManager.default.removeItem(at: pdf)
+            let ok = await withCheckedContinuation { done in
+                PagePrinter.writePDF(of: webView, title: "Downloads", to: pdf, in: browser.window) { done.resume(returning: $0) }
+            }
+            let head = (try? FileHandle(forReadingFrom: pdf))?.readData(ofLength: 4)
+            check(ok && head == Data("%PDF".utf8), "Export as PDF writes a PDF")
+        }
+
+        // Mute
+        tab.isMuted = true
+        if let webView = tab.webView, let m = class_getInstanceMethod(type(of: webView), NSSelectorFromString("_mediaMutedState")) {
+            typealias Get = @convention(c) (AnyObject, Selector) -> UInt
+            let state = unsafeBitCast(method_getImplementation(m), to: Get.self)(webView, NSSelectorFromString("_mediaMutedState"))
+            check(state & 1 == 1, "muting a tab mutes its page")
+        }
+        tab.suspend()
+        browser.activate(tab)
+        check(tab.isMuted, "a muted tab stays muted after it's suspended")
+        CommandRouter.perform(.toggleMuteTab, in: browser)
+        check(!tab.isMuted, "Mute or Unmute Tab")
+
+        // Site permissions
+        let origin = "http://localhost:8765"
+        check(SitePermissions.remembered(.camera, for: origin) == nil, "no permission is remembered by default")
+        Preferences.sitePermissions["\(origin)|camera"] = true
+        var answer: Bool?
+        SitePermissions.ask(.camera, origin: origin, in: browser.window) { answer = $0 }
+        check(answer == true, "a remembered answer is used without asking")
+        SitePermissions.reset(for: URL(string: "\(origin)/one.html")!)
+        check(SitePermissions.remembered(.camera, for: origin) == nil, "Reset Permissions for This Site")
+        print("INFO  default browser: \(DefaultBrowser.isDefault ? "Tern" : "another app")")
+        browser.close(tab)
     }
 
     /// Filter-list conversion, tracking parameters, and blocking on a page with the smoke filter list.

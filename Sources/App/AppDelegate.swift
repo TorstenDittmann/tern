@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if SmokeTest.isRunning {
             // A throwaway keymap file: the smoke test edits shortcuts and must start from the defaults.
             Keymap.fileOverride = FileManager.default.temporaryDirectory.appendingPathComponent("tern-smoke-keymap-\(getpid()).json")
+            // Nor may it read your bangs or write to your Downloads folder.
+            Bangs.fileOverride = FileManager.default.temporaryDirectory.appendingPathComponent("tern-smoke-bangs-\(getpid()).json")
+            DownloadManager.directoryOverride = URL(fileURLWithPath: ProcessInfo.processInfo.environment["TERN_SMOKE"]!).appendingPathComponent("downloads")
         }
         Keymap.shared.load()
         NSApp.mainMenu = MainMenu.build(extensionsMenuDelegate: self)

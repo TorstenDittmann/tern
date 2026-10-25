@@ -88,6 +88,12 @@ enum Preferences {
         set { store(newValue.sorted(), "blockingExceptions") }
     }
 
+    /// Remembered answers to camera, microphone and location prompts, keyed "origin|kind".
+    static var sitePermissions: [String: Bool] {
+        get { value("sitePermissions") as? [String: Bool] ?? [:] }
+        set { store(newValue, "sitePermissions") }
+    }
+
     /// When each filter list was last downloaded, by list identifier, in seconds since 1970.
     static var blocklistsUpdated: [String: Double] {
         get { value("blocklistsUpdated") as? [String: Double] ?? [:] }

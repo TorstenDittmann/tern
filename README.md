@@ -18,6 +18,12 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Split view.** Two to four tabs side by side, stacked, or in a grid, with draggable dividers. Drag a tab onto the page to split with it, or use the split button at the end of the top bar. Each pane has a small header with its host, and focus follows the pane you click.
 - **Command palette (⌘K).** Fuzzy-search open tabs, your history and every command, or type a URL or a search. Pages and commands you use often and recently rank first, and every command shows its shortcut.
 - **History and bookmarks.** Visited pages are remembered for ⌘K, and the address bar completes sites as you type. ⌘D (or the star in the address bar) bookmarks a page. ⌘Y and ⌥⌘B open a window to search, open, rename or delete them. New tabs show your bookmarks and most visited sites.
+- **!bangs.** Type `!gh swift-nio`, `!mdn grid`, `!npm zod` or `!so` in the address bar or ⌘K to search that site directly; a bang on its own opens the site. About 25 are built in (`!g`, `!ddg`, `!gh`, `!mdn`, `!caniuse`, `!so`, `!npm`, `!pypi`, `!crates`, `!rs`, `!go`, `!spi`, `!apple`, `!docker`, `!hn`, `!r`, `!yt`, `!w`, `!maps`, `!tr`, …). Add your own in `~/.config/tern/bangs.json`, like `{ "jira": "https://acme.atlassian.net/browse/%s" }`.
+- **Downloads.** A downloads button appears in the top bar once something is downloading. Its popover (⇧⌘J) shows progress, opens finished files, shows them in Finder, and cancels or retries.
+- **Print and PDF.** ⌥⌘P prints the page, and **File ▸ Export as PDF…** saves it as a paginated PDF.
+- **Mute tabs.** A tab playing sound shows a speaker on its icon; click it, right-click ▸ **Mute Tab**, or press ⇧⌘M.
+- **Site sign-in and permissions.** Sites behind HTTP basic or digest auth (staging servers, routers) get a sign-in sheet. Camera, microphone and location requests ask first and can be remembered per site; **Reset Permissions for This Site** in ⌘K forgets them.
+- **Default browser.** **Tern ▸ Make Tern the Default Browser**, or the button in Settings ▸ General.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
 - **Welcome sheet.** The first launch shows the four shortcuts worth learning, each with a Try It button. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
 - **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
@@ -66,6 +72,9 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Reload / ignoring cache / stop | ⌘R / ⇧⌘R / ⌘. |
 | Find / next / previous | ⌘F / ⌘G / ⇧⌘G |
 | Bookmark page / show bookmarks / show history | ⌘D / ⌥⌘B / ⌘Y |
+| Show downloads | ⇧⌘J |
+| Print | ⌥⌘P |
+| Mute or unmute tab | ⇧⌘M |
 | Settings | ⌘, |
 | Link hints (click links from the keyboard) | ⌘J |
 | Peek at a link / keep it as a tab / in a split | ⌥-click / ⌘↩ / ⇧⌘↩ |
