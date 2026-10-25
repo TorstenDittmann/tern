@@ -75,7 +75,9 @@ struct DevicePreview: Equatable {
 enum DeviceEmulation {
     static func apply(_ preview: DevicePreview?, to webView: WKWebView) {
         let agent = preview?.effectiveUserAgent.string
-        if webView.customUserAgent != agent {
+        // WebKit hands back "" once a custom user agent has been cleared.
+        let current = webView.customUserAgent.flatMap { $0.isEmpty ? nil : $0 }
+        if current != agent {
             webView.customUserAgent = agent
             if webView.url != nil { webView.reload() }
         }

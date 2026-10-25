@@ -793,8 +793,8 @@ enum SmokeTest {
         browser.content.view.layoutSubtreeIfNeeded()
         check(tab.webView?.frame.width == min(device.height, (tab.webView?.superview?.bounds.width ?? 0) - 24), "Rotate Device swaps width and height")
         await reloaded { CommandRouter.perform(.responsiveDesignMode, in: browser) }
-        check(tab.devicePreview == nil && tab.webView?.customUserAgent == nil && tab.webView?.frame.width == tab.webView?.superview?.bounds.width,
-              "leaving responsive design mode restores the page")
+        check(tab.devicePreview == nil && tab.webView?.customUserAgent?.isEmpty != false && tab.webView?.frame.width == tab.webView?.superview?.bounds.width,
+              "leaving responsive design mode restores the page (agent \(tab.webView?.customUserAgent ?? "nil"), width \(tab.webView?.frame.width ?? 0) of \(tab.webView?.superview?.bounds.width ?? 0))")
 
         // JSON viewer
         tab.load(URL(string: "\(base)/data.json")!)
