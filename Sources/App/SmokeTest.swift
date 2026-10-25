@@ -148,6 +148,7 @@ enum SmokeTest {
         await privacy(browser: browser, base: base)
         await bookmarksAndLibrary(browser: browser, base: base)
         await browsingBasics(browser: browser, base: base, out: out)
+        await tabHousekeeping(browser: browser, base: base)
         await privateWindow(base: base)
         await pageTools(browser: browser, base: base)
         await agentAPI(browser: browser, base: base)
@@ -820,6 +821,66 @@ enum SmokeTest {
         await wait { tab.pageTitle == "Page Two" && !tab.isLoading }
         check(browser.content.reader(for: tab) == nil && reader?.superview == nil, "Reader closes when the tab navigates")
         browser.close(tab)
+    }
+
+    /// Pinned tabs that go back to their page, archiving idle tabs, and compact mode.
+    private static func tabHousekeeping(browser: BrowserWindowController, base: String) async {
+        // Pinned tabs
+        let home = URL(string: "\(base)/one.html?pinned")!
+        let other = browser.newTab(url: URL(string: "\(base)/two.html?other")!)
+        await wait { other.pageTitle == "Page Two" && !other.isLoading }
+        let pinned = browser.newTab(url: home)
+        await wait { pinned.pageTitle == "Page One" && !pinned.isLoading }
+        browser.setPinned(pinned, true)
+        check(pinned.pinnedURL == home, "pinning remembers the pinned page")
+        pinned.load(URL(string: "\(base)/two.html?wandered")!)
+        await wait { pinned.currentURL?.query == "wandered" && !pinned.isLoading }
+        check(pinned.hasLeftPinnedURL, "a pinned tab knows it left its page")
+        CommandRouter.perform(.closeTab, in: browser)
+        await wait { pinned.currentURL == home && !pinned.isLoading }
+        check(browser.tabs.contains(pinned) && pinned.currentURL == home, "⌘W on a wandered pinned tab takes it back to its page")
+        CommandRouter.perform(.closeTab, in: browser)
+        check(browser.tabs.contains(pinned) && pinned.isSuspended && browser.activeTab === other,
+              "⌘W on a pinned tab at its page puts it to sleep and shows the previous tab")
+        browser.activate(pinned)
+        pinned.load(URL(string: "\(base)/two.html?new-home")!)
+        await wait { pinned.currentURL?.query == "new-home" && !pinned.isLoading }
+        CommandRouter.perform(.repinTab, in: browser)
+        check(pinned.pinnedURL?.query == "new-home" && !pinned.hasLeftPinnedURL, "Make This the Pinned Page")
+        browser.setPinned(pinned, false)
+        check(pinned.pinnedURL == nil, "unpinning forgets the pinned page")
+        browser.close(pinned)
+
+        // Archive
+        let stale = browser.newTab(url: URL(string: "\(base)/two.html?stale")!, activate: false)
+        stale.lastActivated = Date().addingTimeInterval(-3 * 3600)
+        let count = browser.tabs.count
+        ArchiveStore.shared.sweep(olderThan: 2 * 3600)
+        check(!browser.tabs.contains(stale) && browser.tabs.count == count - 1, "a tab idle past the archive time closes")
+        let entry = ArchiveStore.shared.entries.first
+        check(entry?.url == "\(base)/two.html?stale", "and goes to the archive (\(entry?.url ?? "nothing"))")
+        ArchiveStore.shared.sweep(olderThan: 2 * 3600)
+        check(browser.tabs.contains(other), "recent tabs stay")
+        if let entry {
+            ArchiveStore.shared.restore(entry, in: browser)
+            check(browser.activeTab?.currentURL?.absoluteString == entry.url && ArchiveStore.shared.entries.isEmpty, "opening an archived tab brings it back")
+            browser.activeTab.map(browser.close)
+        }
+        browser.close(other)
+
+        // Compact mode
+        let content = browser.content
+        CommandRouter.perform(.toggleCompactMode, in: browser)
+        browser.window?.layoutIfNeeded()
+        let pageTop = content.view.bounds.height - content.pageFrameInWindow.maxY
+        check(content.isCompact && content.topBar.isHidden && pageTop <= Theme.gutter + 1, "compact mode hides the top bar and moves the page up (\(pageTop))")
+        CommandRouter.perform(.focusAddressBar, in: browser)
+        check(content.isBarRevealed && !content.topBar.isHidden, "⌘L shows the bar in compact mode")
+        browser.window?.makeFirstResponder(browser.activeTab?.webView)
+        await wait { !content.isBarRevealed }
+        CommandRouter.perform(.toggleCompactMode, in: browser)
+        browser.window?.layoutIfNeeded()
+        check(!content.isCompact && !content.topBar.isHidden && content.topBar.alphaValue == 1, "leaving compact mode brings the bar back")
     }
 
     /// Filter-list conversion, tracking parameters, and blocking on a page with the smoke filter list.

@@ -11,6 +11,8 @@ final class TopBar: NSView {
     static let defaultContentTop: CGFloat = 32
 
     weak var browser: BrowserWindowController?
+    /// The address field stopped editing (compact mode hides the bar again).
+    var onEndEditing: (() -> Void)?
 
     let pill = AddressPill()
     var field: AddressField { pill.field }
@@ -166,6 +168,7 @@ extension TopBar: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ obj: Notification) {
         let url = browser?.activeTab?.currentURL
         pill.show(url: url, bookmarked: BookmarkStore.shared.contains(url))
+        DispatchQueue.main.async { [weak self] in self?.onEndEditing?() }
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) { lastTypedAddress = "" }

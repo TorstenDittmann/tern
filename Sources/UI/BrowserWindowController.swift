@@ -109,6 +109,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         laidOutCollapsed = sidebarCollapsed
         content.sidebarDidChange(collapsed: sidebarCollapsed, onRight: isSidebarOnRight)
         updateTitlebarLayout()
+        content.onBarReveal = { [weak self] _ in self?.updateTrafficLights() }
+        if Preferences.compactMode { setCompact(true) }
         if let shown { activate(shown) } else { newTab(url: nil) }
     }
 
@@ -229,10 +231,30 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard tab.isPinned != pinned, let from = tabs.firstIndex(of: tab) else { return }
         tabs.remove(at: from)
         tab.isPinned = pinned
+        tab.pinnedURL = pinned ? tab.currentURL : nil
         let to = pinnedCount
         tabs.insert(tab, at: to)
         sidebar.reloadTabs()
         if isAnnounced, from != to { extensions.didMoveTab(tab, from: from, in: self) }
+    }
+
+    /// ⌘W on a pinned tab doesn't close it. If it has left its pinned page, it goes back there; if it's
+    /// already there, it's put to sleep and the previous tab comes forward.
+    func closeOrResetPinned(_ tab: Tab) {
+        guard tab.isPinned else { return close(tab) }
+        if tab.hasLeftPinnedURL, let url = tab.pinnedURL { return tab.load(url) }
+        let previous = tabs.filter { $0 !== tab }.max { $0.lastActivated < $1.lastActivated }
+        guard let previous else { return }
+        if isPaired(tab) { removeFromSplit(tab) }
+        activate(previous)
+        tab.suspend()
+    }
+
+    /// Makes the page a pinned tab is on its pinned page.
+    func repin(_ tab: Tab) {
+        guard tab.isPinned else { return }
+        tab.pinnedURL = tab.currentURL
+        tabDidChange(tab)
     }
 
     // MARK: Split view
@@ -496,7 +518,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Chrome
 
-    func focusAddressBar() { content.topBar.focusAddressField() }
+    func focusAddressBar() { content.focusAddressBar() }
+
+    /// Compact mode: no top bar until you point at the top edge or press ⌘L. The traffic lights hide
+    /// with it where they'd sit over the page.
+    func setCompact(_ compact: Bool) {
+        content.setCompact(compact)
+        updateTitlebarLayout()
+    }
+
+    private func updateTrafficLights() {
+        guard let window else { return }
+        let underLights = !window.styleMask.contains(.fullScreen) && (isSidebarCollapsed || isSidebarOnRight)
+        let hide = content.isCompact && !content.isBarRevealed && underLights
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { window.standardWindowButton(kind)?.isHidden = hide }
+    }
 
     /// ⌘E: filter and pick tabs from the keyboard in the sidebar, or the tab picker when it's hidden.
     func focusTabList() {
@@ -570,6 +606,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         // On the left, the traffic lights take the strip above the list, so the list starts level with the page.
         // On the right nothing sits there, so the list moves up: the first tab's chip starts level with the address pill.
         sidebar.setContentTop(isSidebarOnRight ? max(0, top - sidebar.rowChipInset) : top + TopBar.height + top)
+        updateTrafficLights()
     }
 
     /// Navigates the active tab (or a new one) to whatever the user typed.

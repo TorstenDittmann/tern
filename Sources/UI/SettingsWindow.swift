@@ -45,6 +45,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     let searchPopup = NSPopUpButton()
     let customSearch = NSTextField()
     let suspendPopup = NSPopUpButton()
+    let archivePopup = NSPopUpButton()
     let agentCheckbox = NSButton(checkboxWithTitle: "Let coding agents control Tern", target: nil, action: nil)
     let sidebarPopup = NSPopUpButton()
     let blockingCheckbox = NSButton(checkboxWithTitle: "Block ads and trackers", target: nil, action: nil)
@@ -65,6 +66,9 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         suspendPopup.addItems(withTitles: Preferences.suspendChoices.map(\.name))
         suspendPopup.target = self
         suspendPopup.action = #selector(suspendChanged)
+        archivePopup.addItems(withTitles: Preferences.archiveChoices.map(\.name))
+        archivePopup.target = self
+        archivePopup.action = #selector(archiveChanged)
 
         agentCheckbox.target = self
         blockingCheckbox.target = self
@@ -87,6 +91,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
             [NSGridCell.emptyContentView, customSearch],
             [label("Suspend idle tabs:"), suspendPopup],
             [NSGridCell.emptyContentView, note("Background tabs give their memory back and keep their history.")],
+            [label("Archive idle tabs:"), archivePopup],
+            [NSGridCell.emptyContentView, note("Tabs you haven't opened in that long close by themselves. Pinned tabs stay. Find them again in Archived Tabs… (⌘K).")],
             [label("Tab list:"), sidebarPopup],
             [label("Privacy:"), blockingCheckbox],
             [NSGridCell.emptyContentView, note("EasyList and EasyPrivacy, plus tracking parameters like utm_source removed from links. Local dev servers are left alone. Toggle Ad Blocking for This Site in ⌘K changes one site.")],
@@ -99,8 +105,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
         grid.columnSpacing = 10
-        for row in [2, 4, 7, 9] { grid.row(at: row).topPadding = -4 }
-        for row in [1, 3, 5, 6, 8, 10, 11] { grid.row(at: row).topPadding = 8 }
+        for row in [2, 4, 6, 9, 11] { grid.row(at: row).topPadding = -4 }
+        for row in [1, 3, 5, 7, 8, 10, 12, 13] { grid.row(at: row).topPadding = 8 }
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
@@ -135,6 +141,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
             suspendPopup.addItem(withTitle: minutes == minutes.rounded() ? "After \(Int(minutes)) minutes" : "After \(Int(suspend)) seconds")
             suspendPopup.selectItem(at: suspendPopup.numberOfItems - 1)
         }
+        let archive = Preferences.archiveAfter ?? -1
+        archivePopup.selectItem(at: Preferences.archiveChoices.firstIndex { $0.seconds == archive } ?? 0)
         agentCheckbox.state = AgentServer.isEnabled ? .on : .off
         blockingCheckbox.state = Preferences.blocksTrackers ? .on : .off
         sidebarPopup.selectItem(at: Preferences.sidebarOnRight ? 1 : 0)
@@ -177,6 +185,11 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         guard Preferences.suspendChoices.indices.contains(suspendPopup.indexOfSelectedItem) else { return } // the custom value
         let seconds = Preferences.suspendChoices[suspendPopup.indexOfSelectedItem].seconds
         Preferences.suspendAfter = seconds < 0 ? nil : seconds
+    }
+
+    @objc func archiveChanged() {
+        let seconds = Preferences.archiveChoices[archivePopup.indexOfSelectedItem].seconds
+        Preferences.archiveAfter = seconds < 0 ? nil : seconds
     }
 
     @objc private func agentChanged() {

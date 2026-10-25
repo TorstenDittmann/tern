@@ -18,6 +18,7 @@ enum Command: String, CaseIterable {
     case toggleBookmark, showHistory, showBookmarks
     case toggleSiteBlocking
     case responsiveDesignMode, rotateDevice, toggleReader
+    case resetPinnedTab, repinTab, toggleCompactMode, showArchivedTabs
     case showDownloads, printPage, exportPDF, makeDefaultBrowser, toggleMuteTab, resetSitePermissions
 
     var title: String {
@@ -86,6 +87,10 @@ enum Command: String, CaseIterable {
         case .showHistory: "Show History"
         case .showBookmarks: "Show Bookmarks"
         case .toggleSiteBlocking: "Toggle Ad Blocking for This Site"
+        case .resetPinnedTab: "Back to Pinned Page"
+        case .repinTab: "Make This the Pinned Page"
+        case .toggleCompactMode: MainActor.assumeIsolated { Preferences.compactMode } ? "Leave Compact Mode" : "Compact Mode"
+        case .showArchivedTabs: "Archived Tabs…"
         case .responsiveDesignMode: "Responsive Design Mode"
         case .rotateDevice: "Rotate Device"
         case .toggleReader: "Reader"
@@ -163,6 +168,10 @@ enum Command: String, CaseIterable {
         case .showHistory: "clock"
         case .showBookmarks: "book"
         case .toggleSiteBlocking: "shield.lefthalf.filled"
+        case .resetPinnedTab: "pin.slash"
+        case .repinTab: "pin.circle"
+        case .toggleCompactMode: "rectangle.compress.vertical"
+        case .showArchivedTabs: "archivebox"
         case .responsiveDesignMode: "iphone"
         case .rotateDevice: "rotate.right"
         case .toggleReader: "text.page"
@@ -207,6 +216,10 @@ enum CommandRouter {
         case .showBookmarks: LibraryWindow.shared.show(.bookmarks); return
         case .loadUnpackedExtension: ExtensionManager.shared.promptLoadUnpacked(); return
         case .makeDefaultBrowser: DefaultBrowser.makeDefault(); return
+        case .toggleCompactMode:
+            Preferences.compactMode.toggle()
+            app.windows.forEach { $0.setCompact(Preferences.compactMode) }
+            return
         case .revealExtensionsFolder:
             NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return
         default: break
@@ -223,7 +236,7 @@ enum CommandRouter {
 
         switch command {
         case .newTab: browser.newTab(url: nil)
-        case .closeTab: if let tab { browser.close(tab) }
+        case .closeTab: if let tab { browser.closeOrResetPinned(tab) }
         case .closeWindow: browser.window?.performClose(nil)
         case .reopenClosedTab: browser.reopenClosedTab()
         case .duplicateTab: if let tab { browser.duplicate(tab) }
@@ -271,6 +284,9 @@ enum CommandRouter {
         case .toggleSiteBlocking:
             ContentBlocker.shared.toggle(for: tab?.currentURL)
             webView?.reload()
+        case .resetPinnedTab: if let tab, let url = tab.pinnedURL { tab.load(url) }
+        case .repinTab: if let tab { browser.repin(tab) }
+        case .showArchivedTabs: CommandPalette.toggle(for: browser, mode: .archived)
         case .responsiveDesignMode:
             if let tab { tab.devicePreview = tab.devicePreview == nil ? DevicePreview(preset: DevicePreview.lastPreset) : nil }
         case .rotateDevice: tab?.devicePreview?.landscape.toggle()

@@ -379,7 +379,8 @@ final class SidebarViewController: NSViewController {
             ("Remove from Split", #selector(ctxRemoveFromSplit)),
             ("Unsplit", #selector(ctxUnsplit)),
             nil,
-            ("Pin Tab", #selector(ctxPin)), ("Mute Tab", #selector(ctxMute)),
+            ("Pin Tab", #selector(ctxPin)), ("Back to Pinned Page", #selector(ctxResetPinned)),
+            ("Make This the Pinned Page", #selector(ctxRepin)), ("Mute Tab", #selector(ctxMute)),
             ("Duplicate", #selector(ctxDuplicate)), ("Copy URL", #selector(ctxCopyURL)), ("Suspend", #selector(ctxSuspend)),
             nil,
             ("Close Tab", #selector(ctxClose)), ("Close Tabs Below", #selector(ctxCloseBelow)), ("Close Other Tabs", #selector(ctxCloseOthers)),
@@ -397,6 +398,8 @@ final class SidebarViewController: NSViewController {
     }
     @objc private func ctxPin() { clickedTab.map { browser?.setPinned($0, !$0.isPinned) } }
     @objc private func ctxMute() { clickedTab?.isMuted.toggle() }
+    @objc private func ctxResetPinned() { if let tab = clickedTab, let url = tab.pinnedURL { tab.load(url) } }
+    @objc private func ctxRepin() { clickedTab.map { browser?.repin($0) } }
     @objc private func ctxSplit() {
         guard let browser, let clicked = clickedTab, let active = browser.activeTab else { return }
         if clicked === active { return browser.toggleSplit() }
@@ -846,6 +849,7 @@ final class PaneGlyph: NSView {
 extension SidebarViewController: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(ctxPin) { item.title = clickedTab?.isPinned == true ? "Unpin Tab" : "Pin Tab" }
+        if item.action == #selector(ctxResetPinned) || item.action == #selector(ctxRepin) { item.isHidden = clickedTab?.hasLeftPinnedURL != true }
         if item.action == #selector(ctxMute) { item.title = clickedTab?.isMuted == true ? "Unmute Tab" : "Mute Tab" }
         let paired = clickedTab.map { browser?.isPaired($0) ?? false } ?? false
         if item.action == #selector(ctxRemoveFromSplit) || item.action == #selector(ctxUnsplit) { item.isHidden = !paired }
