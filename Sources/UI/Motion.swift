@@ -7,9 +7,9 @@ enum Motion {
     static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     /// Hover fills, a pill fading out.
-    static let fast: CFTimeInterval = 0.12
+    nonisolated static let fast: CFTimeInterval = 0.12
     /// Panels opening, a chip moving between rows.
-    static let standard: CFTimeInterval = 0.2
+    nonisolated static let standard: CFTimeInterval = 0.2
 
     static let easeOut = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
 

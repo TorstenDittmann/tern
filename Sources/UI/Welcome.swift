@@ -629,7 +629,7 @@ private final class WelcomeBackdrop: NSView {
     }
 }
 
-final class FlippedView: NSView {
+private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
 
