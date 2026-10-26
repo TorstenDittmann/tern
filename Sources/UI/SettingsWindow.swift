@@ -48,6 +48,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     let archivePopup = NSPopUpButton()
     let agentCheckbox = NSButton(checkboxWithTitle: "Let coding agents control Tern", target: nil, action: nil)
     let sidebarPopup = NSPopUpButton()
+    let addressBarCheckbox = NSButton(checkboxWithTitle: "Always show the address bar", target: nil, action: nil)
     let blockingCheckbox = NSButton(checkboxWithTitle: "Block ads and trackers", target: nil, action: nil)
     let defaultBrowserButton = NSButton(title: "Make Tern the Default Browser", target: nil, action: nil)
 
@@ -78,6 +79,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         sidebarPopup.addItems(withTitles: ["On the Left", "On the Right"])
         sidebarPopup.target = self
         sidebarPopup.action = #selector(sidebarSideChanged)
+        addressBarCheckbox.target = self
+        addressBarCheckbox.action = #selector(addressBarChanged)
 
         let clear = NSButton(title: "Clear History", target: self, action: #selector(clearHistory))
         clear.bezelStyle = .push
@@ -94,6 +97,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
             [label("Archive idle tabs:"), archivePopup],
             [NSGridCell.emptyContentView, note("Tabs you haven't opened in that long close by themselves. Pinned tabs stay. Find them again in Archived Tabs… (⌘K).")],
             [label("Tab list:"), sidebarPopup],
+            [label("Address bar:"), addressBarCheckbox],
+            [NSGridCell.emptyContentView, note("Off, the page reaches the top of the window. Point at the top edge or press ⌘L to show the bar.")],
             [label("Privacy:"), blockingCheckbox],
             [NSGridCell.emptyContentView, note("EasyList and EasyPrivacy, plus tracking parameters like utm_source removed from links. Local dev servers are left alone. Toggle Ad Blocking for This Site in ⌘K changes one site.")],
             [label("Agent API:"), agentCheckbox],
@@ -105,8 +110,8 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
         grid.columnSpacing = 10
-        for row in [2, 4, 6, 9, 11] { grid.row(at: row).topPadding = -4 }
-        for row in [1, 3, 5, 7, 8, 10, 12, 13] { grid.row(at: row).topPadding = 8 }
+        for row in [2, 4, 6, 9, 11, 13] { grid.row(at: row).topPadding = -4 }
+        for row in [1, 3, 5, 7, 8, 10, 12, 14, 15] { grid.row(at: row).topPadding = 8 }
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
@@ -146,6 +151,7 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
         agentCheckbox.state = AgentServer.isEnabled ? .on : .off
         blockingCheckbox.state = Preferences.blocksTrackers ? .on : .off
         sidebarPopup.selectItem(at: Preferences.sidebarOnRight ? 1 : 0)
+        addressBarCheckbox.state = Preferences.compactMode ? .off : .on
         let isDefault = DefaultBrowser.isDefault
         defaultBrowserButton.title = isDefault ? "Tern is your default browser" : "Make Tern the Default Browser"
         defaultBrowserButton.isEnabled = !isDefault
@@ -156,6 +162,11 @@ final class GeneralSettings: NSViewController, NSTextFieldDelegate {
     @objc func sidebarSideChanged() {
         Preferences.sidebarOnRight = sidebarPopup.indexOfSelectedItem == 1
         AppDelegate.shared.windows.forEach { $0.setSidebarOnRight(Preferences.sidebarOnRight) }
+    }
+
+    @objc func addressBarChanged() {
+        Preferences.compactMode = addressBarCheckbox.state == .off
+        AppDelegate.shared.windows.forEach { $0.setCompact(Preferences.compactMode) }
     }
 
     @objc func appearanceChanged() {
