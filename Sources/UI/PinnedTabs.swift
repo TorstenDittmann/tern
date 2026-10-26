@@ -132,7 +132,7 @@ final class PinnedTile: NSView {
     override func updateLayer() {
         layer?.cornerRadius = 8
         layer?.cornerCurve = .continuous
-        layer?.backgroundColor = (isActive ? Theme.selectedFill : hovering ? Theme.fieldFocusedFill : Theme.surface).cgColor
+        Motion.setBackground(layer, (isActive ? Theme.selectedFill : hovering ? Theme.fieldFocusedFill : Theme.surface).cgColor)
         layer?.borderWidth = 1
         layer?.borderColor = (isActive ? Theme.accent : Theme.hairline).cgColor
     }

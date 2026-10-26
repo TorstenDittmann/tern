@@ -642,6 +642,16 @@ enum SmokeTest {
         CommandRouter.perform(.showWelcome, in: browser)
         let sheet = browser.window?.attachedSheet
         check(sheet?.contentViewController is Welcome, "Welcome to Tern opens the welcome sheet")
+        if let welcome = sheet?.contentViewController as? Welcome {
+            check(welcome.pageCount == 5 && welcome.page == 0, "the welcome has five pages and starts on the first")
+            welcome.go(to: 2)
+            check(welcome.page == 2, "it moves to the shortcuts page")
+            welcome.practice(0)
+            welcome.practice(0)
+            check(welcome.practiced == [0], "pressing a shortcut there ticks it off once")
+            welcome.go(to: 4)
+            check(welcome.page == 4, "and on to the last page")
+        }
         (sheet?.contentViewController as? Welcome)?.close()
         await wait { browser.window?.attachedSheet == nil }
         check(browser.window?.attachedSheet == nil, "Get Started closes it")

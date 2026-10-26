@@ -301,9 +301,12 @@ enum CommandRouter {
         case .toggleMuteTab: tab?.isMuted.toggle()
         case .resetSitePermissions: if let url = tab?.currentURL { SitePermissions.reset(for: url) }
         case .copyURL:
-            if let url = tab?.currentURL { copy(url.absoluteString) }
+            if let url = tab?.currentURL { copy(url.absoluteString); browser.content.showToast("Copied URL") }
         case .copyMarkdownLink:
-            if let tab, let url = tab.currentURL { copy("[\(tab.displayTitle)](\(url.absoluteString))") }
+            if let tab, let url = tab.currentURL {
+                copy("[\(tab.displayTitle)](\(url.absoluteString))")
+                browser.content.showToast("Copied Markdown Link")
+            }
         default:
             if let i = command.selectIndex { browser.select(index: i) }
         }

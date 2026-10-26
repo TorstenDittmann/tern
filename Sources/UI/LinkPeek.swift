@@ -25,8 +25,6 @@ final class LinkPeek: NSView {
     /// Closing: clicks go through to the page underneath while the card fades out.
     private var isClosing = false
 
-    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
-
     init(url: URL, from anchor: Tab) {
         tab = Tab(url: url)
         tab.homeWindow = anchor.owner
@@ -102,7 +100,7 @@ final class LinkPeek: NSView {
         origin = point
         backdrop.layer?.add(Self.fade(from: 0, to: 1, duration: 0.2), forKey: "fade")
         stage.layer?.add(Self.fade(from: 0, to: 1, duration: 0.12), forKey: "fade")
-        guard !Self.reduceMotion else { return }
+        guard !Motion.reduceMotion else { return }
         let grow = CASpringAnimation(keyPath: "transform")
         grow.fromValue = NSValue(caTransform3D: stage.layerTransform(scale: 0.1, moving: point, to: point))
         grow.toValue = NSValue(caTransform3D: CATransform3DIdentity)
@@ -121,7 +119,7 @@ final class LinkPeek: NSView {
         CATransaction.setCompletionBlock(completion)
         backdrop.layer?.add(Self.fade(from: 1, to: 0, duration: duration), forKey: "fade")
         stage.layer?.add(Self.fade(from: 1, to: 0, duration: duration), forKey: "fade")
-        if let origin, !card.isHidden, !Self.reduceMotion {
+        if let origin, !card.isHidden, !Motion.reduceMotion {
             let shrink = CABasicAnimation(keyPath: "transform")
             shrink.toValue = NSValue(caTransform3D: stage.layerTransform(scale: 0.4, moving: origin, to: origin))
             shrink.duration = duration

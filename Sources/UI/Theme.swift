@@ -199,7 +199,7 @@ final class HoverButton: NSButton {
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
         layer?.cornerRadius = 6
-        layer?.backgroundColor = (hovering && isEnabled) ? Theme.hoverFill.cgColor : .clear
+        Motion.setBackground(layer, (hovering && isEnabled) ? Theme.hoverFill.cgColor : .clear)
     }
 }
 

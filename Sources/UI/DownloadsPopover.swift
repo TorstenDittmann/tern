@@ -204,7 +204,7 @@ private final class DownloadRow: NSView {
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
         layer?.cornerRadius = 7
-        layer?.backgroundColor = hovering ? Theme.hoverFill.cgColor : .clear
+        Motion.setBackground(layer, hovering ? Theme.hoverFill.cgColor : .clear)
     }
 
     override func mouseUp(with event: NSEvent) {
