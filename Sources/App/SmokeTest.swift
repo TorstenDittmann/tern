@@ -644,11 +644,18 @@ enum SmokeTest {
         check(sheet?.contentViewController is Welcome, "Welcome to Tern opens the welcome sheet")
         if let welcome = sheet?.contentViewController as? Welcome {
             check(welcome.pageCount == 5 && welcome.page == 0, "the welcome has five pages and starts on the first")
+            func key(_ chars: String, code: UInt16, _ flags: NSEvent.ModifierFlags) -> NSEvent {
+                NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: sheet?.windowNumber ?? 0,
+                                 context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+            }
+            let cmdK = key("k", code: 40, .command)
+            check(Keymap.shared.primaryChord(for: .commandPalette) == KeyChord(event: cmdK) && !welcome.press(cmdK),
+                  "⌘K on the first page is left to the keymap")
             welcome.go(to: 2)
             check(welcome.page == 2, "it moves to the shortcuts page")
-            welcome.practice(0)
-            welcome.practice(0)
-            check(welcome.practiced == [0], "pressing a shortcut there ticks it off once")
+            check(welcome.press(cmdK) && welcome.press(cmdK) && welcome.practiced == [0],
+                  "pressing ⌘K there ticks off the palette lesson once instead of opening the palette")
+            check(!welcome.press(key("y", code: 16, .command)), "a shortcut that isn't a lesson is left alone")
             welcome.go(to: 4)
             check(welcome.page == 4, "and on to the last page")
         }

@@ -376,7 +376,7 @@ final class Welcome: NSViewController {
         page = index
         dots.select(index)
         nextButton.title = index == 0 ? "Get Started" : index == pages.count - 1 ? "Start Browsing" : "Continue"
-        if backButton.isHidden == (index > 0) { Motion.fade(backButton, visible: index > 0) }
+        Motion.fade(backButton, visible: index > 0)
         if index == 3 { refreshSettings() }
 
         new.layer?.removeAllAnimations()
@@ -490,6 +490,11 @@ final class Welcome: NSViewController {
     /// running. ← and → move between pages. Returns whether the key was used.
     func handle(_ event: NSEvent) -> Bool {
         guard let window = view.window, window.isKeyWindow else { return false }
+        return press(event)
+    }
+
+    /// `handle` once the welcome is known to have the keys (the smoke test calls it directly).
+    func press(_ event: NSEvent) -> Bool {
         let chord = KeyChord(event: event)
         if page == 2, let i = Self.lessons.firstIndex(where: { Keymap.shared.primaryChord(for: $0.0) == chord }) {
             practice(i)

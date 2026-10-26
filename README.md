@@ -32,7 +32,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Site sign-in and permissions.** Sites behind HTTP basic or digest auth (staging servers, routers) get a sign-in sheet. Camera, microphone and location requests ask first and can be remembered per site; **Reset Permissions for This Site** in ⌘K forgets them.
 - **Default browser.** **Tern ▸ Make Tern the Default Browser**, or the button in Settings ▸ General.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
-- **Welcome sheet.** The first launch shows the four shortcuts worth learning, each with a Try It button. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
+- **Welcome.** The first launch walks through five short pages: pick the tab list's side, compact mode and the default browser (applied live); practice ⌘K, ⌘P, ⌘\\ and ⌘J by pressing them; turn on Safari extensions; and switch on the agent API, with the `claude mcp add` command to copy. ← → or ↩ move between pages, esc skips. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
 - **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
 - **Requests (⌥⌘N).** A small window lists every request the tab's page made: status, type, size and time, filtered by type or URL, with failed requests in red. Double-click opens one in a tab; right-click copies the URL or a cURL command. **Preserve log** keeps it across navigations.
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
