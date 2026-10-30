@@ -170,6 +170,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if manager.context(for: item)?.optionsPageURL != nil {
                     sub.addItem(withTitle: "Options…", action: #selector(openExtensionOptions(_:)), keyEquivalent: "").representedObject = item.id
                 }
+                if manager.context(for: item) != nil {
+                    sub.addItem(.separator())
+                    sub.addItem(withTitle: "Inspect Background", action: #selector(inspectExtensionBackground(_:)), keyEquivalent: "").representedObject = item.id
+                    sub.addItem(withTitle: "Inspect Popup", action: #selector(inspectExtensionPopup(_:)), keyEquivalent: "").representedObject = item.id
+                    sub.addItem(.separator())
+                }
                 switch item.source {
                 case .unpacked, .store:
                     sub.addItem(withTitle: "Remove", action: #selector(removeExtension(_:)), keyEquivalent: "").representedObject = item.id
@@ -203,6 +209,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openExtensionOptions(_ sender: NSMenuItem) {
         guard let item = extensionItem(sender), let url = ExtensionManager.shared.context(for: item)?.optionsPageURL else { return }
         ExtensionManager.browserForExtensions.newTab(url: url)
+    }
+
+    @objc private func inspectExtensionBackground(_ sender: NSMenuItem) {
+        guard let item = extensionItem(sender), let ctx = ExtensionManager.shared.context(for: item) else { return }
+        guard let webView = ExtensionManager.backgroundWebView(of: ctx) else {
+            return ExtensionManager.alert("“\(item.name)” has no background running.",
+                                          detail: "It may have none, or it stopped while idle. Click its toolbar button to wake it, then try again.")
+        }
+        Inspector.showConsole(webView)
+    }
+
+    /// The popup page in its own web view (WebKit loads it on first access), so its errors show even if the popover looks empty.
+    @objc private func inspectExtensionPopup(_ sender: NSMenuItem) {
+        guard let item = extensionItem(sender), let ctx = ExtensionManager.shared.context(for: item) else { return }
+        let action = ctx.action(for: AppDelegate.shared.keyBrowser?.activeTab) ?? ctx.action(for: nil)
+        guard let webView = action?.popupWebView else {
+            return ExtensionManager.alert("“\(item.name)” has no popup.", detail: "Its toolbar button doesn’t open a page.")
+        }
+        Inspector.showConsole(webView)
     }
 
     @objc private func rescanExtensions() {

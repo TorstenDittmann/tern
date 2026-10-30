@@ -234,6 +234,12 @@ final class ExtensionManager: NSObject {
         return contexts[item.id]
     }
 
+    /// The web view running the extension's background page or service worker, for the inspector. SPI, like `Inspector`.
+    static func backgroundWebView(of ctx: WKWebExtensionContext) -> WKWebView? {
+        guard ctx.responds(to: NSSelectorFromString("_backgroundWebView")) else { return nil }
+        return ctx.value(forKey: "_backgroundWebView") as? WKWebView
+    }
+
     /// Lets extensions' `commands` (manifest keyboard shortcuts) fire.
     func performCommand(for event: NSEvent) -> Bool {
         for ctx in contexts.values where ctx.performCommand(for: event) { return true }
