@@ -614,8 +614,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let underLights = !fullscreen && (isSidebarCollapsed || isSidebarOnRight)
         content.setTitlebar(barTop: top, lightsInset: underLights ? 78 - Theme.gutter : 0)
         // On the left, the traffic lights take the strip above the list, so the list starts level with the page.
-        // On the right nothing sits there, so the list moves up: the first tab's chip starts level with the address pill.
-        sidebar.setContentTop(isSidebarOnRight ? max(0, top - sidebar.rowChipInset) : top + TopBar.height + top)
+        // On the right nothing sits there, so the list moves up: the first tab's chip starts level with the address pill,
+        // or with the page in compact mode, where the bar is hidden and the page starts at the gutter.
+        let rightTop = content.isCompact ? Theme.gutter : top
+        sidebar.setContentTop(isSidebarOnRight ? max(0, rightTop - sidebar.rowChipInset) : top + TopBar.height + top)
         updateTrafficLights()
     }
 

@@ -963,6 +963,17 @@ enum SmokeTest {
         check(content.isBarRevealed && !content.topBar.isHidden, "⌘L shows the bar in compact mode")
         browser.window?.makeFirstResponder(browser.activeTab?.webView)
         await wait { !content.isBarRevealed }
+        browser.toggleSplit()
+        CommandRouter.perform(.focusAddressBar, in: browser)
+        browser.window?.layoutIfNeeded()
+        let barBottom = content.view.bounds.height - content.topBar.convert(content.topBar.bounds, to: nil).minY
+        let splitTop = content.view.bounds.height - content.pageFrameInWindow.maxY
+        check(splitTop > barBottom, "over a split, the compact bar moves the panes down instead of covering them (\(splitTop) > \(barBottom))")
+        browser.window?.makeFirstResponder(browser.activeTab?.webView)
+        await wait { !content.isBarRevealed }
+        browser.window?.layoutIfNeeded()
+        check(content.view.bounds.height - content.pageFrameInWindow.maxY <= Theme.gutter + 1, "and move back up when it hides")
+        browser.activeTab.map(browser.close)
         CommandRouter.perform(.toggleCompactMode, in: browser)
         browser.window?.layoutIfNeeded()
         check(!content.isCompact && !content.topBar.isHidden && content.topBar.alphaValue == 1, "leaving compact mode brings the bar back")
