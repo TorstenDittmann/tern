@@ -22,6 +22,8 @@ final class ContentViewController: NSViewController {
     private var barGap: NSLayoutConstraint!
     /// Compact mode: the page starts at the top gutter, and the top bar floats over it when revealed.
     private var compactTop: NSLayoutConstraint!
+    /// Compact mode in split view: the revealed bar pushes the panes down instead of covering their headers.
+    private var splitPush: NSLayoutConstraint!
     private let revealStrip = RevealStrip()
     private let barBackdrop = BarBackdrop()
     private(set) var isCompact = false
@@ -61,6 +63,7 @@ final class ContentViewController: NSViewController {
         barLeading = topBar.leadingAnchor.constraint(equalTo: panes.leadingAnchor)
         barGap = panes.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: defaultTop)
         compactTop = panes.topAnchor.constraint(equalTo: root.topAnchor, constant: g)
+        splitPush = panes.topAnchor.constraint(equalTo: barBackdrop.bottomAnchor, constant: 3)
         NSLayoutConstraint.activate([
             barTop, barLeading,
             topBar.trailingAnchor.constraint(equalTo: panes.trailingAnchor),
@@ -75,7 +78,9 @@ final class ContentViewController: NSViewController {
             findBar.trailingAnchor.constraint(equalTo: panes.trailingAnchor, constant: -12),
             barBackdrop.topAnchor.constraint(equalTo: topBar.topAnchor, constant: -5),
             barBackdrop.bottomAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 5),
-            barBackdrop.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: -5),
+            // From the panes' edge, not the bar's: where the bar makes room for the traffic lights, the
+            // backdrop runs under them too, so they don't float over the page.
+            barBackdrop.leadingAnchor.constraint(equalTo: panes.leadingAnchor, constant: -5),
             barBackdrop.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: 5),
             revealStrip.topAnchor.constraint(equalTo: root.topAnchor),
             revealStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
@@ -99,6 +104,7 @@ final class ContentViewController: NSViewController {
         loadViewIfNeeded()
         isCompact = compact
         barGap.isActive = !compact
+        splitPush.isActive = false
         compactTop.isActive = compact
         revealStrip.isHidden = !compact
         isBarRevealed = false
@@ -121,8 +127,10 @@ final class ContentViewController: NSViewController {
         onBarReveal?(show)
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = show ? 0.12 : 0.2
+            ctx.allowsImplicitAnimation = true
             topBar.animator().alphaValue = show ? 1 : 0
             barBackdrop.animator().alphaValue = show ? 1 : 0
+            updateSplitPush()
         }, completionHandler: { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, !self.isBarRevealed, self.isCompact else { return }
@@ -130,6 +138,15 @@ final class ContentViewController: NSViewController {
                 self.barBackdrop.isHidden = true
             }
         })
+    }
+
+    /// Over a split, the floating bar would cover each pane's header and the gaps between them, so it
+    /// takes its own row instead and the panes move down while it shows.
+    private func updateSplitPush() {
+        let push = isCompact && isBarRevealed && shown.count > 1
+        guard push != splitPush.isActive else { return }
+        if push { compactTop.isActive = false; splitPush.isActive = true } else { splitPush.isActive = false; compactTop.isActive = isCompact }
+        view.layoutSubtreeIfNeeded()
     }
 
     /// The pointer left the bar or the address field stopped editing: hide, unless the other still holds it.
@@ -165,6 +182,7 @@ final class ContentViewController: NSViewController {
     /// Shows `tabs` (one, or two to four for a split) and marks `focused` as the pane with keyboard focus.
     func display(_ tabs: [Tab], focused: Tab, layout: SplitLayout, dividers: [CGFloat]) {
         shown = tabs
+        updateSplitPush()
         panes.arrange(count: tabs.count, layout: layout, dividers: dividers)
         // Lay the cards out first, so a web view moving in gets its final size right away. Otherwise it
         // renders once at the card's old size (full width, or the other half of a split), then resizes.
