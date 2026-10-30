@@ -14,7 +14,7 @@ final class Welcome: NSViewController {
     static let lessons: [(Command, String, String)] = [
         (.commandPalette, "Command palette", "Tabs, history, commands, or a URL. What you use most ranks first."),
         (.tabPicker, "Switch tabs", "Jump between open tabs in every window, most recent first."),
-        (.toggleSplit, "Split view", "Two tabs side by side. You can also drag a tab from the sidebar onto the page."),
+        (.toggleSplit, "Split view", "Two tabs side by side. Or drag a tab onto the page."),
         (.linkHints, "Link hints", "Click any link or button on the page without the mouse."),
     ]
 
@@ -885,6 +885,11 @@ private final class LessonRow: FilledView {
 
         let keys = NSStackView(views: caps.isEmpty ? [NSTextField(labelWithString: "Unbound")] : caps)
         keys.spacing = 3
+        // A fixed column, right-aligned, so every row's keys line up.
+        keys.alignment = .centerY
+        keys.setHuggingPriority(.defaultLow, for: .horizontal)
+        keys.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        keys.setViews(keys.arrangedSubviews, in: .trailing)
         status.image = Theme.symbol("circle", size: 15, weight: .regular)
         status.contentTintColor = .tertiaryLabelColor
         status.wantsLayer = true
