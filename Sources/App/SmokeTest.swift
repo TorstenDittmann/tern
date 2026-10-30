@@ -36,6 +36,11 @@ enum SmokeTest {
         check(engine.resolve(input: "github.com/apple")?.absoluteString == "https://github.com/apple", "resolve bare host")
         check(engine.resolve(input: "swift async let")?.host == "duckduckgo.com", "resolve search")
         check(CommandPalette.score("gh", "GitHub") != nil && CommandPalette.score("zz", "GitHub") == nil, "fuzzy score")
+        check(ExtensionManager.storeID(in: URL(string: "https://chromewebstore.google.com/detail/proton-pass/ghmbeldphafepmbegfdlkpapadhbakde?hl=en"))
+              == "ghmbeldphafepmbegfdlkpapadhbakde" && ExtensionManager.storeID(in: URL(string: "https://chromewebstore.google.com/")) == nil,
+              "store ID from a Chrome Web Store page")
+        let crx3 = Data("Cr24".utf8) + Data([3, 0, 0, 0, 2, 0, 0, 0, 0xAA, 0xBB]) + Data([0x50, 0x4B, 3, 4])
+        check(ExtensionManager.zipPayload(ofCRX: crx3) == Data([0x50, 0x4B, 3, 4]), "zip inside a CRX3")
 
         // Extension (loaded before the first page so its content script injects)
         var ctx: WKWebExtensionContext?

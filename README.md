@@ -1,7 +1,7 @@
 # Tern
 
 A fast, keyboard-first browser for macOS, built on WebKit with Swift and AppKit.
-Vertical tabs, split view, a command palette, rebindable shortcuts, and support for Safari Web Extensions.
+Vertical tabs, split view, a command palette, rebindable shortcuts, and extensions from the Chrome Web Store.
 
 ![Tern with the command palette open](docs/palette.png)
 
@@ -36,7 +36,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
 - **Requests (⌥⌘N).** A small window lists every request the tab's page made: status, type, size and time, filtered by type or URL, with failed requests in red. Double-click opens one in a tab; right-click copies the URL or a cURL command. **Preserve log** keeps it across navigations.
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
-- **Safari Web Extensions.** Tern finds Safari extensions installed with your apps and also loads unpacked or `.zip` extensions in place.
+- **Extensions.** On a Chrome Web Store extension page, **Add to Tern** beside the address bar installs it. Tern also finds Safari extensions installed with your apps and loads unpacked or `.zip` extensions in place.
 - **Private by default.** Ads and trackers are blocked with EasyList and EasyPrivacy, compiled to native WebKit content rules, so blocking costs the page almost nothing. Links lose tracking parameters like `utm_source` and `fbclid` before they load, and third-party pings are dropped. Local dev servers (`localhost`, `*.test`, `*.local`) are left alone. **Toggle Ad Blocking for This Site** in ⌘K turns it off for a site, or on for a dev server, and Settings turns it off everywhere.
 - **Memory-friendly tabs.** Background tabs give their memory back after 15 minutes idle, or when macOS runs low on memory, and keep their history. Suspended tabs show a moon in the tab list, and the bottom bar shows how much memory Tern and its pages use.
 
@@ -128,14 +128,15 @@ Chords combine `cmd`, `shift`, `alt` and `ctrl` with a key. Key names include `t
 
 ## Extensions
 
-Tern uses WebKit's public web extension API (`WKWebExtension`, macOS 15.4 and later). The **Extensions** menu lists two kinds:
+Tern uses WebKit's public web extension API (`WKWebExtension`, macOS 15.4 and later). The **Extensions** menu lists three kinds:
 
+- **Chrome Web Store** extensions. Open the store (**Get Extensions from the Chrome Web Store**), go to an extension, and press **Add to Tern** beside the address bar. Tern downloads the store's package from Google, unpacks it into `~/Library/Application Support/Tern/Extensions/Chrome Web Store`, and keeps the store ID as the extension's `runtime.id`, so sites that message it by that ID (Proton's sign-in, for example) reach it. Pressing it again on a later visit isn't offered yet; remove and re-add to update.
 - **Safari Web Extensions** found inside apps in `/Applications` and `~/Applications`.
 - **Unpacked** Chrome, Firefox, or Safari-style MV2 and MV3 extensions. Add them with **Load Unpacked Extension…**, or drop them into `~/Library/Application Support/Tern/Extensions`. They're loaded in place, so changes to the files apply on the next load.
 
 Extensions are off until you turn them on, because each one's background page costs memory. Turning one on shows the permissions it asks for. Supported features include content scripts, background pages and service workers, `tabs`, `windows`, `storage`, toolbar actions with badges and popups, `commands`, `declarativeNetRequest` (for content blockers such as uBlock Origin Lite), and options pages.
 
-**Not supported: native messaging.** A Safari extension's native half talks only to Safari, so extensions that depend on a companion app (password managers, for example) load, but their app-linked features don't work.
+**Native messaging.** A Safari extension's native messages go to its own app extension, the way Safari sends them. Chrome Web Store extensions can't reach a companion app yet.
 
 ## Agent API
 

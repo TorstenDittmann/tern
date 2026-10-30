@@ -27,6 +27,8 @@ final class TopBar: NSView {
     /// "Private" next to the address bar in a private window.
     private let privateBadge = PrivateBadge()
     var showsPrivateBadge: Bool { !privateBadge.isHidden }
+    /// "Add to Tern" while a Chrome Web Store extension's page is open.
+    let storeButton = StoreButton()
     /// Shown once something has been downloaded this session; lit while a download runs.
     private(set) lazy var downloadsButton = HoverButton(symbol: "arrow.down.circle", label: "Downloads", target: self, action: #selector(downloadsClicked))
 
@@ -45,13 +47,22 @@ final class TopBar: NSView {
         NotificationCenter.default.addObserver(forName: DownloadManager.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateDownloadsButton() }
         }
+        NotificationCenter.default.addObserver(forName: ExtensionManager.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateStoreButton() }
+        }
+        storeButton.onClick = { [weak self] in
+            guard let id = ExtensionManager.storeID(in: self?.browser?.activeTab?.currentURL) else { return }
+            ExtensionManager.shared.installFromStore(id)
+        }
         pill.translatesAutoresizingMaskIntoConstraints = false
-        let stack = NSStackView(views: [sidebarLeft, backButton, forwardButton, reloadButton, privateBadge, pill, downloadsButton, splitButton, sidebarRight])
+        let stack = NSStackView(views: [sidebarLeft, backButton, forwardButton, reloadButton, privateBadge, pill, storeButton, downloadsButton, splitButton, sidebarRight])
         stack.spacing = 2
         stack.setCustomSpacing(8, after: reloadButton)
         stack.setCustomSpacing(6, after: privateBadge)
         privateBadge.isHidden = true
         stack.setCustomSpacing(8, after: pill)
+        stack.setCustomSpacing(8, after: storeButton)
+        storeButton.isHidden = true
         stack.setCustomSpacing(4, after: downloadsButton)
         stack.setCustomSpacing(4, after: splitButton)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -108,6 +119,16 @@ final class TopBar: NSView {
         splitButton.contentTintColor = split ? Theme.accent : .secondaryLabelColor
         let keys = Keymap.shared.primaryChord(for: .toggleSplit).map { " (\($0))" } ?? ""
         splitButton.toolTip = (split ? "End Split View" : "Split View") + keys
+        updateStoreButton()
+    }
+
+    private func updateStoreButton() {
+        // Private windows don't run extensions, so they don't offer to add one.
+        let storeID = browser?.isPrivate == false ? ExtensionManager.storeID(in: browser?.activeTab?.currentURL) : nil
+        storeButton.isHidden = storeID == nil
+        guard let storeID else { return }
+        let manager = ExtensionManager.shared
+        storeButton.phase = manager.installing.contains(storeID) ? .adding : (manager.storeItem(storeID) != nil ? .added : .add)
     }
 
     /// The lock's popover: whether the connection is encrypted, and the certificate chain.
@@ -329,4 +350,69 @@ final class PrivateBadge: FilledView {
         setContentCompressionResistancePriority(.required, for: .horizontal)
     }
     required init?(coder: NSCoder) { fatalError() }
+}
+
+/// The button beside the address bar on a Chrome Web Store extension page: adds it to Tern.
+final class StoreButton: FilledView {
+    enum Phase { case add, adding, added }
+    var onClick: (() -> Void)?
+    var phase: Phase = .add { didSet { if phase != oldValue { update() } } }
+    private let icon = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    private var hovering = false { didSet { update() } }
+
+    init() {
+        super.init(frame: .zero)
+        radius = 7
+        label.font = .systemFont(ofSize: 11.5, weight: .semibold)
+        let stack = NSStackView(views: [icon, label])
+        stack.spacing = 4
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 10)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            heightAnchor.constraint(equalToConstant: TopBar.height),
+        ])
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        update()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func update() {
+        let (symbol, title, tip): (String, String, String) = switch phase {
+        case .add: ("plus", "Add to Tern", "Download this extension from the Chrome Web Store and turn it on")
+        case .adding: ("arrow.down", "Adding…", "Downloading from the Chrome Web Store")
+        case .added: ("checkmark", "Added", "This extension is in Tern. Turn it on or off in the Extensions menu.")
+        }
+        let prominent = phase == .add
+        fill = prominent ? Theme.accent : Theme.accentWash
+        alphaValue = prominent && hovering ? 0.88 : 1
+        // The ground color reads on the accent in both appearances: near-white on dark green, near-black on mint.
+        let tint: NSColor = prominent ? Theme.ground : Theme.accent
+        icon.image = Theme.symbol(symbol, size: 10, weight: .bold)
+        icon.contentTintColor = tint
+        label.stringValue = title
+        label.textColor = tint
+        toolTip = tip
+        setAccessibilityLabel(title)
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func resetCursorRects() { if phase == .add { addCursorRect(bounds, cursor: .pointingHand) } }
+    override func mouseUp(with event: NSEvent) {
+        guard phase == .add, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        Motion.pop(self, from: 0.9)
+        onClick?()
+    }
+    override func accessibilityPerformPress() -> Bool {
+        guard phase == .add else { return false }
+        onClick?()
+        return true
+    }
 }

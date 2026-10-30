@@ -8,6 +8,8 @@ import WebKit
 /// - Safari Web Extensions installed with apps (`*.app/Contents/PlugIns/*.appex` whose extension point is
 ///   `com.apple.Safari.web-extension`). Their JS/HTML runs here unchanged; native messages go to their
 ///   `SafariWebExtensionHandler`, which WebKit reaches through the appex when we don't handle them ourselves.
+/// - The Chrome Web Store: the store's own package (CRX) is downloaded from Google and unpacked into our support folder.
+///   The extension keeps its store ID as `runtime.id`, which sites like Proton's account page message it by.
 /// - Unpacked folders or .zip files (Chrome/Firefox-style MV2/MV3), loaded in place, so editing them is live.
 ///
 /// Nothing is enabled by default: every background page costs memory.
@@ -18,7 +20,7 @@ final class ExtensionManager: NSObject {
     static let didChange = Notification.Name("TernExtensionsDidChange")
 
     struct Available: Sendable {
-        enum Source: Sendable { case safari(appex: URL, app: String), unpacked(URL) }
+        enum Source: Sendable { case safari(appex: URL, app: String), store(id: String, folder: URL), unpacked(URL) }
         let id: String
         let name: String
         let source: Source
@@ -37,6 +39,11 @@ final class ExtensionManager: NSObject {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }()
+
+    /// One folder per Chrome Web Store extension, named by its store ID.
+    var storeFolder: URL { unpackedFolder.appendingPathComponent("Chrome Web Store", isDirectory: true) }
+    /// Store IDs being downloaded right now (the address bar's Add button shows progress).
+    private(set) var installing: Set<String> = []
 
     private let defaults = UserDefaults.tern
     private var enabledIDs: Set<String> {
@@ -103,11 +110,120 @@ final class ExtensionManager: NSObject {
         }
     }
 
-    func removeUnpacked(_ item: Available) {
-        guard case .unpacked(let url) = item.source else { return }
+    /// Forgets an unpacked extension (its files stay where they are), or deletes a store one.
+    func remove(_ item: Available) {
         if contexts[item.id] != nil { toggle(item) }
-        unpackedPaths.removeAll { $0 == url.path }
+        switch item.source {
+        case .unpacked(let url): unpackedPaths.removeAll { $0 == url.path }
+        case .store(_, let folder): try? FileManager.default.removeItem(at: folder)
+        case .safari: return
+        }
         Task { await refresh() }
+    }
+
+    // MARK: Chrome Web Store
+
+    static let chromeWebStoreURL = URL(string: "https://chromewebstore.google.com/category/extensions")
+
+    /// The store ID in an extension's store page: chromewebstore.google.com/detail/<slug>/<id>
+    /// (or the older chrome.google.com/webstore/detail/…).
+    static func storeID(in url: URL?) -> String? {
+        guard let url, url.scheme == "https" else { return nil }
+        let parts = url.pathComponents
+        let onStore = url.host == "chromewebstore.google.com" || (url.host == "chrome.google.com" && parts.dropFirst().first == "webstore")
+        guard onStore, let detail = parts.firstIndex(of: "detail") else { return nil }
+        return parts[(detail + 1)...].first(where: isStoreID)
+    }
+
+    /// Chrome extension IDs: 32 letters from a to p.
+    nonisolated static func isStoreID(_ s: String) -> Bool {
+        s.count == 32 && s.allSatisfy { ("a"..."p").contains($0) }
+    }
+
+    nonisolated private static func storeItemID(_ storeID: String) -> String { "chrome:" + storeID }
+
+    func storeItem(_ storeID: String) -> Available? { available.first { $0.id == Self.storeItemID(storeID) } }
+
+    /// Downloads the extension (again, which also updates it), then offers to turn it on.
+    func installFromStore(_ storeID: String) {
+        guard Self.isStoreID(storeID), !installing.contains(storeID) else { return }
+        installing.insert(storeID)
+        AppDelegate.shared.extensionsDidChange()
+        let parent = storeFolder
+        Task {
+            defer {
+                installing.remove(storeID)
+                AppDelegate.shared.extensionsDidChange()
+            }
+            do {
+                let staged = try await Self.downloadFromStore(storeID, into: parent)
+                // An extension that's on is reloaded from the new files by the refresh below.
+                if let ctx = contexts.removeValue(forKey: Self.storeItemID(storeID)) { try? controller.unload(ctx) }
+                let destination = parent.appendingPathComponent(storeID, isDirectory: true)
+                try? FileManager.default.removeItem(at: destination)
+                try FileManager.default.moveItem(at: staged, to: destination)
+                await refresh()
+                if let item = storeItem(storeID), contexts[item.id] == nil { toggle(item) }
+            } catch {
+                Self.alert("Couldn't add the extension.", detail: error.localizedDescription)
+            }
+        }
+    }
+
+    /// Fetches the CRX the way Chrome does and unpacks the zip inside it into a new folder in `parent`.
+    nonisolated private static func downloadFromStore(_ storeID: String, into parent: URL) async throws -> URL {
+        // `x` is itself a query string, so its = and & are escaped.
+        let address = "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=\(chromeVersion)"
+            + "&acceptformat=crx2,crx3&x=id%3D\(storeID)%26installsource%3Dondemand%26uc"
+        guard let url = URL(string: address) else { throw unsupported("Not a Chrome Web Store ID.") }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard (response as? HTTPURLResponse)?.statusCode == 200, let zip = zipPayload(ofCRX: data) else {
+            throw unsupported("The Chrome Web Store didn't return this extension. It may have been removed, or be for Chrome OS only.")
+        }
+        return try await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+            let work = fm.temporaryDirectory.appendingPathComponent("tern-crx-" + UUID().uuidString)
+            try fm.createDirectory(at: work, withIntermediateDirectories: true)
+            defer { try? fm.removeItem(at: work) }
+            let archive = work.appendingPathComponent("extension.zip")
+            try zip.write(to: archive)
+            let unpacked = work.appendingPathComponent("extension", isDirectory: true)
+            let ditto = Process()
+            ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+            ditto.arguments = ["-x", "-k", archive.path, unpacked.path]
+            try ditto.run()
+            ditto.waitUntilExit()
+            guard ditto.terminationStatus == 0, fm.fileExists(atPath: unpacked.appendingPathComponent("manifest.json").path) else {
+                throw Self.unsupported("The download isn't a valid extension.")
+            }
+            // Staged next to its final place, so the move into it is a rename.
+            let staged = parent.appendingPathComponent(".\(storeID)-" + UUID().uuidString, isDirectory: true)
+            try fm.moveItem(at: unpacked, to: staged)
+            return staged
+        }.value
+    }
+
+    /// The store hands out extensions for the Chrome version asking; a recent one gets the current MV3 builds.
+    nonisolated private static let chromeVersion = "140.0.0.0"
+
+    /// A CRX is a small header (magic "Cr24", a version, then keys and signatures) in front of a plain zip.
+    nonisolated static func zipPayload(ofCRX data: Data) -> Data? {
+        let bytes = [UInt8](data)
+        func u32(_ at: Int) -> Int? {
+            guard at + 4 <= bytes.count else { return nil }
+            return Int(bytes[at]) | Int(bytes[at + 1]) << 8 | Int(bytes[at + 2]) << 16 | Int(bytes[at + 3]) << 24
+        }
+        if bytes.starts(with: [0x50, 0x4B]) { return data }  // already a zip
+        guard bytes.starts(with: Array("Cr24".utf8)), let version = u32(4) else { return nil }
+        let start: Int
+        switch version {
+        case 3: guard let header = u32(8) else { return nil }; start = 12 + header
+        case 2: guard let key = u32(8), let signature = u32(12) else { return nil }; start = 16 + key + signature
+        default: return nil
+        }
+        guard start < bytes.count, bytes[start...].starts(with: [0x50, 0x4B]) else { return nil }
+        return Data(bytes[start...])
     }
 
     /// Loads an unpacked extension without remembering it (smoke test only).
@@ -137,6 +253,7 @@ final class ExtensionManager: NSObject {
             if let base = URL(string: "webkit-extension://\(uuid.lowercased())/") { ctx.baseURL = base }
             // The identifier names the extension's storage.local folder and is what `runtime.sendMessage(id)` targets.
             var identifier = uuid
+            if case .store(let storeID, _) = item.source { identifier = storeID }
             if case .safari(let appex, _) = item.source,
                let team = await Task.detached(priority: .userInitiated, operation: { Self.verifiedTeam(of: appex) }).value {
                 // Safari's own `runtime.id`. Websites address the extension by it through `externally_connectable`
@@ -163,7 +280,7 @@ final class ExtensionManager: NSObject {
         case .safari(let appex, _):
             guard let bundle = Bundle(url: appex) else { throw CocoaError(.fileReadCorruptFile) }
             return try await WKWebExtension(appExtensionBundle: bundle)
-        case .unpacked(let url):
+        case .store(_, let url), .unpacked(let url):
             return try await WKWebExtension(resourceBaseURL: url)
         }
     }
@@ -213,6 +330,13 @@ final class ExtensionManager: NSObject {
             }
         }
 
+        let storeFolder = folder.appendingPathComponent("Chrome Web Store", isDirectory: true)
+        for url in (try? fm.contentsOfDirectory(at: storeFolder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? [] {
+            let storeID = url.lastPathComponent
+            guard isStoreID(storeID), fm.fileExists(atPath: url.appendingPathComponent("manifest.json").path) else { continue }
+            result.append(Available(id: storeItemID(storeID), name: manifestName(at: url) ?? storeID, source: .store(id: storeID, folder: url)))
+        }
+
         let dropped = (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []
         for url in dropped + extraPaths.map(URL.init(fileURLWithPath:)) {
             let isZip = url.pathExtension == "zip"
@@ -242,11 +366,21 @@ final class ExtensionManager: NSObject {
 
     nonisolated private static func unpackedID(_ url: URL) -> String { "unpacked:" + url.standardizedFileURL.path }
 
+    /// The manifest's name, looked up in `_locales` when it's a `__MSG_key__` placeholder (most store extensions).
     nonisolated private static func manifestName(at url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url.appendingPathComponent("manifest.json")),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let name = json["name"] as? String, !name.hasPrefix("__MSG_") else { return nil }
-        return name
+        func json(_ path: String) -> [String: Any]? {
+            (try? Data(contentsOf: url.appendingPathComponent(path))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        }
+        guard let manifest = json("manifest.json"), let name = manifest["name"] as? String else { return nil }
+        guard name.hasPrefix("__MSG_"), name.hasSuffix("__"), name.count > 8 else { return name }
+        let key = name.dropFirst(6).dropLast(2).lowercased()
+        let locales = [Locale.current.identifier, Locale.current.language.languageCode?.identifier, manifest["default_locale"] as? String, "en"]
+        for locale in locales.compactMap({ $0 }) {
+            guard let messages = json("_locales/\(locale)/messages.json") else { continue }
+            if let entry = messages.first(where: { $0.key.lowercased() == key })?.value as? [String: Any],
+               let message = entry["message"] as? String { return message }
+        }
+        return nil
     }
 
     // MARK: UI helpers
@@ -282,7 +416,7 @@ final class ExtensionManager: NSObject {
         return a.runModal() == .alertFirstButtonReturn
     }
 
-    fileprivate static func unsupported(_ what: String) -> NSError {
+    nonisolated fileprivate static func unsupported(_ what: String) -> NSError {
         NSError(domain: "dev.tern.extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: what])
     }
 }

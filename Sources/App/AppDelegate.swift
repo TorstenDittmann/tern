@@ -146,15 +146,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The Extensions menu is rebuilt each time it opens, from what's installed right now.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        menu.addItem(MainMenu.item(.browseChromeWebStore))
         menu.addItem(MainMenu.item(.loadUnpackedExtension))
         menu.addItem(MainMenu.item(.revealExtensionsFolder))
         menu.addItem(withTitle: "Rescan Installed Extensions", action: #selector(rescanExtensions), keyEquivalent: "")
 
         let manager = ExtensionManager.shared
         let safari = manager.available.filter { if case .safari = $0.source { true } else { false } }
+        let store = manager.available.filter { if case .store = $0.source { true } else { false } }
         let unpacked = manager.available.filter { if case .unpacked = $0.source { true } else { false } }
 
-        for (header, items) in [("Safari Extensions", safari), ("Unpacked", unpacked)] where !items.isEmpty {
+        for (header, items) in [("Chrome Web Store", store), ("Safari Extensions", safari), ("Unpacked", unpacked)] where !items.isEmpty {
             menu.addItem(.separator())
             menu.addItem(.sectionHeader(title: header))
             for item in items {
@@ -168,8 +170,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if manager.context(for: item)?.optionsPageURL != nil {
                     sub.addItem(withTitle: "Options…", action: #selector(openExtensionOptions(_:)), keyEquivalent: "").representedObject = item.id
                 }
-                if case .unpacked = item.source {
+                switch item.source {
+                case .unpacked, .store:
                     sub.addItem(withTitle: "Remove", action: #selector(removeExtension(_:)), keyEquivalent: "").representedObject = item.id
+                case .safari: break
                 }
                 mi.submenu = sub
                 menu.addItem(mi)
@@ -193,7 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func removeExtension(_ sender: NSMenuItem) {
-        extensionItem(sender).map { ExtensionManager.shared.removeUnpacked($0) }
+        extensionItem(sender).map { ExtensionManager.shared.remove($0) }
     }
 
     @objc private func openExtensionOptions(_ sender: NSMenuItem) {
