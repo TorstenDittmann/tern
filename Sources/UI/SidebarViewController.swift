@@ -17,11 +17,10 @@ final class SidebarViewController: NSViewController {
     private var listTop: NSLayoutConstraint!
     private var isSyncingSelection = false
     private var actionButtons: [ObjectIdentifier: ExtensionActionButton] = [:]
-    private lazy var newTab = NewTabButton(target: self, action: #selector(newTabClicked))
     /// Tern's memory use, with its pages', at the right of the bottom bar.
     private let memoryLabel = NSTextField(labelWithString: "")
     private var memoryTimer: Timer?
-    /// Below this width the bottom bar drops its label: "New Tab" becomes a +.
+    /// Below this width the bottom bar drops the memory readout.
     private static let compactWidth: CGFloat = 170
     private let filterPill = FilterPill()
     private let pinnedView = PinnedTabsView()
@@ -84,7 +83,7 @@ final class SidebarViewController: NSViewController {
         memoryLabel.textColor = .tertiaryLabelColor
         memoryLabel.toolTip = "Memory used by Tern and its pages"
         memoryLabel.setContentCompressionResistancePriority(.init(150), for: .horizontal)
-        let bottom = NSStackView(views: [newTab, NSView(), extensionStack, memoryLabel])
+        let bottom = NSStackView(views: [NSView(), extensionStack, memoryLabel])
         bottom.spacing = 4
         // Nothing in the bottom bar may hold the sidebar wider than the user drags it: it compacts, then clips.
         bottom.setClippingResistancePriority(.defaultLow, for: .horizontal)
@@ -142,8 +141,7 @@ final class SidebarViewController: NSViewController {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        newTab.isCompact = view.bounds.width < Self.compactWidth
-        memoryLabel.isHidden = newTab.isCompact
+        memoryLabel.isHidden = view.bounds.width < Self.compactWidth
     }
 
     override func viewDidAppear() {
@@ -179,7 +177,7 @@ final class SidebarViewController: NSViewController {
     var memoryText: String { memoryLabel.stringValue }
 
     /// For the smoke test: whether the bottom bar shows just its icons, and the New Tab button's width.
-    var bottomBarCompact: (isCompact: Bool, newTabWidth: CGFloat) { (newTab.isCompact, newTab.frame.width) }
+    var showsMemory: Bool { !memoryLabel.isHidden }
 
     /// Space between a row's edge and its chip (half the gap between rows).
     var rowChipInset: CGFloat { tableView.intercellSpacing.height / 2 }
@@ -366,7 +364,6 @@ final class SidebarViewController: NSViewController {
 
     // MARK: Actions
 
-    @objc private func newTabClicked() { browser?.newTab(url: nil) }
 
     private func closeTab(atRow row: Int) {
         guard rows.indices.contains(row) else { return }
@@ -902,53 +899,6 @@ final class FilterPill: FilledView {
 }
 
 // MARK: - Bottom bar
-
-final class NewTabButton: NSButton {
-    private var hovering = false { didSet { needsDisplay = true } }
-
-    convenience init(target: AnyObject, action: Selector) {
-        self.init(frame: .zero)
-        let title = NSAttributedString(string: "New Tab", attributes: [
-            .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.secondaryLabelColor,
-        ])
-        attributedTitle = title
-        image = Theme.symbol("plus", size: 12, weight: .semibold)
-        imagePosition = .imageLeading
-        imageHugsTitle = true
-        contentTintColor = .secondaryLabelColor
-        isBordered = false
-        self.target = target
-        self.action = action
-        wantsLayer = true
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        translatesAutoresizingMaskIntoConstraints = false
-        heightAnchor.constraint(equalToConstant: 28).isActive = true
-        toolTip = "New Tab (⌘T)"
-        setContentCompressionResistancePriority(.init(200), for: .horizontal)
-    }
-
-    /// Just the +, in a narrow sidebar.
-    var isCompact = false {
-        didSet {
-            guard isCompact != oldValue else { return }
-            imagePosition = isCompact ? .imageOnly : .imageLeading
-            invalidateIntrinsicContentSize()
-        }
-    }
-
-    override var intrinsicContentSize: NSSize {
-        var s = super.intrinsicContentSize
-        s.width += isCompact ? 14 : 20
-        return s
-    }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override var wantsUpdateLayer: Bool { true }
-    override func updateLayer() {
-        layer?.cornerRadius = Theme.rowRadius
-        layer?.backgroundColor = hovering ? Theme.hoverFill.cgColor : .clear
-    }
-}
 
 /// Toolbar icon for an extension with a small badge capsule (Safari-style).
 final class ExtensionActionButton: NSButton {
