@@ -14,7 +14,7 @@ final class Welcome: NSViewController {
     static let lessons: [(Command, String, String)] = [
         (.commandPalette, "Command palette", "Tabs, history, commands, or a URL. What you use most ranks first."),
         (.tabPicker, "Switch tabs", "Jump between open tabs in every window, most recent first."),
-        (.toggleSplit, "Split view", "Two tabs side by side. Or drag a tab onto the page."),
+        (.focusRightPane, "Split view", "Two tabs side by side. Or drag a tab onto the page."),
         (.linkHints, "Link hints", "Click any link or button on the page without the mouse."),
     ]
 

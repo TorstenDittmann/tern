@@ -276,7 +276,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         splitWithNewTab(layout: .columns)
     }
 
-    /// ⌃⌘↓: split the current tab with a new tab below it.
+    /// ⌃⌘S: split the current tab with a new tab below it.
     func splitDown() {
         guard let active = activeTab else { return }
         if isPaired(active) { return addPane() }
@@ -396,9 +396,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     enum PaneDirection { case left, right, up, down }
 
-    /// Focuses the nearest pane in `direction` from the focused one.
+    /// Focuses the nearest pane in `direction` from the focused one. Right and down open a new pane when there is none that way.
     func focusPane(_ direction: PaneDirection) {
-        guard let group = split, let activeTab, let from = group.tabs.firstIndex(where: { $0 === activeTab }) else { return }
+        guard let activeTab else { return }
+        guard let group = split, let from = group.tabs.firstIndex(where: { $0 === activeTab }) else { return openPane(direction) }
         let frames = SplitGeometry.frames(count: group.tabs.count, layout: group.layout, dividers: group.dividers,
                                           in: NSRect(x: 0, y: 0, width: 1000, height: 1000), gap: 0)
         let here = NSPoint(x: frames[from].midX, y: frames[from].midY)
@@ -412,8 +413,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         let distance = { (i: Int) in hypot(frames[i].midX - here.x, frames[i].midY - here.y) }
-        guard let target = candidates.min(by: { distance($0) < distance($1) }) else { return }
+        guard let target = candidates.min(by: { distance($0) < distance($1) }) else { return openPane(direction) }
         activate(group.tabs[target])
+    }
+
+    private func openPane(_ direction: PaneDirection) {
+        guard let active = activeTab, direction == .right || direction == .down else { return }
+        guard (split?.contains(active) == true ? split!.tabs.count : 1) < SplitGroup.maxTabs else { NSSound.beep(); return }
+        let fresh = Tab(url: nil)
+        insert(fresh, after: split?.contains(active) == true ? split!.tabs.last : active, activate: false)
+        drop(fresh, at: .edge(direction == .right ? .maxX : .minY))
     }
 
     /// Where a tab dropped on the page goes.

@@ -91,10 +91,10 @@ enum SmokeTest {
         check(browser.tabs[1] === browser.activeTab, "moveTabDown")
 
         // Split view
-        check(Keymap.shared.primaryChord(for: .toggleSplit) == KeyChord(string: "cmd+ctrl+right")
-              && Keymap.shared.primaryChord(for: .splitDown) == KeyChord(string: "cmd+ctrl+down")
-              && Keymap.shared.command(for: KeyChord(string: "cmd+shift+s")!) == .toggleSplit
-              && Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit, "⌃⌘→ (and ⇧⌘S, ⌘\\) bound to split view, ⌃⌘↓ to split down")
+        check(Keymap.shared.primaryChord(for: .toggleSplit) == KeyChord(string: "cmd+shift+s")
+              && Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit
+              && Keymap.shared.command(for: KeyChord(string: "cmd+alt+right")!) == .focusRightPane
+              && Keymap.shared.command(for: KeyChord(string: "cmd+alt+down")!) == .focusPaneBelow, "⇧⌘S (and ⌘\\) bound to split view, ⌥⌘ arrows to panes")
         let left = browser.activeTab!
         let tabCount = browser.tabs.count
         CommandRouter.perform(.toggleSplit, in: browser)
@@ -139,6 +139,17 @@ enum SmokeTest {
         check(browser.visibleTabs.count == 2, "the split button splits")
         CommandRouter.perform(.toggleSplit, in: browser)
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
+        let alone = browser.activeTab!
+        CommandRouter.perform(.focusRightPane, in: browser)
+        check(browser.split?.layout == .columns && browser.visibleTabs.first === alone && browser.visibleTabs.count == 2, "⌥⌘→ with no split opens a pane on the right")
+        CommandRouter.perform(.focusPaneBelow, in: browser)
+        check(browser.visibleTabs.count == 3 && browser.activeTab !== alone, "⌥⌘↓ with no pane below opens one there")
+        CommandRouter.perform(.focusLeftPane, in: browser)
+        check(browser.activeTab === alone, "⌥⌘← moves back to the left pane")
+        let paneTabs = browser.visibleTabs.filter { $0 !== alone }
+        CommandRouter.perform(.toggleSplit, in: browser)
+        paneTabs.forEach { browser.close($0) }
+        check(browser.split == nil && browser.activeTab === alone, "back to one tab")
         await tabList(browser: browser, base: base)
         await linkTools(browser: browser, base: base)
         await swipes(browser: browser, base: base)
