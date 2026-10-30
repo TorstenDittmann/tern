@@ -540,7 +540,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private func updateTrafficLights() {
         guard let window else { return }
         let underLights = !window.styleMask.contains(.fullScreen) && (isSidebarCollapsed || isSidebarOnRight)
-        let hide = content.isCompact && !content.isBarRevealed && underLights
+        // Shown with the bar only where its backdrop runs under them; over a pane further right or lower down they'd sit on the page.
+        let hide = content.isCompact && !(content.isBarRevealed && content.isBarAtLeadingEdge) && underLights
         for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { window.standardWindowButton(kind)?.isHidden = hide }
     }
 
