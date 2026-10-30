@@ -1,4 +1,5 @@
 import AppKit
+import Security
 import WebKit
 
 /// Finds and runs web extensions through WebKit's public WKWebExtension API (macOS 15.4+).
@@ -19,6 +20,9 @@ final class ExtensionManager: NSObject {
         let id: String
         let name: String
         let source: Source
+        /// The `runtime.id` Safari gives a Safari Web Extension: "bundle.id (TEAMID)". Websites address the extension by
+        /// it through `externally_connectable` (Proton Pass's login hands off this way), so we use the same one.
+        var safariID: String? = nil
     }
 
     private(set) var available: [Available] = []
@@ -128,9 +132,14 @@ final class ExtensionManager: NSObject {
             let ext: WKWebExtension
             if let preloaded { ext = preloaded } else { ext = try await Self.makeExtension(item) }
             let ctx = WKWebExtensionContext(for: ext)
-            // A stable identifier keeps the extension's storage (and its webkit-extension:// origin) across launches.
+            // The base URL is fixed when the context is made, so set it ourselves to keep the webkit-extension://
+            // origin (and with it the pages' localStorage and IndexedDB) the same across launches.
             let uuid = stableUUID(for: item.id)
-            ctx.uniqueIdentifier = uuid
+            if let base = URL(string: "webkit-extension://\(uuid.lowercased())/") { ctx.baseURL = base }
+            // The identifier names the extension's storage.local folder and is what `runtime.sendMessage(id)` targets.
+            let identifier = item.safariID ?? uuid
+            Self.moveStorage(from: uuid, to: identifier)
+            ctx.uniqueIdentifier = identifier
             ctx.isInspectable = true
             ctx.inspectionName = item.name
             // The user turned it on after seeing the permission list, so grant what the manifest asks for.
@@ -163,6 +172,19 @@ final class ExtensionManager: NSObject {
         return uuid
     }
 
+    /// Builds before this one keyed every extension's storage by its UUID. Carry it over to the Safari-style
+    /// identifier once, so turning that on doesn't log people out of extensions they already use.
+    private static func moveStorage(from old: String, to new: String) {
+        guard old != new, !SmokeTest.isRunning, !Metrics.isBenchmark,
+              let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
+        // WebKit's default controller storage for an app outside a sandbox container.
+        let root = library.appendingPathComponent("WebKit/\(Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName)/WebExtensions/Default")
+        let from = root.appendingPathComponent(old), to = root.appendingPathComponent(new)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: from.path), !fm.fileExists(atPath: to.path) else { return }
+        do { try fm.moveItem(at: from, to: to) } catch { NSLog("Tern: couldn't move extension storage \(old) → \(new): \(error)") }
+    }
+
     // MARK: Discovery (runs off the main thread)
 
     nonisolated private static func scan(folder: URL, extraPaths: [String]) -> [Available] {
@@ -181,7 +203,8 @@ final class ExtensionManager: NSObject {
                           let bundleID = info["CFBundleIdentifier"] as? String else { continue }
                     let appName = (app as NSString).deletingPathExtension
                     let name = info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? appName
-                    result.append(Available(id: bundleID, name: name, source: .safari(appex: appex, app: appName)))
+                    let safariID = teamIdentifier(of: appex).map { "\(bundleID) (\($0))" }
+                    result.append(Available(id: bundleID, name: name, source: .safari(appex: appex, app: appName), safariID: safariID))
                 }
             }
         }
@@ -194,6 +217,16 @@ final class ExtensionManager: NSObject {
             result.append(Available(id: unpackedID(url), name: name, source: .unpacked(url)))
         }
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The signing team, read from the code signature without validating it (that would hash the whole bundle).
+    nonisolated private static func teamIdentifier(of bundle: URL) -> String? {
+        var code: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess, let code else { return nil }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let info = info as? [String: Any] else { return nil }
+        return info[kSecCodeInfoTeamIdentifier as String] as? String
     }
 
     nonisolated private static func unpackedID(_ url: URL) -> String { "unpacked:" + url.standardizedFileURL.path }
