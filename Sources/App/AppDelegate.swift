@@ -170,10 +170,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if manager.context(for: item)?.optionsPageURL != nil {
                     sub.addItem(withTitle: "Options…", action: #selector(openExtensionOptions(_:)), keyEquivalent: "").representedObject = item.id
                 }
-                if manager.context(for: item) != nil {
+                if let ctx = manager.context(for: item) {
                     sub.addItem(.separator())
                     sub.addItem(withTitle: "Inspect Background", action: #selector(inspectExtensionBackground(_:)), keyEquivalent: "").representedObject = item.id
-                    sub.addItem(withTitle: "Inspect Popup", action: #selector(inspectExtensionPopup(_:)), keyEquivalent: "").representedObject = item.id
+                    if ExtensionManager.popupURL(of: ctx) != nil {
+                        sub.addItem(withTitle: "Open Popup in Tab", action: #selector(openExtensionPopupInTab(_:)), keyEquivalent: "").representedObject = item.id
+                    }
+                    let errors = ExtensionManager.errorMessages(of: ctx)
+                    if !errors.isEmpty {
+                        sub.addItem(withTitle: "Show Errors (\(errors.count))…", action: #selector(showExtensionErrors(_:)), keyEquivalent: "").representedObject = item.id
+                    }
                     sub.addItem(.separator())
                 }
                 switch item.source {
@@ -220,14 +226,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Inspector.showConsole(webView)
     }
 
-    /// The popup page in its own web view (WebKit loads it on first access), so its errors show even if the popover looks empty.
-    @objc private func inspectExtensionPopup(_ sender: NSMenuItem) {
+    /// The popup page as a normal tab, where the page inspector (⌥⌘I) works. Touching the action's own popup web view
+    /// outside a click leaves WebKit unable to present the popover, so this never does.
+    @objc private func openExtensionPopupInTab(_ sender: NSMenuItem) {
+        guard let item = extensionItem(sender), let ctx = ExtensionManager.shared.context(for: item),
+              let url = ExtensionManager.popupURL(of: ctx) else { return }
+        ExtensionManager.browserForExtensions.newTab(url: url)
+    }
+
+    @objc private func showExtensionErrors(_ sender: NSMenuItem) {
         guard let item = extensionItem(sender), let ctx = ExtensionManager.shared.context(for: item) else { return }
-        let action = ctx.action(for: AppDelegate.shared.keyBrowser?.activeTab) ?? ctx.action(for: nil)
-        guard let webView = action?.popupWebView else {
-            return ExtensionManager.alert("“\(item.name)” has no popup.", detail: "Its toolbar button doesn’t open a page.")
-        }
-        Inspector.showConsole(webView)
+        ExtensionManager.alert("“\(item.name)” reported errors", detail: ExtensionManager.errorMessages(of: ctx).joined(separator: "\n\n"))
     }
 
     @objc private func rescanExtensions() {

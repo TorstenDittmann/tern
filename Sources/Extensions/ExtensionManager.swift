@@ -60,6 +60,14 @@ final class ExtensionManager: NSObject {
 
     func start() {
         controller.delegate = self
+        // Errors that come up while running (a background script that throws on startup) would otherwise go unseen.
+        NotificationCenter.default.addObserver(forName: WKWebExtensionContext.errorsDidUpdateNotification, object: nil, queue: .main) { note in
+            MainActor.assumeIsolated {
+                guard let ctx = note.object as? WKWebExtensionContext else { return }
+                for message in Self.errorMessages(of: ctx) { NSLog("Tern extension \(ctx.webExtension.displayName ?? "?"): \(message)") }
+                AppDelegate.shared.extensionsDidChange()
+            }
+        }
         Task { await refresh() }
     }
 
@@ -240,6 +248,26 @@ final class ExtensionManager: NSObject {
         return ctx.value(forKey: "_backgroundWebView") as? WKWebView
     }
 
+    /// The page the toolbar button opens (`action.default_popup`, or MV2's `browser_action`), as a URL in the extension.
+    static func popupURL(of ctx: WKWebExtensionContext) -> URL? {
+        let manifest = ctx.webExtension.manifest
+        let action = (manifest["action"] ?? manifest["browser_action"]) as? [String: Any]
+        guard let page = action?["default_popup"] as? String, !page.isEmpty else { return nil }
+        return URL(string: page, relativeTo: ctx.baseURL)?.absoluteURL
+    }
+
+    /// The extension's manifest problems and what went wrong while running, readable.
+    static func errorMessages(of ctx: WKWebExtensionContext) -> [String] {
+        var seen = Set<String>()
+        return (ctx.webExtension.errors + ctx.errors).map { error in
+            let error = error as NSError
+            if error.domain == WKWebExtensionContext.errorDomain, error.code == WKWebExtensionContext.Error.backgroundContentFailedToLoad.rawValue {
+                return "Its background script failed to start, usually because it threw an error. Inspect Background shows it."
+            }
+            return error.localizedFailureReason ?? error.localizedDescription
+        }.filter { seen.insert($0).inserted }
+    }
+
     /// Lets extensions' `commands` (manifest keyboard shortcuts) fire.
     func performCommand(for event: NSEvent) -> Bool {
         for ctx in contexts.values where ctx.performCommand(for: event) { return true }
@@ -286,7 +314,10 @@ final class ExtensionManager: NSObject {
         case .safari(let appex, _):
             guard let bundle = Bundle(url: appex) else { throw CocoaError(.fileReadCorruptFile) }
             return try await WKWebExtension(appExtensionBundle: bundle)
-        case .store(_, let url), .unpacked(let url):
+        case .store(_, let url):
+            await Task.detached(priority: .userInitiated) { ChromeCompat.install(in: url) }.value
+            return try await WKWebExtension(resourceBaseURL: url)
+        case .unpacked(let url):
             return try await WKWebExtension(resourceBaseURL: url)
         }
     }
