@@ -222,6 +222,7 @@ enum CommandRouter {
         case .toggleCompactMode:
             Preferences.compactMode.toggle()
             app.windows.forEach { $0.setCompact(Preferences.compactMode) }
+            SettingsWindow.shared.general.refresh()
             return
         case .revealExtensionsFolder:
             NSWorkspace.shared.activateFileViewerSelecting([ExtensionManager.shared.unpackedFolder]); return

@@ -88,9 +88,9 @@ enum Preferences {
         set { store(newValue.sorted(), "blockingExceptions") }
     }
 
-    /// Compact mode: no top bar until you point at the top edge or press ⌘L.
+    /// Compact mode: no top bar until you point at the top edge or press ⌘L. On unless you turn it off.
     static var compactMode: Bool {
-        get { value("compactMode") as? Bool ?? false }
+        get { value("compactMode") as? Bool ?? true }
         set { store(newValue, "compactMode") }
     }
 

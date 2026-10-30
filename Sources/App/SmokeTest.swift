@@ -44,6 +44,9 @@ enum SmokeTest {
             check(ctx?.isLoaded == true, "unpacked extension loaded")
         }
 
+        check(Preferences.compactMode, "the address bar is hidden by default (compact mode)")
+        // The rest of the run works the top bar a lot, so it starts with the bar showing; compact mode gets its own checks.
+        Preferences.compactMode = false
         let browser = AppDelegate.shared.openWindow(restoring: [Tab(url: URL(string: "\(base)/one.html"))])
         await wait { browser.activeTab?.isLoading == false && browser.activeTab?.pageTitle == "Page One" }
         check(browser.activeTab?.pageTitle == "Page One", "tab 1 loaded")
@@ -640,12 +643,10 @@ enum SmokeTest {
         let narrowest = browser.sidebar.view.frame.width
         check(narrowest <= 101 && !browser.isSidebarCollapsed,
               "the tab list drags down to 100pt (\(Int(narrowest))pt)")
-        let compact = browser.sidebar.bottomBarCompact
-        check(compact.isCompact && compact.newTabWidth < 40,
-              "a narrow tab list shows just the + for New Tab (New Tab \(Int(compact.newTabWidth))pt)")
+        check(!browser.sidebar.showsMemory, "a narrow tab list hides the memory readout")
         browser.setSidebarWidth(before)
         root.layoutSubtreeIfNeeded()
-        if before >= 170 { check(!browser.sidebar.bottomBarCompact.isCompact, "and its label comes back when it widens again") }
+        if before >= 170 { check(browser.sidebar.showsMemory, "and it comes back when the list widens again") }
 
         let widthsAfter = ["TernSidebarWidth", "TernSidebarWidthRight"].map {
             UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \($0)") as? [String]
