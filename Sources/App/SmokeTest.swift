@@ -91,9 +91,18 @@ enum SmokeTest {
         check(browser.tabs[1] === browser.activeTab, "moveTabDown")
 
         // Split view
-        check(Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit, "⌘\\ bound to split view")
+        check(Keymap.shared.primaryChord(for: .toggleSplit) == KeyChord(string: "cmd+shift+s"), "⇧⌘S is split view's shortcut")
+        check(Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit, "⌘\\ still works for split view")
         let left = browser.activeTab!
         let tabCount = browser.tabs.count
+        func drawsBackground(_ tab: Tab) -> Bool? { tab.webView?.value(forKey: "drawsBackground") as? Bool }
+        let startTab = browser.newTab(url: nil)
+        check(drawsBackground(startTab) == false, "a new tab's web view stays clear until the start page paints")
+        startTab.load(URL(string: "\(base)/one.html")!)
+        await wait { startTab.isLoading == false && startTab.currentURL != nil }
+        check(drawsBackground(startTab) == true, "a real page gets the opaque background back")
+        browser.close(startTab)
+        browser.activate(left)
         CommandRouter.perform(.toggleSplit, in: browser)
         let right = browser.activeTab!
         check(browser.tabs.count == tabCount + 1 && right !== left && browser.visibleTabs == [left, right], "⌘\\ splits with a new tab on the right")

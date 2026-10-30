@@ -100,6 +100,8 @@ final class Tab: NSObject {
         } else if let currentURL {
             wv.load(URLRequest(url: currentURL))
         } else {
+            // Clear until the start page paints: the card behind it is the same color, so a new tab doesn't flash.
+            wv.setValue(false, forKey: "drawsBackground")
             wv.loadHTMLString(StartPage.html, baseURL: nil)
         }
         return wv
@@ -322,6 +324,11 @@ extension Tab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         DownloadManager.shared.track(download)
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // Real pages need the opaque default: one with no background of its own would show the card through.
+        webView.setValue(webView.url?.absoluteString == "about:blank" ? false : true, forKey: "drawsBackground")
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

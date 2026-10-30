@@ -32,7 +32,7 @@ Vertical tabs, split view, a command palette, rebindable shortcuts, and support 
 - **Site sign-in and permissions.** Sites behind HTTP basic or digest auth (staging servers, routers) get a sign-in sheet. Camera, microphone and location requests ask first and can be remembered per site; **Reset Permissions for This Site** in ⌘K forgets them.
 - **Default browser.** **Tern ▸ Make Tern the Default Browser**, or the button in Settings ▸ General.
 - **Tab picker (⌘P).** Jump between open tabs across all windows, most recently used first.
-- **Welcome.** The first launch walks through five short pages: pick the tab list's side, compact mode and the default browser (applied live); practice ⌘K, ⌘P, ⌘\\ and ⌘J by pressing them; turn on Safari extensions; and switch on the agent API, with the `claude mcp add` command to copy. ← → or ↩ move between pages, esc skips. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
+- **Welcome.** The first launch walks through five short pages: pick the tab list's side, compact mode and the default browser (applied live); practice ⌘K, ⌘P, ⇧⌘S and ⌘J by pressing them; turn on Safari extensions; and switch on the agent API, with the `claude mcp add` command to copy. ← → or ↩ move between pages, esc skips. **Welcome to Tern** in ⌘K or the Tern menu shows it again.
 - **Rebindable shortcuts.** Every command has a binding. Change them in Settings ▸ Shortcuts or in a JSON file. The menus always show your current bindings.
 - **Requests (⌥⌘N).** A small window lists every request the tab's page made: status, type, size and time, filtered by type or URL, with failed requests in red. Double-click opens one in a tab; right-click copies the URL or a cURL command. **Preserve log** keeps it across navigations.
 - **Built for developers.** Web Inspector and console shortcuts, copy the URL or a Markdown link, and links like `vscode://` and `mailto:` open in their own apps.
@@ -68,11 +68,11 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | Next / previous tab | ⌃⇥ / ⌃⇧⇥, ⇧⌘] / ⇧⌘[, ⌥⌘↓ / ⌥⌘↑ |
 | Move tab down / up | ⌥⇧⌘↓ / ⌥⇧⌘↑ |
 | Go to tab 1–8 / last tab | ⌘1 – ⌘8 / ⌘9 |
-| Split view on / off | ⌘\\ |
-| Split down (new tab below) | ⌃⌘\\ |
-| Split with a tab, page or address | ⌥⌘\\ |
-| Change split layout | ⌃⇧⌘\\ |
-| Swap panes | ⇧⌘\\ |
+| Split view on / off | ⇧⌘S |
+| Split down (new tab below) | ⌃⌘S |
+| Split with a tab, page or address | ⌥⌘S |
+| Change split layout | ⌃⇧⌘S |
+| Swap panes | ⌥⇧⌘S |
 | Focus pane left / right / above / below | ⌥⌘← / ⌥⌘→ / ⌃⌘↑ / ⌃⌘↓ |
 | Filter tabs in the sidebar | ⌘E |
 | Toggle sidebar | ⌘S |
@@ -115,10 +115,10 @@ Chords combine `cmd`, `shift`, `alt` and `ctrl` with a key. Key names include `t
 
 ![Split view](docs/split.png)
 
-- **⌘\\** (or the split button in the top bar) opens a new tab next to the current one. Press it again to end the split. **⌃⌘\\** opens one below instead, and in a split it adds another pane.
-- A split holds up to four tabs. **Side by Side** and **Stacked** put them in a row or a column. **Grid** shows three tabs as one on the left and two stacked on the right, and four as a 2×2 grid. **⌃⇧⌘\\** (Change Split Layout) cycles through the layouts that fit, and a fourth pane switches to the grid.
+- **⇧⌘S** (or the split button in the top bar) opens a new tab next to the current one. Press it again to end the split. **⌃⌘S** opens one below instead, and in a split it adds another pane.
+- A split holds up to four tabs. **Side by Side** and **Stacked** put them in a row or a column. **Grid** shows three tabs as one on the left and two stacked on the right, and four as a 2×2 grid. **⌃⇧⌘S** (Change Split Layout) cycles through the layouts that fit, and a fourth pane switches to the grid.
 - **Drag a tab from the sidebar onto the page.** Over a single page, drop it on the left, right, top or bottom half to open it there. In a split, drop it on a pane to replace that pane, or near the page's outer edge to add a pane on that side.
-- **Split with…** (⌥⌘\\) and **Split with Previous Tab** add to the split you're in while it has room. **Add Pane to Split** opens a new tab in it, and **Remove Tab from Split** takes the current tab out and shows it alone.
+- **Split with…** (⌥⌘S) and **Split with Previous Tab** add to the split you're in while it has room. **Add Pane to Split** opens a new tab in it, and **Remove Tab from Split** takes the current tab out and shows it alone.
 - Clicking into a pane makes it the active tab: the address bar, history, find, ⌘W, and extensions all follow it. ⌥⌘←/→ and ⌃⌘↑/↓ move focus between panes.
 - Drag the gaps between panes to resize them, and double-click a gap to even them out.
 - Closing a pane takes it out of the split; the split ends when one tab is left.

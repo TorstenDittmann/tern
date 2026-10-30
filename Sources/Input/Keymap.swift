@@ -107,6 +107,9 @@ final class Keymap {
         ("cmd+[", .goBack), ("cmd+]", .goForward),
         ("ctrl+tab", .nextTab), ("cmd+shift+]", .nextTab), ("cmd+alt+down", .nextTab),
         ("ctrl+shift+tab", .previousTab), ("cmd+shift+[", .previousTab), ("cmd+alt+up", .previousTab),
+        // Split keys are on S: backslash takes three fingers or more on layouts like German. It stays as an alias.
+        ("cmd+shift+s", .toggleSplit), ("cmd+alt+shift+s", .swapPanes), ("cmd+alt+s", .splitWith),
+        ("cmd+ctrl+s", .splitDown), ("cmd+ctrl+shift+s", .changeSplitLayout),
         ("cmd+\\", .toggleSplit), ("cmd+shift+\\", .swapPanes), ("cmd+alt+\\", .splitWith),
         ("cmd+ctrl+\\", .splitDown), ("cmd+ctrl+shift+\\", .changeSplitLayout),
         ("cmd+alt+left", .focusLeftPane), ("cmd+alt+right", .focusRightPane),
