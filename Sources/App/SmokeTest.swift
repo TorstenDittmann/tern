@@ -961,18 +961,20 @@ enum SmokeTest {
         check(content.isCompact && content.topBar.isHidden && pageTop <= Theme.gutter + 1, "compact mode hides the top bar and moves the page up (\(pageTop))")
         CommandRouter.perform(.focusAddressBar, in: browser)
         check(content.isBarRevealed && !content.topBar.isHidden, "⌘L shows the bar in compact mode")
+        browser.window?.layoutIfNeeded()
+        let revealedTop = content.view.bounds.height - content.pageFrameInWindow.maxY
+        check(revealedTop <= Theme.gutter + 1, "the bar floats over the page instead of pushing it down (\(revealedTop))")
         browser.window?.makeFirstResponder(browser.activeTab?.webView)
         await wait { !content.isBarRevealed }
         browser.toggleSplit()
         CommandRouter.perform(.focusAddressBar, in: browser)
         browser.window?.layoutIfNeeded()
-        let barBottom = content.view.bounds.height - content.topBar.convert(content.topBar.bounds, to: nil).minY
-        let splitTop = content.view.bounds.height - content.pageFrameInWindow.maxY
-        check(splitTop > barBottom, "over a split, the compact bar moves the panes down instead of covering them (\(splitTop) > \(barBottom))")
+        let bar = content.topBar.convert(content.topBar.bounds, to: nil), page = content.pageFrameInWindow
+        let splitTop = content.view.bounds.height - page.maxY
+        check(splitTop <= Theme.gutter + 1 && bar.minX > page.midX,
+              "over a split, the compact bar floats over the focused pane only (page top \(splitTop), bar from \(bar.minX), page middle \(page.midX))")
         browser.window?.makeFirstResponder(browser.activeTab?.webView)
         await wait { !content.isBarRevealed }
-        browser.window?.layoutIfNeeded()
-        check(content.view.bounds.height - content.pageFrameInWindow.maxY <= Theme.gutter + 1, "and move back up when it hides")
         browser.activeTab.map(browser.close)
         CommandRouter.perform(.toggleCompactMode, in: browser)
         browser.window?.layoutIfNeeded()
