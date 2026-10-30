@@ -20,9 +20,6 @@ final class ExtensionManager: NSObject {
         let id: String
         let name: String
         let source: Source
-        /// The `runtime.id` Safari gives a Safari Web Extension: "bundle.id (TEAMID)". Websites address the extension by
-        /// it through `externally_connectable` (Proton Pass's login hands off this way), so we use the same one.
-        var safariID: String? = nil
     }
 
     private(set) var available: [Available] = []
@@ -137,7 +134,13 @@ final class ExtensionManager: NSObject {
             let uuid = stableUUID(for: item.id)
             if let base = URL(string: "webkit-extension://\(uuid.lowercased())/") { ctx.baseURL = base }
             // The identifier names the extension's storage.local folder and is what `runtime.sendMessage(id)` targets.
-            let identifier = item.safariID ?? uuid
+            var identifier = uuid
+            if case .safari(let appex, _) = item.source,
+               let team = await Task.detached(priority: .userInitiated, operation: { Self.verifiedTeam(of: appex) }).value {
+                // Safari's own `runtime.id`. Websites address the extension by it through `externally_connectable`
+                // (Proton Pass's login hands its session over this way).
+                identifier = "\(item.id) (\(team))"
+            }
             Self.moveStorage(from: uuid, to: identifier)
             ctx.uniqueIdentifier = identifier
             ctx.isInspectable = true
@@ -203,8 +206,7 @@ final class ExtensionManager: NSObject {
                           let bundleID = info["CFBundleIdentifier"] as? String else { continue }
                     let appName = (app as NSString).deletingPathExtension
                     let name = info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? appName
-                    let safariID = teamIdentifier(of: appex).map { "\(bundleID) (\($0))" }
-                    result.append(Available(id: bundleID, name: name, source: .safari(appex: appex, app: appName), safariID: safariID))
+                    result.append(Available(id: bundleID, name: name, source: .safari(appex: appex, app: appName)))
                 }
             }
         }
@@ -219,14 +221,20 @@ final class ExtensionManager: NSObject {
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    /// The signing team, read from the code signature without validating it (that would hash the whole bundle).
-    nonisolated private static func teamIdentifier(of bundle: URL) -> String? {
+    /// The signing team, only if the whole bundle (resources included) validates against an Apple-issued certificate
+    /// for that team. Otherwise any app could claim another extension's ID and receive what websites send it.
+    nonisolated private static func verifiedTeam(of bundle: URL) -> String? {
         var code: SecStaticCode?
         guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess, let code else { return nil }
         var info: CFDictionary?
         guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
-              let info = info as? [String: Any] else { return nil }
-        return info[kSecCodeInfoTeamIdentifier as String] as? String
+              let team = (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String,
+              team.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return nil }
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString("anchor apple generic and certificate leaf[subject.OU] = \"\(team)\"" as CFString, [], &requirement) == errSecSuccess,
+              SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSCheckNestedCode), requirement) == errSecSuccess
+        else { return nil }
+        return team
     }
 
     nonisolated private static func unpackedID(_ url: URL) -> String { "unpacked:" + url.standardizedFileURL.path }
