@@ -1,4 +1,5 @@
 import AppKit
+import Security
 import WebKit
 
 /// Finds and runs web extensions through WebKit's public WKWebExtension API (macOS 15.4+).
@@ -130,9 +131,20 @@ final class ExtensionManager: NSObject {
             let ext: WKWebExtension
             if let preloaded { ext = preloaded } else { ext = try await Self.makeExtension(item) }
             let ctx = WKWebExtensionContext(for: ext)
-            // A stable identifier keeps the extension's storage (and its webkit-extension:// origin) across launches.
+            // The base URL is fixed when the context is made, so set it ourselves to keep the webkit-extension://
+            // origin (and with it the pages' localStorage and IndexedDB) the same across launches.
             let uuid = stableUUID(for: item.id)
-            ctx.uniqueIdentifier = uuid
+            if let base = URL(string: "webkit-extension://\(uuid.lowercased())/") { ctx.baseURL = base }
+            // The identifier names the extension's storage.local folder and is what `runtime.sendMessage(id)` targets.
+            var identifier = uuid
+            if case .safari(let appex, _) = item.source,
+               let team = await Task.detached(priority: .userInitiated, operation: { Self.verifiedTeam(of: appex) }).value {
+                // Safari's own `runtime.id`. Websites address the extension by it through `externally_connectable`
+                // (Proton Pass's login hands its session over this way).
+                identifier = "\(item.id) (\(team))"
+            }
+            Self.moveStorage(from: uuid, to: identifier)
+            ctx.uniqueIdentifier = identifier
             ctx.isInspectable = true
             ctx.inspectionName = item.name
             // The user turned it on after seeing the permission list, so grant what the manifest asks for.
@@ -163,6 +175,19 @@ final class ExtensionManager: NSObject {
         map[id] = uuid
         defaults.set(map, forKey: "extensionUUIDs")
         return uuid
+    }
+
+    /// Builds before this one keyed every extension's storage by its UUID. Carry it over to the Safari-style
+    /// identifier once, so turning that on doesn't log people out of extensions they already use.
+    private static func moveStorage(from old: String, to new: String) {
+        guard old != new, !SmokeTest.isRunning, !Metrics.isBenchmark,
+              let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
+        // WebKit's default controller storage for an app outside a sandbox container.
+        let root = library.appendingPathComponent("WebKit/\(Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName)/WebExtensions/Default")
+        let from = root.appendingPathComponent(old), to = root.appendingPathComponent(new)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: from.path), !fm.fileExists(atPath: to.path) else { return }
+        do { try fm.moveItem(at: from, to: to) } catch { NSLog("Tern: couldn't move extension storage \(old) → \(new): \(error)") }
     }
 
     // MARK: Discovery (runs off the main thread)
@@ -196,6 +221,23 @@ final class ExtensionManager: NSObject {
             result.append(Available(id: unpackedID(url), name: name, source: .unpacked(url)))
         }
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The signing team, only if the whole bundle (resources included) validates against an Apple-issued certificate:
+    /// Apple's own Mac App Store signature (which carries the team in the signed code directory, not the certificate)
+    /// or one issued to that team. Otherwise any app could claim another extension's ID and receive what websites send it.
+    nonisolated private static func verifiedTeam(of bundle: URL) -> String? {
+        var code: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess, let code else { return nil }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let team = (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String,
+              team.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return nil }
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString("anchor apple generic and (certificate leaf[field.1.2.840.113635.100.6.1.9] or certificate leaf[subject.OU] = \"\(team)\")" as CFString, [], &requirement) == errSecSuccess,
+              SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSCheckNestedCode), requirement) == errSecSuccess
+        else { return nil }
+        return team
     }
 
     nonisolated private static func unpackedID(_ url: URL) -> String { "unpacked:" + url.standardizedFileURL.path }

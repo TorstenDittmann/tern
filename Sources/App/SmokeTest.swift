@@ -42,6 +42,8 @@ enum SmokeTest {
         if let extDir {
             ctx = await ExtensionManager.shared.loadForSmokeTest(URL(fileURLWithPath: extDir))
             check(ctx?.isLoaded == true, "unpacked extension loaded")
+            // The origin must follow the stored UUID, or extension pages lose their storage every launch.
+            check(ctx?.baseURL.host?.lowercased() == ctx?.uniqueIdentifier.lowercased(), "extension origin is stable")
         }
 
         check(Preferences.compactMode, "the address bar is hidden by default (compact mode)")
