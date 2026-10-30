@@ -515,7 +515,8 @@ enum SmokeTest {
         let edited = "\(base)/one.html?a=2&b=x+y&flag&q=a%26b%20c#top"
         check(breakdown.url?.absoluteString == edited, "editing parameters rebuilds the URL and encodes new values (\(breakdown.url?.absoluteString ?? "nil"))")
         breakdown.onOpen?(breakdown.url!, false)
-        await wait { !tab.isLoading && tab.currentURL?.absoluteString == edited }
+        // The popover animates closed, so isShown can lag the page load.
+        await wait { !tab.isLoading && tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true }
         check(tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true,
               "Open loads the edited URL and closes the breakdown (got \(tab.currentURL?.absoluteString ?? "nil"), loading \(tab.isLoading), "
               + "popover shown \(bar.popover?.isShown == true), active tab \(browser.activeTab === tab))")
