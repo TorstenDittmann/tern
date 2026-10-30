@@ -2,7 +2,7 @@ import Foundation
 
 /// Chrome Web Store extensions are written for Chrome, and some touch Chrome APIs WebKit doesn't have as they start
 /// (Proton Pass calls `runtime.onUpdateAvailable.addListener`, which throws and kills its service worker).
-/// Before such an extension loads, its background gets a small script that fills those in as harmless no-ops.
+/// Before such an extension loads, its background and pages get a small script that fills those in as harmless no-ops.
 /// Only store installs are changed: they're our own copy, while unpacked folders belong to the user.
 enum ChromeCompat {
     static let scriptName = "tern-compat.js"
@@ -11,6 +11,15 @@ enum ChromeCompat {
     static let script = """
     // Added by Tern: Chrome APIs that WebKit doesn't have, as no-ops, so extensions written for Chrome start.
     (() => {
+      // Some extensions swap `chrome`/`browser` for a Proxy as "hardening" (Proton Pass does), after which WebKit stops
+      // delivering messages to the worker. Pin the originals; assigning to them then quietly does nothing.
+      for (const key of ["chrome", "browser"]) {
+        const value = globalThis[key];
+        if (!value) continue;
+        try { Object.defineProperty(globalThis, key, { configurable: false, enumerable: true, get: () => value, set() {} }); } catch {}
+      }
+      // WebKit's API objects are wrappers it can collect and recreate, dropping anything added below, unless something holds them.
+      globalThis.__ternKeep = [globalThis.chrome, globalThis.browser].flatMap((ns) => ns ? [ns, ns.runtime, ns.tabs, ns.windows] : []);
       const event = () => ({ addListener() {}, removeListener() {}, hasListener() { return false; }, hasListeners() { return false; } });
       const fill = (object, name, value) => {
         if (!object || object[name] !== undefined) return;
@@ -40,6 +49,7 @@ enum ChromeCompat {
               var manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               var background = manifest["background"] as? [String: Any] else { return }
         try? script.write(to: folder.appendingPathComponent(scriptName), atomically: true, encoding: .utf8)
+        injectIntoPages(in: folder)
 
         if let worker = background["service_worker"] as? String {
             guard worker != workerName else { return }
@@ -61,6 +71,21 @@ enum ChromeCompat {
         manifest["background"] = background
         guard let out = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .withoutEscapingSlashes]) else { return }
         try? out.write(to: manifestURL, options: .atomic)
+    }
+
+    /// Every HTML page in the extension (popup, options, and the rest) loads the script before its own.
+    private static func injectIntoPages(in folder: URL) {
+        let tag = "<script src=\"/\(scriptName)\"></script>"
+        guard let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil) else { return }
+        for case let url as URL in files where ["html", "htm"].contains(url.pathExtension.lowercased()) {
+            guard var html = try? String(contentsOf: url, encoding: .utf8), !html.contains(tag) else { continue }
+            if let head = html.range(of: "<head\\b[^>]*>", options: [.regularExpression, .caseInsensitive]) {
+                html.insert(contentsOf: tag, at: head.upperBound)
+            } else {
+                html = tag + html
+            }
+            try? html.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 
     private static func jsString(_ s: String) -> String {
