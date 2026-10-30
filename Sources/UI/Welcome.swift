@@ -888,7 +888,7 @@ private final class LessonRow: FilledView {
         // A fixed column, right-aligned, so every row's keys line up.
         keys.alignment = .centerY
         keys.setHuggingPriority(.defaultLow, for: .horizontal)
-        keys.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        keys.widthAnchor.constraint(greaterThanOrEqualToConstant: 96).isActive = true
         keys.setViews(keys.arrangedSubviews, in: .trailing)
         status.image = Theme.symbol("circle", size: 15, weight: .regular)
         status.contentTintColor = .tertiaryLabelColor
