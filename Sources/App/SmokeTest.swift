@@ -143,7 +143,7 @@ enum SmokeTest {
         CommandRouter.perform(.focusRightPane, in: browser)
         check(browser.split?.layout == .columns && browser.visibleTabs.first === alone && browser.visibleTabs.count == 2, "⌥⌘→ with no split opens a pane on the right")
         CommandRouter.perform(.focusPaneBelow, in: browser)
-        check(browser.visibleTabs.count == 3 && browser.activeTab !== alone, "⌥⌘↓ with no pane below opens one there")
+        check(browser.split?.layout == .grid && browser.visibleTabs.count == 3 && browser.activeTab !== alone, "⌥⌘↓ with no pane below opens one there")
         CommandRouter.perform(.focusLeftPane, in: browser)
         check(browser.activeTab === alone, "⌥⌘← moves back to the left pane")
         let paneTabs = browser.visibleTabs.filter { $0 !== alone }
