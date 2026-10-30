@@ -315,7 +315,7 @@ final class ContentViewController: NSViewController {
     /// The promoted page's card grows out of where the peek's card was (`rect`, in `view`'s coordinates).
     /// The scale is uniform, so the page doesn't stretch when the shapes differ (a split's half-width pane).
     private func grow(_ tab: Tab, from rect: NSRect) {
-        guard !LinkPeek.reduceMotion else { return }
+        guard !Motion.reduceMotion else { return }
         view.layoutSubtreeIfNeeded()
         guard let card = panes.cards.first(where: { tab.webView != nil && tab.webView?.superview === $0.clip }),
               let superview = card.superview, card.frame.width > 0, card.frame.height > 0 else { return }
@@ -329,6 +329,29 @@ final class ContentViewController: NSViewController {
         grow.damping = 30
         grow.duration = grow.settlingDuration
         card.layer?.add(grow, forKey: "grow")
+    }
+
+    // MARK: Toast
+
+    private var toast: Toast?
+
+    /// A small confirmation ("Copied") that drops in at the top of the page and fades after a moment.
+    func showToast(_ text: String, symbol: String = "checkmark") {
+        toast?.removeFromSuperview()
+        let toast = Toast(text: text, symbol: symbol)
+        self.toast = toast
+        toast.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(toast, positioned: .above, relativeTo: findBar)
+        NSLayoutConstraint.activate([
+            toast.centerXAnchor.constraint(equalTo: panes.centerXAnchor),
+            toast.topAnchor.constraint(equalTo: panes.topAnchor, constant: 12),
+        ])
+        view.layoutSubtreeIfNeeded()
+        toast.present { [weak self, weak toast] in
+            guard let self, let toast, self.toast === toast else { return }
+            toast.removeFromSuperview()
+            self.toast = nil
+        }
     }
 
     // MARK: Find
@@ -684,6 +707,71 @@ final class ProgressLine: NSView {
 }
 
 /// The top edge of the window in compact mode: pointing at it reveals the top bar. Clicks go through.
+/// The pill `showToast` shows: a check and a word, on the raised surface with a hairline.
+final class Toast: FilledView {
+    init(text: String, symbol: String) {
+        super.init(frame: .zero)
+        fill = Theme.surface
+        border = Theme.hairline
+        radius = 13
+        wantsLayer = true
+        shadow = {
+            let s = NSShadow()
+            s.shadowColor = NSColor.black.withAlphaComponent(0.18)
+            s.shadowBlurRadius = 10
+            s.shadowOffset = NSSize(width: 0, height: -2)
+            return s
+        }()
+        let icon = NSImageView(image: Theme.symbol(symbol, size: 11, weight: .bold) ?? NSImage())
+        icon.contentTintColor = Theme.accent
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        let stack = NSStackView(views: [icon, label])
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 11, bottom: 0, right: 13)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            heightAnchor.constraint(equalToConstant: 26),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        setAccessibilityLabel(text)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// Drops in (just fades with Reduce Motion), holds, fades out, then calls `done`.
+    func present(done: @escaping @MainActor () -> Void) {
+        NSAccessibility.post(element: self, notification: .announcementRequested,
+                             userInfo: [.announcement: accessibilityLabel() ?? "", .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+        let fadeIn = CABasicAnimation(keyPath: "opacity")
+        fadeIn.fromValue = 0
+        fadeIn.toValue = 1
+        fadeIn.duration = Motion.fast
+        layer?.add(fadeIn, forKey: "fade")
+        if !Motion.reduceMotion {
+            let drop = Motion.spring("transform", stiffness: 380, damping: 22)
+            drop.fromValue = NSValue(caTransform3D: CATransform3DConcat(
+                Motion.scale(0.92, size: bounds.size), CATransform3DMakeTranslation(0, 8, 0)))
+            drop.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+            layer?.add(drop, forKey: "drop")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.superview != nil else { return }
+                NSAnimationContext.runAnimationGroup({ ctx in
+                    ctx.duration = Motion.standard
+                    self.animator().alphaValue = 0
+                }, completionHandler: { MainActor.assumeIsolated { done() } })
+            }
+        }
+    }
+}
+
 final class RevealStrip: NSView {
     var onEnter: (() -> Void)?
     override init(frame: NSRect) {

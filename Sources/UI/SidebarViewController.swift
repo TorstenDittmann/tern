@@ -13,7 +13,7 @@ final class SidebarViewController: NSViewController {
     weak var browser: BrowserWindowController?
 
     private let extensionStack = NSStackView()
-    private let tableView = TabTableView()
+    private let tableView = TabTableView(chip: SelectionChip())
     private var listTop: NSLayoutConstraint!
     private var isSyncingSelection = false
     private var actionButtons: [ObjectIdentifier: ExtensionActionButton] = [:]
@@ -197,11 +197,41 @@ final class SidebarViewController: NSViewController {
 
     func reloadTabs() {
         let highlighted = tableView.selectedRow
+        let before = rows
         updatePinned()
         refreshRows()
         tableView.splitRuns = splitRuns()
-        tableView.reloadData()
+        if !animateRowChange(from: before) { tableView.reloadData() }
         if isTabListFocused { highlight(row: min(max(highlighted, 0), rows.count - 1)) } else { syncSelection() }
+    }
+
+    /// One tab opened, closed or moved: it slides in, folds away or moves, instead of the list redrawing at once.
+    /// Anything bigger, a list that isn't on screen, or Reduce Motion falls back to a plain reload.
+    private func animateRowChange(from old: [Tab]) -> Bool {
+        guard view.window?.isVisible == true, !Motion.reduceMotion, tableView.numberOfRows == old.count, old != rows else { return false }
+        let diff = rows.difference(from: old).inferringMoves()
+        guard diff.count <= 2 else { return false }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.standard
+            ctx.timingFunction = Motion.easeOut
+            switch (diff.insertions.first, diff.removals.first) {
+            case let (.insert(to, _, from?)?, .remove?) where diff.count == 2:
+                tableView.moveRow(at: from, to: to)
+            case let (.insert(to, _, nil)?, nil):
+                tableView.insertRows(at: [to], withAnimation: [.effectFade, .slideDown])
+            case let (nil, .remove(from, _, nil)?):
+                tableView.removeRows(at: [from], withAnimation: [.effectFade, .slideUp])
+            default:
+                tableView.reloadData()
+            }
+        }
+        // Rows that stayed keep their views: bring them up to date (titles, split glyphs, selection).
+        for r in 0..<tableView.numberOfRows where rows.indices.contains(r) {
+            guard let cell = tableView.view(atColumn: 0, row: r, makeIfNecessary: false) as? TabCellView else { continue }
+            cell.configure(with: rows[r])
+            cell.splitPane = splitPane(for: rows[r])
+        }
+        return true
     }
 
     /// Pinned tabs show as tiles, so the list leaves them out, except while filtering (⌘E), where every tab can match.
@@ -261,6 +291,7 @@ final class SidebarViewController: NSViewController {
             tableView.deselectAll(nil)
         }
         isSyncingSelection = false
+        tableView.moveChip(to: rows.indices.contains(row) ? row : -1)
         for r in 0..<tableView.numberOfRows {
             (tableView.view(atColumn: 0, row: r, makeIfNecessary: false) as? TabCellView)?.isSelected = (r == row)
         }
@@ -421,6 +452,7 @@ final class SidebarViewController: NSViewController {
         guard let url = clickedTab?.currentURL else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        browser?.content.showToast("Copied URL")
     }
 }
 
@@ -522,7 +554,7 @@ extension SidebarViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 }
 
-final class TabTableView: NSTableView {
+final class TabTableView: GlidingTableView {
     /// The first rows can sit in the titlebar strip (tab list on the right), where the window is movable by
     /// its background: a press on a tab must start a tab drag there, never move the window.
     override var mouseDownCanMoveWindow: Bool { false }
@@ -606,16 +638,25 @@ final class TabRowView: NSTableRowView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var isEmphasized: Bool { get { false } set {} }
+    override var isSelected: Bool { didSet { needsDisplay = true } }
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
 
-    override func drawBackground(in dirtyRect: NSRect) {
-        guard hovering, !isSelected else { return }
-        Theme.hoverFill.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: Theme.rowRadius, yRadius: Theme.rowRadius).fill()
+    // The selected chip is the table's `chip`, under the rows; a row only fades its hover fill in and out.
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        layer?.cornerRadius = Theme.rowRadius
+        layer?.cornerCurve = .continuous
+        Motion.setBackground(layer, hovering && !isSelected ? Theme.hoverFill.cgColor : .clear)
     }
+}
 
-    override func drawSelection(in dirtyRect: NSRect) {
+/// The selected tab as a raised chip. It lives under the rows rather than in one, so it can glide to the
+/// next tab instead of jumping.
+final class SelectionChip: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: Theme.rowRadius, yRadius: Theme.rowRadius)
         NSGraphicsContext.saveGraphicsState()
         // Dark: a flat lifted chip. Light: a white chip with a whisper of shadow.
@@ -951,6 +992,6 @@ final class ExtensionActionButton: NSButton {
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
         layer?.cornerRadius = 6
-        layer?.backgroundColor = hovering ? Theme.hoverFill.cgColor : .clear
+        Motion.setBackground(layer, hovering ? Theme.hoverFill.cgColor : .clear)
     }
 }

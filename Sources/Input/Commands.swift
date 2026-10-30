@@ -50,9 +50,9 @@ enum Command: String, CaseIterable {
         case .changeSplitLayout: "Change Split Layout"
         case .swapPanes: "Swap Split Panes"
         case .focusLeftPane: "Focus Left Pane"
-        case .focusRightPane: "Focus Right Pane"
+        case .focusRightPane: "Focus or Split Right"
         case .focusPaneAbove: "Focus Pane Above"
-        case .focusPaneBelow: "Focus Pane Below"
+        case .focusPaneBelow: "Focus or Split Down"
         case .nextTab: "Next Tab"
         case .previousTab: "Previous Tab"
         case .moveTabUp: "Move Tab Up"
@@ -302,9 +302,12 @@ enum CommandRouter {
         case .toggleMuteTab: tab?.isMuted.toggle()
         case .resetSitePermissions: if let url = tab?.currentURL { SitePermissions.reset(for: url) }
         case .copyURL:
-            if let url = tab?.currentURL { copy(url.absoluteString) }
+            if let url = tab?.currentURL { copy(url.absoluteString); browser.content.showToast("Copied URL") }
         case .copyMarkdownLink:
-            if let tab, let url = tab.currentURL { copy("[\(tab.displayTitle)](\(url.absoluteString))") }
+            if let tab, let url = tab.currentURL {
+                copy("[\(tab.displayTitle)](\(url.absoluteString))")
+                browser.content.showToast("Copied Markdown Link")
+            }
         default:
             if let i = command.selectIndex { browser.select(index: i) }
         }

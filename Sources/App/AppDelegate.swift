@@ -106,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
+        if let welcome = Welcome.active, welcome.handle(event) { return true }
         guard let browser = keyBrowser, NSApp.keyWindow?.attachedSheet == nil else { return false }
         if let hints = LinkHints.active, hints.handle(event) { return true }
         if let peek = browser.content.linkPeek, peek.handle(event) { return true }
@@ -139,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func extensionsDidChange() {
         windows.forEach { $0.sidebar.updateExtensionActions() }
+        NotificationCenter.default.post(name: ExtensionManager.didChange, object: nil)
     }
 
     /// The Extensions menu is rebuilt each time it opens, from what's installed right now.

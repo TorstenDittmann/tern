@@ -186,7 +186,7 @@ final class SwipeArrow: NSView {
 
     func hide(animated: Bool) {
         guard !isHidden else { return }
-        guard animated, !LinkPeek.reduceMotion else { isHidden = true; return }
+        guard animated, !Motion.reduceMotion else { isHidden = true; return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.18
             animator().alphaValue = 0

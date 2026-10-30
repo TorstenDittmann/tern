@@ -13,6 +13,8 @@ import WebKit
 @MainActor
 final class ExtensionManager: NSObject {
     static let shared = ExtensionManager()
+    /// Posted when an extension is found, turned on or turned off.
+    static let didChange = Notification.Name("TernExtensionsDidChange")
 
     struct Available: Sendable {
         enum Source: Sendable { case safari(appex: URL, app: String), unpacked(URL) }

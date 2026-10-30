@@ -39,19 +39,45 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         palette.makeKeyAndOrderFront(nil)
         palette.makeFirstResponder(palette.field)
         palette.field.currentEditor()?.selectAll(nil)
+        palette.animateIn()
+    }
+
+    /// The palette takes keys from its first frame; the animation is only how it looks arriving.
+    private func animateIn() {
+        guard let layer = contentView?.layer, !SmokeTest.isRunning else { return }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = Motion.fast
+        fade.timingFunction = Motion.easeOut
+        layer.add(fade, forKey: "fade")
+        guard !Motion.reduceMotion, let size = contentView?.bounds.size else { return }
+        // A touch smaller and a few points higher, settling into place.
+        let settle = Motion.spring("transform", stiffness: 480, damping: 34)
+        settle.fromValue = NSValue(caTransform3D: CATransform3DConcat(Motion.scale(0.97, size: size), CATransform3DMakeTranslation(0, 6, 0)))
+        settle.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        layer.add(settle, forKey: "settle")
     }
 
     static func close() {
         guard let p = current else { return }
         current = nil
-        p.parent?.removeChildWindow(p)
-        p.orderOut(nil)
+        let parent = p.parent
+        parent?.removeChildWindow(p)
+        guard p.isVisible, !SmokeTest.isRunning else { return p.orderOut(nil) }
+        // Keys go back to the window at once; the panel only finishes fading.
+        p.ignoresMouseEvents = true
+        if p.isKeyWindow { parent?.makeKey() }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = Motion.fast
+            p.animator().alphaValue = 0
+        }, completionHandler: { MainActor.assumeIsolated { p.orderOut(nil) } })
     }
 
     private let mode: Mode
     private weak var browser: BrowserWindowController?
     private let field = NSTextField()
-    private let table = NSTableView()
+    private let table = GlidingTableView(chip: PaletteChip())
     private let scroll = NSScrollView()
     private var items: [Item] = []
     private var anchorTop: CGFloat = 0
@@ -271,6 +297,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
             table.selectRowIndexes([first], byExtendingSelection: false)
             table.scrollRowToVisible(0)
         }
+        table.moveChip(to: table.selectedRow, animated: false)
     }
 
     /// Grows/shrinks with the result count, keeping the top edge still.
@@ -361,6 +388,7 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
         repeat { row += delta } while items.indices.contains(row) && items[row].isHeader
         guard items.indices.contains(row) else { return }
         table.selectRowIndexes([row], byExtendingSelection: false)
+        table.moveChip(to: row)
         // Keep the section header visible when moving to the first row of a section.
         table.scrollRowToVisible(row > 0 && items[row - 1].isHeader ? row - 1 : row)
     }
@@ -473,13 +501,19 @@ final class CommandPalette: NSPanel, NSTableViewDataSource, NSTableViewDelegate,
     }
 }
 
+/// Rows draw nothing: the selection is the `PaletteChip` gliding under them.
 private final class PaletteRowView: NSTableRowView {
     override var isEmphasized: Bool { get { false } set {} }
-    override func drawSelection(in dirtyRect: NSRect) {
+    override func drawSelection(in dirtyRect: NSRect) {}
+    override func drawBackground(in dirtyRect: NSRect) {}
+}
+
+private final class PaletteChip: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
         Theme.paletteSelection.setFill()
         NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 8, yRadius: 8).fill()
     }
-    override func drawBackground(in dirtyRect: NSRect) {}
 }
 
 private final class PaletteCell: NSTableCellView {

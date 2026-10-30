@@ -94,7 +94,10 @@ enum SmokeTest {
         check(browser.tabs[1] === browser.activeTab, "moveTabDown")
 
         // Split view
-        check(Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit, "⌘\\ bound to split view")
+        check(Keymap.shared.primaryChord(for: .toggleSplit) == KeyChord(string: "cmd+shift+s")
+              && Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit
+              && Keymap.shared.command(for: KeyChord(string: "cmd+alt+right")!) == .focusRightPane
+              && Keymap.shared.command(for: KeyChord(string: "cmd+alt+down")!) == .focusPaneBelow, "⇧⌘S (and ⌘\\) bound to split view, ⌥⌘ arrows to panes")
         let left = browser.activeTab!
         let tabCount = browser.tabs.count
         CommandRouter.perform(.toggleSplit, in: browser)
@@ -139,6 +142,17 @@ enum SmokeTest {
         check(browser.visibleTabs.count == 2, "the split button splits")
         CommandRouter.perform(.toggleSplit, in: browser)
         check(browser.split == nil && browser.visibleTabs.count == 1, "⌘\\ again unsplits")
+        let alone = browser.activeTab!
+        CommandRouter.perform(.focusRightPane, in: browser)
+        check(browser.split?.layout == .columns && browser.visibleTabs.first === alone && browser.visibleTabs.count == 2, "⌥⌘→ with no split opens a pane on the right")
+        CommandRouter.perform(.focusPaneBelow, in: browser)
+        check(browser.split?.layout == .grid && browser.visibleTabs.count == 3 && browser.activeTab !== alone, "⌥⌘↓ with no pane below opens one there")
+        CommandRouter.perform(.focusLeftPane, in: browser)
+        check(browser.activeTab === alone, "⌥⌘← moves back to the left pane")
+        let paneTabs = browser.visibleTabs.filter { $0 !== alone }
+        CommandRouter.perform(.toggleSplit, in: browser)
+        paneTabs.forEach { browser.close($0) }
+        check(browser.split == nil && browser.activeTab === alone, "back to one tab")
         await tabList(browser: browser, base: base)
         await linkTools(browser: browser, base: base)
         await swipes(browser: browser, base: base)
@@ -517,7 +531,8 @@ enum SmokeTest {
         let edited = "\(base)/one.html?a=2&b=x+y&flag&q=a%26b%20c#top"
         check(breakdown.url?.absoluteString == edited, "editing parameters rebuilds the URL and encodes new values (\(breakdown.url?.absoluteString ?? "nil"))")
         breakdown.onOpen?(breakdown.url!, false)
-        await wait { !tab.isLoading && tab.currentURL?.absoluteString == edited }
+        // The popover animates closed, so isShown can lag the page load.
+        await wait { !tab.isLoading && tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true }
         check(tab.currentURL?.absoluteString == edited && bar.popover?.isShown != true,
               "Open loads the edited URL and closes the breakdown (got \(tab.currentURL?.absoluteString ?? "nil"), loading \(tab.isLoading), "
               + "popover shown \(bar.popover?.isShown == true), active tab \(browser.activeTab === tab))")
@@ -643,6 +658,23 @@ enum SmokeTest {
         CommandRouter.perform(.showWelcome, in: browser)
         let sheet = browser.window?.attachedSheet
         check(sheet?.contentViewController is Welcome, "Welcome to Tern opens the welcome sheet")
+        if let welcome = sheet?.contentViewController as? Welcome {
+            check(welcome.pageCount == 5 && welcome.page == 0, "the welcome has five pages and starts on the first")
+            func key(_ chars: String, code: UInt16, _ flags: NSEvent.ModifierFlags) -> NSEvent {
+                NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: sheet?.windowNumber ?? 0,
+                                 context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+            }
+            let cmdK = key("k", code: 40, .command)
+            check(Keymap.shared.primaryChord(for: .commandPalette) == KeyChord(event: cmdK) && !welcome.press(cmdK),
+                  "⌘K on the first page is left to the keymap")
+            welcome.go(to: 2)
+            check(welcome.page == 2, "it moves to the shortcuts page")
+            check(welcome.press(cmdK) && welcome.press(cmdK) && welcome.practiced == [0],
+                  "pressing ⌘K there ticks off the palette lesson once instead of opening the palette")
+            check(!welcome.press(key("y", code: 16, .command)), "a shortcut that isn't a lesson is left alone")
+            welcome.go(to: 4)
+            check(welcome.page == 4, "and on to the last page")
+        }
         (sheet?.contentViewController as? Welcome)?.close()
         await wait { browser.window?.attachedSheet == nil }
         check(browser.window?.attachedSheet == nil, "Get Started closes it")

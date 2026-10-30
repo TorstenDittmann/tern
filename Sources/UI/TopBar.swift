@@ -242,12 +242,15 @@ final class AddressPill: FilledView {
     required init?(coder: NSCoder) { fatalError() }
 
     func show(url: URL?, bookmarked: Bool) {
+        // Bookmarking this page (not switching to a bookmarked one) pops the star.
+        let justBookmarked = bookmarked && !self.bookmarked && url == self.url
         self.url = url
         self.bookmarked = bookmarked
         star.image = Theme.symbol(bookmarked ? "star.fill" : "star", size: 11)
         star.contentTintColor = bookmarked ? .systemYellow : .tertiaryLabelColor
         star.toolTip = bookmarked ? "Remove Bookmark (⌘D)" : "Bookmark This Page (⌘D)"
         updateButtons(editing: field.isEditing)
+        if justBookmarked { Motion.pop(star) }
         guard !field.isEditing else { return }
         field.attributedStringValue = Theme.addressString(for: url, font: field.font ?? Theme.monoFont(12.5))
         field.toolTip = url?.absoluteString
