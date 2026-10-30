@@ -885,7 +885,7 @@ private final class LessonRow: FilledView {
 
         let keys = NSStackView(views: caps.isEmpty ? [NSTextField(labelWithString: "Unbound")] : caps)
         keys.spacing = 3
-        // A fixed column, right-aligned, so every row's keys line up.
+        // A right-aligned column at least 96pt wide, so every row's keys line up.
         keys.alignment = .centerY
         keys.setHuggingPriority(.defaultLow, for: .horizontal)
         keys.widthAnchor.constraint(greaterThanOrEqualToConstant: 96).isActive = true
