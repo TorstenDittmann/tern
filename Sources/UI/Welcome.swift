@@ -1,7 +1,7 @@
 import AppKit
 
 /// The first-run welcome: five short pages in a sheet over the first window. Hello; make it yours (tab list
-/// side, compact mode, default browser); four shortcuts you practice by pressing them; Safari extensions;
+/// side, compact mode, default browser); four shortcuts you practice by pressing them; extensions;
 /// and the agent API. ← → or ↩ move between pages, esc skips. "Welcome to Tern" in ⌘K shows it again.
 @MainActor
 final class Welcome: NSViewController {
@@ -245,7 +245,7 @@ final class Welcome: NSViewController {
             scroll.widthAnchor.constraint(equalToConstant: 640 - 88),
             scroll.heightAnchor.constraint(equalToConstant: 216),
         ])
-        return page("Bring your extensions", "Tern runs Safari Web Extensions installed with your apps, like Proton Pass. Each one runs only once you turn it on.",
+        return page("Bring your extensions", "Extensions that come with your apps show up here, and unpacked ones you add. Each one runs only once you turn it on.",
                     [scroll], spacing: 20)
     }
 
@@ -555,7 +555,7 @@ final class Welcome: NSViewController {
         extensionSwitches = []
         extensionList.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !items.isEmpty else {
-            let empty = NSTextField(wrappingLabelWithString: "No extensions found yet. Safari Web Extensions that come with apps in /Applications show up here, and Extensions ▸ Load Unpacked Extension… adds a folder or a .zip.")
+            let empty = NSTextField(wrappingLabelWithString: "No extensions found yet. Extensions ▸ Load Unpacked Extension… adds one from a folder or a .zip.")
             empty.font = .systemFont(ofSize: 12.5)
             empty.textColor = .secondaryLabelColor
             empty.preferredMaxLayoutWidth = 640 - 88

@@ -91,7 +91,8 @@ enum SmokeTest {
         check(browser.tabs[1] === browser.activeTab, "moveTabDown")
 
         // Split view
-        check(Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit, "⌘\\ bound to split view")
+        check(Keymap.shared.primaryChord(for: .toggleSplit) == KeyChord(string: "cmd+u")
+              && Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit, "⌘U (and ⌘\\) bound to split view")
         let left = browser.activeTab!
         let tabCount = browser.tabs.count
         CommandRouter.perform(.toggleSplit, in: browser)
@@ -697,10 +698,10 @@ enum SmokeTest {
         window.show(tab: 1)
         window.shortcuts.startRecording(.copyURL)
         let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .option], timestamp: 0,
-                                     windowNumber: window.window?.windowNumber ?? 0, context: nil, characters: "u",
-                                     charactersIgnoringModifiers: "u", isARepeat: false, keyCode: 32)!
+                                     windowNumber: window.window?.windowNumber ?? 0, context: nil, characters: "k",
+                                     charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40)!
         window.shortcuts.record(event)
-        check(keymap.command(for: KeyChord(string: "cmd+alt+u")!) == .copyURL && window.shortcuts.recording == nil,
+        check(keymap.command(for: KeyChord(string: "cmd+alt+k")!) == .copyURL && window.shortcuts.recording == nil,
               "Settings ▸ Shortcuts records a key (\(keymap.primaryChord(for: .copyURL)?.spec ?? "none"))")
         keymap.resetToDefaults()
         window.close()

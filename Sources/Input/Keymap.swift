@@ -107,6 +107,9 @@ final class Keymap {
         ("cmd+[", .goBack), ("cmd+]", .goForward),
         ("ctrl+tab", .nextTab), ("cmd+shift+]", .nextTab), ("cmd+alt+down", .nextTab),
         ("ctrl+shift+tab", .previousTab), ("cmd+shift+[", .previousTab), ("cmd+alt+up", .previousTab),
+        // Split view on U, which every layout types with no extra modifier; the \ chords stay for US keyboards.
+        ("cmd+u", .toggleSplit), ("cmd+shift+u", .swapPanes), ("cmd+alt+u", .splitWith),
+        ("cmd+ctrl+u", .splitDown), ("cmd+ctrl+shift+u", .changeSplitLayout),
         ("cmd+\\", .toggleSplit), ("cmd+shift+\\", .swapPanes), ("cmd+alt+\\", .splitWith),
         ("cmd+ctrl+\\", .splitDown), ("cmd+ctrl+shift+\\", .changeSplitLayout),
         ("cmd+alt+left", .focusLeftPane), ("cmd+alt+right", .focusRightPane),

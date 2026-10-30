@@ -100,6 +100,9 @@ final class Tab: NSObject {
         } else if let currentURL {
             wv.load(URLRequest(url: currentURL))
         } else {
+            // Until its first paint a web view is white, which flashes in dark mode. The start page is the
+            // card's color anyway, so it lets the card show through; a real page gets its background back.
+            wv.setValue(false, forKey: "drawsBackground")
             wv.loadHTMLString(StartPage.html, baseURL: nil)
         }
         return wv
@@ -322,6 +325,10 @@ extension Tab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         DownloadManager.shared.track(download)
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if webView.url?.scheme != "about" { webView.setValue(true, forKey: "drawsBackground") }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
