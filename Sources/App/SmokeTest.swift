@@ -91,8 +91,10 @@ enum SmokeTest {
         check(browser.tabs[1] === browser.activeTab, "moveTabDown")
 
         // Split view
-        check(Keymap.shared.primaryChord(for: .toggleSplit) == KeyChord(string: "cmd+shift+s")
-              && Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit, "⇧⌘S (and ⌘\\) bound to split view")
+        check(Keymap.shared.primaryChord(for: .toggleSplit) == KeyChord(string: "cmd+ctrl+right")
+              && Keymap.shared.primaryChord(for: .splitDown) == KeyChord(string: "cmd+ctrl+down")
+              && Keymap.shared.command(for: KeyChord(string: "cmd+shift+s")!) == .toggleSplit
+              && Keymap.shared.command(for: KeyChord(string: "cmd+\\")!) == .toggleSplit, "⌃⌘→ (and ⇧⌘S, ⌘\\) bound to split view, ⌃⌘↓ to split down")
         let left = browser.activeTab!
         let tabCount = browser.tabs.count
         CommandRouter.perform(.toggleSplit, in: browser)

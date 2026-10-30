@@ -276,7 +276,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         splitWithNewTab(layout: .columns)
     }
 
-    /// ⌃⌘\: split the current tab with a new tab below it.
+    /// ⌃⌘↓: split the current tab with a new tab below it.
     func splitDown() {
         guard let active = activeTab else { return }
         if isPaired(active) { return addPane() }
