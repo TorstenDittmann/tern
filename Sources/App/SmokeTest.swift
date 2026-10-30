@@ -973,6 +973,15 @@ enum SmokeTest {
         let splitTop = content.view.bounds.height - page.maxY
         check(splitTop <= Theme.gutter + 1 && bar.minX > page.midX,
               "over a split, the compact bar floats over the focused pane only (page top \(splitTop), bar from \(bar.minX), page middle \(page.midX))")
+        browser.setSplitLayout(.rows)
+        browser.window?.layoutIfNeeded()
+        let lowerBar = content.topBar.convert(content.topBar.bounds, to: nil)
+        let lowerBarTop = content.view.bounds.height - lowerBar.maxY
+        check(lowerBarTop > Theme.gutter + PaneHeader.height && !content.isBarAtLeadingEdge,
+              "over a lower pane the bar sits on that pane's header (bar top \(lowerBarTop))")
+        if browser.isSidebarCollapsed || browser.isSidebarOnRight {
+            check(browser.window?.standardWindowButton(.closeButton)?.isHidden == true, "and the traffic lights stay hidden, off the page")
+        }
         browser.window?.makeFirstResponder(browser.activeTab?.webView)
         await wait { !content.isBarRevealed }
         browser.activeTab.map(browser.close)

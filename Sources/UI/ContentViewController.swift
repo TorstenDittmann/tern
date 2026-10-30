@@ -159,12 +159,13 @@ final class ContentViewController: NSViewController {
                 top = (paneTop + (PaneHeader.height - TopBar.height) / 2).rounded()
             }
         }
-        let leading = minX + (minX < 1 ? lightsInset : 0), trailing = maxX - panes.bounds.width
+        // Room for the traffic lights only where they show with the bar: at the page's left edge, in the top row.
+        let atEdge = minX < 1 && top == titlebarTop
+        let leading = minX + (atEdge ? lightsInset : 0), trailing = maxX - panes.bounds.width
         if barLeading.constant != leading { barLeading.constant = leading }
         if barTrailing.constant != trailing { barTrailing.constant = trailing }
         if backdropLeading.constant != minX - 5 { backdropLeading.constant = minX - 5 }
         if barTop.constant != top { barTop.constant = top }
-        let atEdge = minX < 1 && top == titlebarTop
         if atEdge != isBarAtLeadingEdge {
             isBarAtLeadingEdge = atEdge
             onBarReveal?(isBarRevealed)
