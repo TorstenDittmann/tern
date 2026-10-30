@@ -13,7 +13,7 @@ enum Command: String, CaseIterable {
     case zoomIn, zoomOut, zoomReset
     case toggleInspector, showConsole, copyURL, copyMarkdownLink, showSiteInfo, urlBreakdown
     case suspendBackgroundTabs, openKeymapFile, reloadKeymap
-    case loadUnpackedExtension, revealExtensionsFolder
+    case loadUnpackedExtension, revealExtensionsFolder, browseChromeWebStore
     case toggleAgentAPI, clearHistory, showWelcome, openSettings
     case toggleBookmark, showHistory, showBookmarks
     case toggleSiteBlocking
@@ -80,6 +80,7 @@ enum Command: String, CaseIterable {
         case .reloadKeymap: "Reload Key Bindings"
         case .loadUnpackedExtension: "Load Unpacked Extension…"
         case .revealExtensionsFolder: "Reveal Extensions Folder"
+        case .browseChromeWebStore: "Get Extensions from the Chrome Web Store"
         case .toggleAgentAPI: AgentServer.isEnabled ? "Disable Agent API" : "Enable Agent API"
         case .clearHistory: "Clear History"
         case .showWelcome: "Welcome to Tern"
@@ -162,6 +163,7 @@ enum Command: String, CaseIterable {
         case .reloadKeymap: "arrow.triangle.2.circlepath"
         case .loadUnpackedExtension: "puzzlepiece.extension"
         case .revealExtensionsFolder: "folder"
+        case .browseChromeWebStore: "bag"
         case .toggleAgentAPI: "point.3.connected.trianglepath.dotted"
         case .clearHistory: "clock.arrow.circlepath"
         case .showWelcome: "hand.wave"
@@ -284,6 +286,7 @@ enum CommandRouter {
         case .toggleInspector: webView.map { Inspector.toggle($0) }
         case .showConsole: webView.map { Inspector.showConsole($0) }
         case .showRequests: if let tab { RequestInspector.show(for: tab) }
+        case .browseChromeWebStore: browser.newTab(url: ExtensionManager.chromeWebStoreURL)
         case .showSiteInfo: browser.content.topBar.showSiteInfo()
         case .urlBreakdown: browser.content.topBar.showURLBreakdown()
         case .toggleSiteBlocking:

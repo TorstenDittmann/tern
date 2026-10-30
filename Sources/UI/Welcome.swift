@@ -245,7 +245,7 @@ final class Welcome: NSViewController {
             scroll.widthAnchor.constraint(equalToConstant: 640 - 88),
             scroll.heightAnchor.constraint(equalToConstant: 216),
         ])
-        return page("Bring your extensions", "Extensions that come with your apps show up here, and unpacked ones you add. Each one runs only once you turn it on.",
+        return page("Bring your extensions", "Add extensions from the Chrome Web Store with the button next to the address bar. Ones that come with your apps show up here too. Each runs only once you turn it on.",
                     [scroll], spacing: 20)
     }
 
@@ -555,7 +555,7 @@ final class Welcome: NSViewController {
         extensionSwitches = []
         extensionList.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !items.isEmpty else {
-            let empty = NSTextField(wrappingLabelWithString: "No extensions found yet. Extensions ▸ Load Unpacked Extension… adds one from a folder or a .zip.")
+            let empty = NSTextField(wrappingLabelWithString: "No extensions yet. Open the Chrome Web Store (Extensions ▸ Get Extensions from the Chrome Web Store) and press Add to Tern on any extension.")
             empty.font = .systemFont(ofSize: 12.5)
             empty.textColor = .secondaryLabelColor
             empty.preferredMaxLayoutWidth = 640 - 88
@@ -1001,6 +1001,10 @@ private final class ExtensionRow: FilledView {
             let bundle = appex.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             icon.image = NSWorkspace.shared.icon(forFile: bundle.path)
             source = "Safari extension from \(app)"
+        case .store:
+            icon.image = Theme.symbol("puzzlepiece.extension", size: 16)
+            icon.contentTintColor = .secondaryLabelColor
+            source = "From the Chrome Web Store"
         case let .unpacked(url):
             icon.image = Theme.symbol("puzzlepiece.extension", size: 16)
             icon.contentTintColor = .secondaryLabelColor
