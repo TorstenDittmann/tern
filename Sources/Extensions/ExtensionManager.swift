@@ -374,7 +374,7 @@ final class ExtensionManager: NSObject {
         guard let manifest = json("manifest.json"), let name = manifest["name"] as? String else { return nil }
         guard name.hasPrefix("__MSG_"), name.hasSuffix("__"), name.count > 8 else { return name }
         let key = name.dropFirst(6).dropLast(2).lowercased()
-        let locales = [Locale.current.identifier, Locale.current.language.languageCode?.identifier, manifest["default_locale"] as? String, "en"]
+        let locales: [String?] = [Locale.current.identifier, Locale.current.language.languageCode?.identifier, manifest["default_locale"] as? String, "en"]
         for locale in locales.compactMap({ $0 }) {
             guard let messages = json("_locales/\(locale)/messages.json") else { continue }
             if let entry = messages.first(where: { $0.key.lowercased() == key })?.value as? [String: Any],
