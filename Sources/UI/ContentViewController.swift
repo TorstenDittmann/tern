@@ -26,12 +26,16 @@ final class ContentViewController: NSViewController {
     private var backdropLeading: NSLayoutConstraint!
     /// Room the bar leaves for the traffic lights when it starts at the window's left edge.
     private var lightsInset: CGFloat = 0
+    /// Window top to bar top, lined up with the traffic lights.
+    private var titlebarTop: CGFloat = (TopBar.defaultContentTop - TopBar.height) / 2
+    /// The bar starts at the page's leading edge, under the traffic lights' spot (false over a pane further right).
+    private(set) var isBarAtLeadingEdge = true
     private var focusedIndex = 0
     private let revealStrip = RevealStrip()
     private let barBackdrop = BarBackdrop()
     private(set) var isCompact = false
     private(set) var isBarRevealed = false
-    /// Told when the bar shows or hides in compact mode, so the window can show or hide its traffic lights.
+    /// Told when the bar shows, hides or moves in compact mode, so the window can show or hide its traffic lights.
     var onBarReveal: ((Bool) -> Void)?
 
     override func loadView() {
@@ -109,6 +113,7 @@ final class ContentViewController: NSViewController {
         isCompact = compact
         barGap.isActive = !compact
         compactTop.isActive = compact
+        alignBar()
         revealStrip.isHidden = !compact
         isBarRevealed = false
         topBar.alphaValue = 1
@@ -144,15 +149,26 @@ final class ContentViewController: NSViewController {
     /// Over a split in compact mode the bar floats over the focused pane only, in place of its header,
     /// instead of across every pane and the gaps between them. Otherwise it spans the page.
     private func alignBar() {
-        var minX: CGFloat = 0, maxX = panes.bounds.width
+        var minX: CGFloat = 0, maxX = panes.bounds.width, top = titlebarTop
         if isCompact, shown.count > 1, focusedIndex < panes.paneFrames.count {
             let frame = panes.paneFrames[focusedIndex]
             (minX, maxX) = (frame.minX, frame.maxX)
+            // A pane lower down: centered on its header. The top row keeps the bar level with the traffic lights.
+            if frame.maxY < panes.bounds.height - 1 {
+                let paneTop = Theme.gutter + panes.bounds.height - frame.maxY
+                top = (paneTop + (PaneHeader.height - TopBar.height) / 2).rounded()
+            }
         }
         let leading = minX + (minX < 1 ? lightsInset : 0), trailing = maxX - panes.bounds.width
         if barLeading.constant != leading { barLeading.constant = leading }
         if barTrailing.constant != trailing { barTrailing.constant = trailing }
         if backdropLeading.constant != minX - 5 { backdropLeading.constant = minX - 5 }
+        if barTop.constant != top { barTop.constant = top }
+        let atEdge = minX < 1 && top == titlebarTop
+        if atEdge != isBarAtLeadingEdge {
+            isBarAtLeadingEdge = atEdge
+            onBarReveal?(isBarRevealed)
+        }
     }
 
     /// The pointer left the bar or the address field stopped editing: hide, unless the other still holds it.
@@ -178,6 +194,7 @@ final class ContentViewController: NSViewController {
     /// and `lightsInset` points from its leading edge to clear the traffic lights.
     func setTitlebar(barTop top: CGFloat, lightsInset: CGFloat) {
         loadViewIfNeeded()
+        titlebarTop = top
         barTop.constant = top
         barGap.constant = top
         self.lightsInset = lightsInset
@@ -194,6 +211,7 @@ final class ContentViewController: NSViewController {
         // Lay the cards out first, so a web view moving in gets its final size right away. Otherwise it
         // renders once at the card's old size (full width, or the other half of a split), then resizes.
         panes.layoutSubtreeIfNeeded()
+        alignBar()
         for (i, card) in panes.cards.enumerated() {
             let webView = i < tabs.count ? tabs[i].webView : nil
             // Detach whatever this card showed before, unless it's the view we want.
