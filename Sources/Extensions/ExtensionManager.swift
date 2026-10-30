@@ -221,8 +221,9 @@ final class ExtensionManager: NSObject {
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    /// The signing team, only if the whole bundle (resources included) validates against an Apple-issued certificate
-    /// for that team. Otherwise any app could claim another extension's ID and receive what websites send it.
+    /// The signing team, only if the whole bundle (resources included) validates against an Apple-issued certificate:
+    /// Apple's own Mac App Store signature (which carries the team in the signed code directory, not the certificate)
+    /// or one issued to that team. Otherwise any app could claim another extension's ID and receive what websites send it.
     nonisolated private static func verifiedTeam(of bundle: URL) -> String? {
         var code: SecStaticCode?
         guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess, let code else { return nil }
@@ -231,7 +232,7 @@ final class ExtensionManager: NSObject {
               let team = (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String,
               team.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return nil }
         var requirement: SecRequirement?
-        guard SecRequirementCreateWithString("anchor apple generic and certificate leaf[subject.OU] = \"\(team)\"" as CFString, [], &requirement) == errSecSuccess,
+        guard SecRequirementCreateWithString("anchor apple generic and (certificate leaf[field.1.2.840.113635.100.6.1.9] or certificate leaf[subject.OU] = \"\(team)\")" as CFString, [], &requirement) == errSecSuccess,
               SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSCheckNestedCode), requirement) == errSecSuccess
         else { return nil }
         return team
