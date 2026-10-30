@@ -6,8 +6,8 @@ import WebKit
 ///
 /// Sources:
 /// - Safari Web Extensions installed with apps (`*.app/Contents/PlugIns/*.appex` whose extension point is
-///   `com.apple.Safari.web-extension`). Their JS/HTML runs here unchanged; their native `SafariWebExtensionHandler`
-///   doesn't, because only Safari can talk to it (no `runtime.sendNativeMessage`).
+///   `com.apple.Safari.web-extension`). Their JS/HTML runs here unchanged; native messages go to their
+///   `SafariWebExtensionHandler`, which WebKit reaches through the appex when we don't handle them ourselves.
 /// - Unpacked folders or .zip files (Chrome/Firefox-style MV2/MV3), loaded in place, so editing them is live.
 ///
 /// Nothing is enabled by default: every background page costs memory.
@@ -377,13 +377,6 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         completionHandler(nil)
     }
 
-    func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any, toApplicationWithIdentifier applicationIdentifier: String?,
-                                for extensionContext: WKWebExtensionContext, replyHandler: @escaping (Any?, (any Error)?) -> Void) {
-        replyHandler(nil, ExtensionManager.unsupported("Native messaging isn't available outside Safari."))
-    }
-
-    func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort,
-                                for extensionContext: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
-        completionHandler(ExtensionManager.unsupported("Native messaging isn't available outside Safari."))
-    }
+    // No `sendMessage(toApplicationWithIdentifier:)` / `connectUsing:` here on purpose: without them WebKit passes
+    // `runtime.sendNativeMessage` and `connectNative` to the Safari extension's own native handler (its appex).
 }
