@@ -59,11 +59,19 @@ final class BrowserEngine {
             input.contains(".") || input.hasPrefix("localhost") || input.range(of: #"^\d{1,3}(\.\d{1,3}){3}(:\d+)?"#, options: .regularExpression) != nil
         )
         if looksLikeHost {
-            let isLocal = input.hasPrefix("localhost") || input.hasPrefix("127.") || input.hasPrefix("0.0.0.0") || input.contains(".local") || input.contains(".test")
-            return URL(string: (isLocal ? "http://" : "https://") + input)
+            return URL(string: (Self.isLocal(input) ? "http://" : "https://") + input)
         }
-        let q = input.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? input
+        let q = input.addingPercentEncoding(withAllowedCharacters: Bangs.queryAllowed) ?? input
         return URL(string: searchTemplate.replacingOccurrences(of: "%s", with: q))
+    }
+
+    /// Dev servers load over http: localhost, 127.x.x.x, 0.0.0.0, and `.test` and `.local` hosts.
+    /// Checks the parsed host, so docs.testcontainers.com or localhost.example.com still get https.
+    private static func isLocal(_ input: String) -> Bool {
+        guard let host = URL(string: "http://" + input)?.host?.lowercased() else { return false }
+        return host == "localhost" || host.hasSuffix(".localhost") || host == "0.0.0.0"
+            || host.range(of: #"^127(\.\d{1,3}){3}$"#, options: .regularExpression) != nil
+            || host.hasSuffix(".local") || host.hasSuffix(".test")
     }
 }
 
