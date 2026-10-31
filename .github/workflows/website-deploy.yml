@@ -1,0 +1,34 @@
+name: Website deploy
+
+# Deploys the landing page with orch as a static site. Needs the ORCH_CLUSTER
+# and ORCH_VERSION repository variables and an `orch github trust` for this
+# repository.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - site/**
+      - .github/workflows/website-deploy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tern-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: TorstenDittmann/orch@v0.1.15
+        with:
+          cluster: ${{ vars.ORCH_CLUSTER }}
+          version: ${{ vars.ORCH_VERSION }}
+          app: tern
+          file: site/orch.pkl
