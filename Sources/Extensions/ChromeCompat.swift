@@ -38,6 +38,27 @@ enum ChromeCompat {
           Reason: new Proxy({}, { get: (_, key) => String(key) }),
         });
       }
+      // Chrome has already sized a popup to its page when the page's scripts run, so some popups (Proton Pass) read the
+      // viewport and pin themselves to it. WebKit's popover is still small at that point, so in the toolbar popup the
+      // root reports at least its own CSS size, which is what Chrome's viewport would have been.
+      if (typeof document !== "undefined") {
+        try {
+          const manifest = globalThis.chrome.runtime.getManifest();
+          const page = (manifest.action || manifest.browser_action || {}).default_popup;
+          if (page && new URL(page, location.origin + "/").pathname === location.pathname) {
+            for (const [prop, side] of [["clientWidth", "width"], ["clientHeight", "height"]]) {
+              const real = Object.getOwnPropertyDescriptor(Element.prototype, prop);
+              Object.defineProperty(Element.prototype, prop, {
+                configurable: true,
+                get() {
+                  const value = real.get.call(this);
+                  return this === document.documentElement ? Math.max(value, Math.round(this.getBoundingClientRect()[side])) : value;
+                },
+              });
+            }
+          }
+        } catch {}
+      }
     })();
     """
 
