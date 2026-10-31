@@ -37,6 +37,19 @@ enum ChromeCompat {
           hasDocument: () => Promise.resolve(false),
           Reason: new Proxy({}, { get: (_, key) => String(key) }),
         });
+        // Outside a tab WebKit answers null where Chrome answers undefined. Proton Pass tests `!== undefined`, takes its
+        // popup for a full tab and drops its fixed size, leaving the popover shrunk to fit.
+        const getCurrent = ns.tabs?.getCurrent;
+        if (getCurrent) {
+          const tabs = ns.tabs;
+          try {
+            Object.defineProperty(tabs, "getCurrent", { configurable: true, writable: true, enumerable: true, value(callback) {
+              const tab = getCurrent.call(tabs).then((tab) => tab ?? undefined);
+              if (!callback) return tab;
+              tab.then(callback, () => callback());
+            } });
+          } catch {}
+        }
       }
     })();
     """
