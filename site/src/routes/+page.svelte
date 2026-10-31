@@ -63,6 +63,9 @@
 	<meta property="og:title" content="Tern: a small, fast browser for the Mac" />
 	<meta property="og:description" content="Native on WebKit, built for the keyboard, and open to your coding agents." />
 	<meta property="og:image" content="https://tern.torsten.work/og.jpg" />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
+	<meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
 <nav class="nav" aria-label="Main">
@@ -90,7 +93,7 @@
     </div>
     <div class="wrap wide shot">
       <div class="window" bind:this={hero}>
-        <enhanced:img src="../lib/assets/hero.png" alt="Tern's new tab page, with the address bar across the top and vertical tabs on the right." sizes="(min-width: 1240px) 1200px, 100vw" fetchpriority="high"></enhanced:img>
+        <enhanced:img src="../lib/assets/hero.png" alt="An agent filling in a checkout form in Tern, with a purple ring around its pane and docs in a split beside it, and the tab list on the right." sizes="(min-width: 1240px) 1200px, 100vw" fetchpriority="high"></enhanced:img>
       </div>
     </div>
     <div class="wrap">
