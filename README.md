@@ -8,7 +8,7 @@
   <a href="docs/development.md">Development</a>
 </p>
 
-![Tern with a page open and the tab list on the right](docs/hero.png)
+![Tern showing a travel magazine page, with the address bar across the top and vertical tabs on the right](docs/hero.png)
 
 > **Status:** early and moving fast. Tern works as a daily browser, but there are no prebuilt releases yet. Build it from source, which takes about a minute.
 
@@ -38,7 +38,7 @@ The first launch walks you through the tab list, compact mode, the main shortcut
 
 ### Move around
 
-![The command palette over a page](docs/palette.png)
+![The command palette over a split view](docs/palette.png)
 
 | | |
 |---|---|

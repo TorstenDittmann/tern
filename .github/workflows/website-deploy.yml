@@ -1,6 +1,6 @@
 name: Website deploy
 
-# Deploys the landing page with orch as a static site. Needs the ORCH_CLUSTER
+# Builds the landing page and deploys it with orch as a static site. Needs the ORCH_CLUSTER
 # and ORCH_VERSION repository variables and an `orch github trust` for this
 # repository.
 
@@ -26,6 +26,12 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Build website
+        working-directory: site
+        run: bun install --frozen-lockfile && bun run build
       - uses: TorstenDittmann/orch@v0.1.15
         with:
           cluster: ${{ vars.ORCH_CLUSTER }}

@@ -26,7 +26,7 @@ To work in Xcode, run `make project` and open `Tern.xcodeproj`. The project file
 | `Sources/Extensions` | Extension discovery and loading, and the bridges WebKit uses to see tabs and windows |
 | `Sources/App` | App delegate, menus, the smoke test, and launch and memory metrics |
 | `Scripts` | `bench.py`, which `make bench` runs |
-| `site` | The landing page: static files in `site/public`, no build step, deployed with orch (`site/orch.pkl`) |
+| `site` | The landing page: a prerendered SvelteKit app, deployed with orch (`site/orch.pkl`) |
 | `Tests/Smoke` | Local test pages and a small MV3 extension used by `make smoke` |
 
 ## Testing
@@ -68,7 +68,15 @@ Each launch is isolated, as in the smoke test: one window, and no saved session 
 
 ## Website
 
-The landing page is static: `site/public` is published as it is, with no build step. `site/orch.pkl` deploys it with [orch](https://orch.torsten.work) to `tern.torsten.work`, and every push to `main` that touches `site/` runs `.github/workflows/website-deploy.yml`.
+The landing page in `site/` is a prerendered SvelteKit app. Its screenshots go through `@sveltejs/enhanced-img`, which generates AVIF and WebP at several sizes, so keep the source images in `site/src/lib/assets` at full resolution.
+
+```sh
+cd site
+bun install --frozen-lockfile
+bun run dev
+```
+
+`bun run build` type-checks the site and writes it to `dist`. `site/orch.pkl` deploys that to `tern.torsten.work`, and every push to `main` that touches `site/` runs `.github/workflows/website-deploy.yml`.
 
 The workflow reads the `ORCH_CLUSTER` and `ORCH_VERSION` repository variables and needs orch to trust this repository once:
 
@@ -79,5 +87,6 @@ orch github trust TorstenDittmann/tern --app tern --branch main --environment pr
 To deploy by hand from `site/`:
 
 ```sh
+bun run build
 orch deploy -f orch.pkl --wait
 ```
