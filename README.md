@@ -8,7 +8,7 @@
   <a href="docs/development.md">Development</a>
 </p>
 
-![An agent filling in a checkout form in Tern, with a purple ring around its pane and docs in a split beside it, and the tab list on the right](docs/hero.png)
+![Tern showing a travel magazine page, with the address bar across the top and vertical tabs on the right](docs/hero.png)
 
 > **Status:** early and moving fast. Tern works as a daily browser, but there are no prebuilt releases yet. Build it from source, which takes about a minute.
 

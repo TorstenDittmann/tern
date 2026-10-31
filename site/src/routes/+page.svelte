@@ -93,7 +93,7 @@
     </div>
     <div class="wrap wide shot">
       <div class="window" bind:this={hero}>
-        <enhanced:img src="../lib/assets/hero.png" alt="An agent filling in a checkout form in Tern, with a purple ring around its pane and docs in a split beside it, and the tab list on the right." sizes="(min-width: 1240px) 1200px, 100vw" fetchpriority="high"></enhanced:img>
+        <enhanced:img src="../lib/assets/hero.png" alt="Tern showing a travel magazine page, with the address bar across the top and vertical tabs on the right." sizes="(min-width: 1240px) 1200px, 100vw" fetchpriority="high"></enhanced:img>
       </div>
     </div>
     <div class="wrap">
