@@ -46,6 +46,7 @@ final class ExtensionManager: NSObject {
     private(set) var installing: Set<String> = []
 
     private let defaults = UserDefaults.tern
+    private var workerKeepAlive: Timer?
     private var enabledIDs: Set<String> {
         get { Set(defaults.stringArray(forKey: "enabledExtensions") ?? []) }
         set { defaults.set(Array(newValue), forKey: "enabledExtensions") }
@@ -303,9 +304,51 @@ final class ExtensionManager: NSObject {
             for m in ext.requestedPermissionMatchPatterns { ctx.setPermissionStatus(.grantedExplicitly, for: m) }
             try controller.load(ctx)
             contexts[item.id] = ctx
+            if case .store = item.source { keepWorkerAwake(ctx) }
             for error in ext.errors { NSLog("Tern extension \(item.name): \(error.localizedDescription)") }
         } catch {
             NSLog("Tern: failed to load extension \(item.name): \(error)")
+        }
+    }
+
+    /// Once a Chrome Web Store extension's service worker goes idle, WebKit may not wake it again: Proton Pass's messages
+    /// then get no reply and its popup stays blank. Loading background content is a no-op while the worker runs.
+    private func keepWorkerAwake(_ ctx: WKWebExtensionContext) {
+        guard ctx.webExtension.hasBackgroundContent, !ctx.webExtension.hasPersistentBackgroundContent else { return }
+        ctx.loadBackgroundContent { _ in }
+        guard workerKeepAlive == nil else { return }
+        let timer = Timer(timeInterval: 20, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                for item in self.available {
+                    guard case .store = item.source, let ctx = self.contexts[item.id],
+                          ctx.webExtension.hasBackgroundContent, !ctx.webExtension.hasPersistentBackgroundContent else { continue }
+                    ctx.loadBackgroundContent { _ in }
+                }
+            }
+        }
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        workerKeepAlive = timer
+    }
+
+    /// With a stable base URL, WebKit finds last launch's service worker registration and never runs the worker, so the
+    /// extension has no listeners. It must go before WebKit reads the registrations, so call this before any web view exists.
+    static func forgetServiceWorkers() {
+        guard !SmokeTest.isRunning, !Metrics.isBenchmark,
+              let hosts = (UserDefaults.tern.dictionary(forKey: "extensionUUIDs") as? [String: String])?.values.map({ Data($0.lowercased().utf8) }),
+              let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
+        let fm = FileManager.default
+        let root = library.appendingPathComponent("WebKit/\(Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName)/WebsiteData/Default")
+        for top in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
+            for frame in (try? fm.contentsOfDirectory(at: top, includingPropertiesForKeys: nil)) ?? [] {
+                let workers = frame.appendingPathComponent("ServiceWorkers")
+                guard fm.fileExists(atPath: workers.path),
+                      let origin = try? Data(contentsOf: frame.appendingPathComponent("origin")),
+                      origin.range(of: Data("webkit-extension".utf8)) != nil,
+                      hosts.contains(where: { origin.range(of: $0) != nil }) else { continue }
+                try? fm.removeItem(at: workers)
+            }
         }
     }
 
