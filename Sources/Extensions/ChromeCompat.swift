@@ -20,6 +20,9 @@ enum ChromeCompat {
       }
       // WebKit's API objects are wrappers it can collect and recreate, dropping anything added below, unless something holds them.
       globalThis.__ternKeep = [globalThis.chrome, globalThis.browser].flatMap((ns) => ns ? [ns, ns.runtime, ns.tabs, ns.windows] : []);
+      const isThisPage = (tab) => {
+        try { const url = new URL(tab.url); return url.origin === location.origin && url.pathname === location.pathname; } catch { return false; }
+      };
       const event = () => ({ addListener() {}, removeListener() {}, hasListener() { return false; }, hasListeners() { return false; } });
       const fill = (object, name, value) => {
         if (!object || object[name] !== undefined) return;
@@ -37,14 +40,14 @@ enum ChromeCompat {
           hasDocument: () => Promise.resolve(false),
           Reason: new Proxy({}, { get: (_, key) => String(key) }),
         });
-        // Outside a tab WebKit answers null where Chrome answers undefined. Proton Pass tests `!== undefined`, takes its
-        // popup for a full tab and drops its fixed size, leaving the popover shrunk to fit.
+        // Chrome answers undefined unless this page is itself in a tab, but from a popup WebKit answers with the active tab
+        // (or null if there is none). Proton Pass takes that to mean it's in a tab and drops its popup's fixed size.
         const getCurrent = ns.tabs?.getCurrent;
         if (getCurrent) {
           const tabs = ns.tabs;
           try {
             Object.defineProperty(tabs, "getCurrent", { configurable: true, writable: true, enumerable: true, value(callback) {
-              const tab = getCurrent.call(tabs).then((tab) => tab ?? undefined);
+              const tab = getCurrent.call(tabs).then((tab) => isThisPage(tab) ? tab : undefined);
               if (!callback) return tab;
               tab.then(callback, () => callback());
             } });
@@ -54,36 +57,60 @@ enum ChromeCompat {
     })();
     """
 
-    /// Writes the script and points the manifest's background at it (once; later calls only refresh the script).
-    /// Leaves the extension as it is if its manifest can't be read as plain JSON.
+    /// Writes the script and points the manifest's background and content scripts at it (once; later calls only refresh
+    /// the script). Leaves the extension as it is if its manifest can't be read as plain JSON.
     static func install(in folder: URL) {
         let manifestURL = folder.appendingPathComponent("manifest.json")
         guard let data = try? Data(contentsOf: manifestURL),
-              var manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              var background = manifest["background"] as? [String: Any] else { return }
+              var manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         try? script.write(to: folder.appendingPathComponent(scriptName), atomically: true, encoding: .utf8)
         injectIntoPages(in: folder)
 
+        var changed = false
+        if var background = manifest["background"] as? [String: Any], patch(&background, in: folder) {
+            manifest["background"] = background
+            changed = true
+        }
+        if var scripts = manifest["content_scripts"] as? [[String: Any]], patch(&scripts) {
+            manifest["content_scripts"] = scripts
+            changed = true
+        }
+        guard changed, let out = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .withoutEscapingSlashes]) else { return }
+        try? out.write(to: manifestURL, options: .atomic)
+    }
+
+    private static func patch(_ background: inout [String: Any], in folder: URL) -> Bool {
         if let worker = background["service_worker"] as? String {
-            guard worker != workerName else { return }
+            guard worker != workerName else { return false }
             // A module worker can't call importScripts, so it imports both instead.
             let isModule = background["type"] as? String == "module"
             let path = worker.hasPrefix("/") ? String(worker.dropFirst()) : worker
             let wrapper = isModule
                 ? "import \(jsString("./" + scriptName));\nimport \(jsString("./" + path));\n"
                 : "importScripts(\(jsString(scriptName)), \(jsString(worker)));\n"
-            guard (try? wrapper.write(to: folder.appendingPathComponent(workerName), atomically: true, encoding: .utf8)) != nil else { return }
+            guard (try? wrapper.write(to: folder.appendingPathComponent(workerName), atomically: true, encoding: .utf8)) != nil else { return false }
             background["service_worker"] = workerName
             background["tern_original_service_worker"] = worker
-        } else if let scripts = background["scripts"] as? [String] {
-            guard scripts.first != scriptName else { return }
-            background["scripts"] = [scriptName] + scripts
-        } else {
-            return
+            return true
         }
-        manifest["background"] = background
-        guard let out = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .withoutEscapingSlashes]) else { return }
-        try? out.write(to: manifestURL, options: .atomic)
+        if let scripts = background["scripts"] as? [String], scripts.first != scriptName {
+            background["scripts"] = [scriptName] + scripts
+            return true
+        }
+        return false
+    }
+
+    /// A content script swapping the globals stops `tabs.sendMessage` reaching it, as in the worker, so the script runs
+    /// first in each of them too. Not in the page's own world, where there are no extension globals to pin.
+    private static func patch(_ contentScripts: inout [[String: Any]]) -> Bool {
+        var changed = false
+        for index in contentScripts.indices {
+            guard contentScripts[index]["world"] as? String != "MAIN",
+                  let js = contentScripts[index]["js"] as? [String], js.first != scriptName else { continue }
+            contentScripts[index]["js"] = [scriptName] + js
+            changed = true
+        }
+        return changed
     }
 
     /// Every HTML page in the extension (popup, options, and the rest) loads the script before its own.
