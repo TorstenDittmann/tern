@@ -1,15 +1,14 @@
 amends "https://orch.torsten.work/pkl/v1alpha1/Application.pkl"
 
-// tern.torsten.work, served by orch as a static site. The files in public are
-// published as they are; there is no build step. The deploy workflow is
-// .github/workflows/website-deploy.yml.
+// tern.torsten.work, served by orch as a static site. Build first with
+// `bun run build`; the deploy workflow is .github/workflows/website-deploy.yml.
 
 name = "tern"
 
 services {
   ["web"] {
-    // Unknown paths get public/404.html with status 404.
-    static = new Static { dir = "public" }
+    // Unknown paths get dist/404.html with status 404.
+    static = new Static { dir = "dist" }
     http { domains { "tern.torsten.work" } }
   }
 }
