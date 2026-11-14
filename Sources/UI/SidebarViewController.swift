@@ -371,10 +371,18 @@ final class SidebarViewController: NSViewController {
 
     func updateExtensionActions() {
         let tab = browser?.activeTab
+        let shown = ExtensionManager.shared.loadedContexts.compactMap { ctx in ctx.action(for: tab).map { (ctx, $0) } }
+        // Same buttons as before (an extension changed its icon or badge): update them in place. Replacing them would
+        // pull the anchor out from under an open popup, and Proton Pass changes its icon right as its popup opens.
+        if shown.map({ ObjectIdentifier($0.0) }) == extensionStack.arrangedSubviews.compactMap({ view in actionButtons.first { $0.value === view }?.key }) {
+            for (ctx, action) in shown {
+                actionButtons[ObjectIdentifier(ctx)]?.configure(with: action, fallbackName: ctx.webExtension.displayName ?? "Extension")
+            }
+            return
+        }
         extensionStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         actionButtons.removeAll()
-        for ctx in ExtensionManager.shared.loadedContexts {
-            guard let action = ctx.action(for: tab) else { continue }
+        for (ctx, action) in shown {
             let button = ExtensionActionButton(target: self, action: #selector(extensionActionClicked(_:)))
             button.configure(with: action, fallbackName: ctx.webExtension.displayName ?? "Extension")
             button.identifier = .init(ctx.uniqueIdentifier)
