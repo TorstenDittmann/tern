@@ -20,6 +20,14 @@ enum ChromeCompat {
       }
       // WebKit's API objects are wrappers it can collect and recreate, dropping anything added below, unless something holds them.
       globalThis.__ternKeep = [globalThis.chrome, globalThis.browser].flatMap((ns) => ns ? [ns, ns.runtime, ns.tabs, ns.windows] : []);
+      // WebKit has no requestIdleCallback. Proton Pass's content script calls it before detecting forms, so autofill never starts.
+      if (typeof globalThis.requestIdleCallback !== "function") {
+        globalThis.requestIdleCallback = (callback, options) => {
+          const start = Date.now();
+          return setTimeout(() => callback({ didTimeout: false, timeRemaining: () => Math.max(0, 50 - (Date.now() - start)) }), 1);
+        };
+        globalThis.cancelIdleCallback = (id) => clearTimeout(id);
+      }
       const isThisPage = (tab) => {
         try { const url = new URL(tab.url); return url.origin === location.origin && url.pathname === location.pathname; } catch { return false; }
       };
