@@ -371,16 +371,24 @@ final class SidebarViewController: NSViewController {
 
     func updateExtensionActions() {
         let tab = browser?.activeTab
-        extensionStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        actionButtons.removeAll()
+        var buttons: [ObjectIdentifier: ExtensionActionButton] = [:]
+        var ordered: [NSView] = []
         for ctx in ExtensionManager.shared.loadedContexts {
             guard let action = ctx.action(for: tab) else { continue }
-            let button = ExtensionActionButton(target: self, action: #selector(extensionActionClicked(_:)))
+            // Reuse the button: an open popup is anchored to it and closes once it leaves the window. Extensions often
+            // change their icon or badge as the popup opens (Proton Pass does), which lands here.
+            let key = ObjectIdentifier(ctx)
+            let button = actionButtons[key] ?? ExtensionActionButton(target: self, action: #selector(extensionActionClicked(_:)))
             button.configure(with: action, fallbackName: ctx.webExtension.displayName ?? "Extension")
             button.identifier = .init(ctx.uniqueIdentifier)
-            extensionStack.addArrangedSubview(button)
-            actionButtons[ObjectIdentifier(ctx)] = button
+            buttons[key] = button
+            ordered.append(button)
         }
+        if extensionStack.arrangedSubviews != ordered {
+            extensionStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            ordered.forEach(extensionStack.addArrangedSubview)
+        }
+        actionButtons = buttons
     }
 
     func actionButton(for context: WKWebExtensionContext) -> NSView? {
